@@ -271,8 +271,8 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   names; the chart has a table view; status is never colour alone.
 - **CI** runs lint, typecheck, unit and kernel tests, the GSSK pin check, the build, the bundle
   budget and e2e against the built site served under `/<repo>/`.
-- **Deployment**: GitHub Pages from the CI artefact, only when the repository variable
-  `PAGES_ENABLED` is `true` and Pages' source is "GitHub Actions".
+- **Deployment**: GitHub Pages from the CI artefact on every push to `main` after build, test
+  and e2e pass, and only while Pages' source is "GitHub Actions".
 
 ## 17. Kernel requests to GSSK (non-blocking)
 
