@@ -1,0 +1,237 @@
+:host {
+  display: block;
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  background: var(--canvas-bg);
+  overflow: hidden;
+}
+:host > svg.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  user-select: none;
+  cursor: default;
+}
+:host > svg.canvas.panning {
+  cursor: grabbing;
+}
+:host .grid-line {
+  stroke: var(--canvas-grid);
+  stroke-width: 1;
+}
+:host symbol,
+:host symbol * {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+:host symbol .solid,
+:host marker .solid {
+  fill: currentColor;
+  stroke: none;
+}
+:host symbol .glyph {
+  fill: currentColor;
+  stroke: none;
+  font: italic 600 26px var(--font-sans);
+}
+:host marker {
+  color: var(--ink-flow);
+}
+
+/* Nodes */
+:host .node {
+  color: var(--ink);
+  cursor: move;
+  outline: none;
+}
+:host .node .body {
+  fill: var(--canvas-bg);
+  stroke: none;
+}
+:host .node .halo {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+:host .node:hover .halo {
+  stroke: var(--border-strong);
+}
+:host .node.selected .halo,
+:host .node:focus-visible .halo {
+  stroke: var(--select);
+}
+:host .node.invalid {
+  color: var(--critical);
+}
+:host .node .label {
+  fill: var(--text-primary);
+  font: 500 12px var(--font-sans);
+  text-anchor: middle;
+  pointer-events: none;
+}
+:host .node .reading {
+  fill: var(--text-secondary);
+  font: 11px var(--font-mono);
+  text-anchor: middle;
+  pointer-events: none;
+}
+:host .node .gauge-bg {
+  fill: var(--surface-sunken);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+:host .node .gauge {
+  fill: var(--fill-level);
+}
+:host .node .port {
+  fill: var(--surface-2);
+  stroke: var(--select);
+  stroke-width: 1.5;
+  opacity: 0;
+  cursor: crosshair;
+  transition: opacity 0.12s;
+}
+:host .node:hover .port,
+:host .node.selected .port {
+  opacity: 1;
+}
+:host svg.wiring .port {
+  opacity: 0;
+}
+:host .node.drop-target .halo {
+  stroke: var(--good);
+  stroke-dasharray: none;
+}
+
+/* Flows */
+:host .edge {
+  cursor: pointer;
+}
+:host .edge .hit {
+  stroke: transparent;
+  stroke-width: 14;
+  fill: none;
+}
+:host .edge .line {
+  stroke: var(--ink-flow);
+  stroke-width: 1.8;
+  fill: none;
+}
+:host .edge.reversible .line {
+  stroke-dasharray: none;
+}
+:host .edge:hover .line {
+  stroke: var(--text-primary);
+}
+:host .edge.selected .line {
+  stroke: var(--select);
+}
+:host .edge.invalid .line {
+  stroke: var(--critical);
+}
+:host .edge.drop-target .line {
+  stroke: var(--good);
+  stroke-width: 3;
+}
+:host .edge .control {
+  stroke: var(--ink-control);
+  stroke-width: 1.4;
+  stroke-dasharray: 3 3;
+  fill: none;
+}
+:host .edge .gate {
+  color: var(--ink-flow);
+}
+:host .edge .gate path {
+  fill: var(--canvas-bg);
+}
+:host .handle-line {
+  stroke: var(--select);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+:host .handle {
+  fill: var(--surface-2);
+  stroke: var(--select);
+  stroke-width: 1.5;
+  cursor: grab;
+}
+
+/* Boundaries */
+:host .boundary rect.frame {
+  fill: none;
+  stroke: var(--boundary);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 5;
+}
+:host .boundary rect.grab {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  pointer-events: stroke;
+  cursor: move;
+}
+:host .boundary.selected rect.frame {
+  stroke: var(--select);
+}
+:host .boundary text {
+  fill: var(--text-muted);
+  font: 600 12px var(--font-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: move;
+}
+:host .boundary .resize {
+  fill: var(--surface-2);
+  stroke: var(--select);
+  cursor: nwse-resize;
+}
+:host .boundary:not(.selected) .resize {
+  display: none;
+}
+
+:host .wire {
+  stroke: var(--select);
+  stroke-width: 1.8;
+  stroke-dasharray: 5 4;
+  fill: none;
+  pointer-events: none;
+}
+
+:host .empty-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--text-muted);
+  text-align: center;
+}
+:host .empty-hint p {
+  max-width: 340px;
+}
+:host .zoom {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+:host .zoom .pct {
+  min-width: 46px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+}

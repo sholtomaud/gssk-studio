@@ -1,0 +1,120 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  flex: none;
+  background: var(--surface-1);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  min-height: 0;
+}
+:host section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+}
+:host .kind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:host .kind svg.sym {
+  width: 28px;
+  height: 28px;
+  color: var(--ink);
+}
+:host .kind svg.sym * {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4;
+}
+:host .kind .t {
+  font-weight: 600;
+}
+:host .kind .s {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+:host .summary {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+:host .row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+:host .formula {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+:host .hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+:host .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+:host .links button {
+  height: 24px;
+  font-size: 12px;
+  font-weight: 400;
+  padding: 0 8px;
+}
+:host .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+:host .issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+:host .issues li {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+:host .issues li .icon-svg {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+}
+:host .issues li.error .icon-svg {
+  color: var(--critical-text);
+}
+:host .issues li.warning .icon-svg {
+  color: var(--warning-text);
+}
+:host .issues li.ok .icon-svg {
+  color: var(--good-text);
+}
+:host .issues button.link {
+  all: unset;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+:host .issues button.link:focus-visible {
+  outline: 2px solid var(--focus);
+}
+@media (max-width: 900px) {
+  :host {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    max-height: 40vh;
+  }
+}

@@ -1,0 +1,6 @@
+vendor/
+dist/
+site/
+package-lock.json
+playwright-report/
+test-results/

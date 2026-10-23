@@ -1,0 +1,57 @@
+{
+  "_note": "A model in gssk-dia's export format (its 'personal-finance' example), for the import test. Synthetic.",
+  "config": { "dt": 0.1, "t_start": 0, "t_end": 100, "method": "euler" },
+  "boundaries": [{ "x": 150, "y": 50, "w": 620, "h": 450, "label": "Household System" }],
+  "nodes": [
+    {
+      "id": "income",
+      "type": "source",
+      "value": 100,
+      "visual": { "x": 80, "y": 270, "label": "Job Income" }
+    },
+    {
+      "id": "checking",
+      "type": "storage",
+      "value": 1000,
+      "visual": { "x": 250, "y": 270, "label": "Checking Account", "capacity": 5000 }
+    },
+    {
+      "id": "market",
+      "type": "transaction",
+      "value": 0,
+      "visual": { "x": 450, "y": 120, "label": "Market" }
+    },
+    {
+      "id": "rain",
+      "type": "source",
+      "value": 0,
+      "dataType": "Rainfall",
+      "visual": { "x": 450, "y": 420, "label": "Rain" }
+    },
+    {
+      "id": "expenses_sink",
+      "type": "sink",
+      "value": 0,
+      "visual": { "x": 720, "y": 270, "label": "Expenses" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "origin": "income",
+      "target": "checking",
+      "logic": "linear",
+      "params": { "k": 0.7 },
+      "visual": { "points": [], "max_flow": 5 }
+    },
+    {
+      "id": "e2",
+      "origin": "checking",
+      "target": "expenses_sink",
+      "logic": "interaction",
+      "control_node": "income",
+      "params": { "k": 0.01 }
+    },
+    { "origin": "checking", "target": "market", "logic": "linear", "params": { "k": 0.1 } }
+  ]
+}

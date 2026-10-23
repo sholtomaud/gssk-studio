@@ -1,0 +1,59 @@
+<section class="screen">
+  <h1>Kernel</h1>
+  <p class="lede">
+    Models run on GSSK, the General Systems Simulation Kernel, compiled to WebAssembly and vendored
+    into this app at a pinned commit. The <code>sim</code> worker checks the kernel's SHA-256
+    against the pin and refuses to run a kernel that does not match.
+  </p>
+
+  <article class="card">
+    <h2>Pinned kernel</h2>
+    <dl class="pin">
+      <dt>Status</dt>
+      <dd class="k-status" role="status">Loading…</dd>
+      <dt>Version</dt>
+      <dd class="k-version">–</dd>
+      <dt>Source</dt>
+      <dd class="k-source">–</dd>
+      <dt>gssk.wasm SHA-256</dt>
+      <dd><code class="k-sha">–</code></dd>
+    </dl>
+  </article>
+
+  <article class="card">
+    <h2>Self-test</h2>
+    <p>
+      Runs every built-in example on the kernel in the <code>sim</code> worker and reports its final
+      state and solver diagnostics.
+    </p>
+    <button type="button" class="run">Run self-test</button>
+    <table class="result" hidden>
+      <thead>
+        <tr>
+          <th>Example</th>
+          <th>Steps</th>
+          <th>Time</th>
+          <th>Solver</th>
+          <th>Model hash</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </article>
+
+  <article class="card">
+    <h2>Odum symbols and kernel types</h2>
+    <p>Each palette symbol is a native kernel node type; nothing is folded or approximated.</p>
+    <table class="types">
+      <thead>
+        <tr>
+          <th>Symbol</th>
+          <th>Kernel type</th>
+          <th>Holds state</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </article>
+</section>

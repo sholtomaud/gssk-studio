@@ -1,0 +1,82 @@
+:host {
+  display: block;
+  overflow: auto;
+  flex: 1;
+}
+:host .lede {
+  color: var(--text-secondary);
+  margin: 8px 0 24px;
+  max-width: 70ch;
+}
+:host .card {
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  display: grid;
+  gap: 12px;
+}
+:host .card p {
+  color: var(--text-secondary);
+}
+:host .card > button {
+  justify-self: start;
+}
+:host dl.pin {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 20px;
+  margin: 0;
+}
+:host dt {
+  color: var(--text-secondary);
+}
+:host dd {
+  margin: 0;
+  word-break: break-all;
+}
+:host .k-status[data-ok='true'] {
+  color: var(--good-text);
+  font-weight: 600;
+}
+:host .k-status[data-ok='false'] {
+  color: var(--critical-text);
+  font-weight: 600;
+}
+:host table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+:host th,
+:host td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+:host th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+:host td.num {
+  font-variant-numeric: tabular-nums;
+}
+:host .types svg.sym {
+  width: 28px;
+  height: 28px;
+  vertical-align: middle;
+  margin-right: 6px;
+  color: var(--ink);
+}
+:host .types svg.sym * {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4;
+}
+:host .types svg.sym .solid,
+:host .types svg.sym text {
+  fill: currentColor;
+  stroke: none;
+}
+:host .types svg.sym text {
+  font: italic 600 26px var(--font-sans);
+}

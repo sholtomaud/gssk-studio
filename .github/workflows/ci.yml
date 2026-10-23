@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  NODE_VERSION: 22
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: GSSK pin (NFR-KER-001)
+        run: npm run gssk:verify
+      - run: npm run lint
+      - run: npm run typecheck
+      - name: Build for GitHub Pages
+        run: npm run build
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+      - name: Bundle size (NFR-PERF-001)
+        run: npm run bundle-size
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  test:
+    name: test
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Vitest (unit, real kernel)
+        run: npm test
+
+  e2e:
+    name: e2e
+    # Tests exactly the site `build` produced, served as GitHub Pages serves it.
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: The site from the build job
+        uses: actions/download-artifact@v4
+        with:
+          name: github-pages
+          path: artifact
+      - run: mkdir site && tar -xf artifact/artifact.tar -C site
+      - name: Playwright against the built site
+        run: npm run e2e
+        env:
+          CI: 'true'
+          E2E_SITE: site
+          E2E_BASE: /${{ github.event.repository.name }}/
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 14
+
+  deploy:
+    name: deploy (GitHub Pages)
+    # Set the repository variable PAGES_ENABLED=true once Settings → Pages → Source is
+    # "GitHub Actions" (SPEC §16).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PAGES_ENABLED == 'true'
+    needs: [build, test, e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Pages source is GitHub Actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          build_type=$(gh api "repos/${{ github.repository }}/pages" --jq .build_type)
+          if [ "$build_type" != "workflow" ]; then
+            echo "::error::GitHub Pages publishes from '$build_type', not this workflow. Set Settings → Pages → Source to 'GitHub Actions'."
+            exit 1
+          fi
+      - id: deployment
+        uses: actions/deploy-pages@v4

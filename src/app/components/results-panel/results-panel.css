@@ -1,0 +1,214 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border);
+}
+:host .head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+:host .head h2 {
+  font-size: 13px;
+  margin-right: 4px;
+}
+:host .head .spacer {
+  flex: 1;
+}
+:host .head .status {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+:host .body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+}
+:host .series {
+  border-right: 1px solid var(--border);
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+:host .series button {
+  height: 26px;
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  font-weight: 400;
+  padding: 0 6px;
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+:host .series button[aria-pressed='true'] {
+  color: var(--text-primary);
+  background: var(--surface-sunken);
+}
+:host .series button .sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+  border: 1.5px solid var(--border-strong);
+}
+:host .series button[aria-pressed='true'] .sw {
+  border: none;
+}
+:host .series button .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:host .series .note {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 6px;
+}
+:host .plot {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+:host .plot > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+:host .plot .axis text {
+  fill: var(--text-muted);
+  font: 11px var(--font-sans);
+}
+:host .plot .grid line {
+  stroke: var(--canvas-grid);
+}
+:host .plot .baseline {
+  stroke: var(--border-strong);
+}
+:host .plot .series-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+:host .plot .end-label {
+  font: 500 11px var(--font-sans);
+  fill: var(--text-secondary);
+}
+:host .plot .cursor {
+  stroke: var(--text-secondary);
+  stroke-width: 1;
+}
+:host .plot .hover {
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+}
+:host .plot .dot {
+  stroke: var(--surface-1);
+  stroke-width: 2;
+}
+:host .tip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-2);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 12px;
+  min-width: 140px;
+  z-index: 2;
+}
+:host .tip .t {
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+:host .tip .r {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+:host .tip .r b {
+  margin-left: auto;
+  color: var(--text-primary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+:host .tip .sw {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+:host .empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--text-muted);
+  padding: 16px;
+  text-align: center;
+}
+:host .table-wrap {
+  overflow: auto;
+  height: 100%;
+}
+:host table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+}
+:host th,
+:host td {
+  padding: 3px 10px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+:host th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+:host .scrub {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+}
+:host .scrub input[type='range'] {
+  flex: 1;
+  padding: 0;
+  border: none;
+  accent-color: var(--accent);
+}
+:host .scrub .time {
+  min-width: 90px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  :host .body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  :host .series {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 72px;
+  }
+}

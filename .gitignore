@@ -1,0 +1,14 @@
+node_modules/
+dist/
+site/
+playwright-report/
+test-results/
+playwright-live-report/
+*.tsbuildinfo
+.vite/
+vite.config.ts.timestamp-*
+.env
+.env.*
+# Local scratch: real observation data and private models stay out of the repo (NFR-PRIV-002).
+/data/
+/private/

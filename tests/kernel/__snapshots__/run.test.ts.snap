@@ -1,0 +1,48 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`running models (FR-SIM-001) > runs the economy example cleanly and reproducibly 1`] = `
+{
+  "capital": 4205.9544,
+  "government": 1286.2791,
+  "households": 2692.7902,
+  "resource": 10,
+  "waste": 2789.2798,
+}
+`;
+
+exports[`running models (FR-SIM-001) > runs the grassland example cleanly and reproducibly 1`] = `
+{
+  "grass": 12,
+  "grazers": 10.666667,
+  "heat": 67.055556,
+  "sun": 100,
+}
+`;
+
+exports[`running models (FR-SIM-001) > runs the household example cleanly and reproducibly 1`] = `
+{
+  "bank": 1341.9808,
+  "income": 100,
+  "savings": 5314.4253,
+  "spending": 7743.5939,
+  "tax": 3600,
+}
+`;
+
+exports[`running models (FR-SIM-001) > runs the predator-prey example cleanly and reproducibly 1`] = `
+{
+  "food": 1,
+  "loss": 2066.1895,
+  "predator": 19.179107,
+  "prey": 1.4614448,
+}
+`;
+
+exports[`running models (FR-SIM-001) > runs the reservoir example cleanly and reproducibly 1`] = `
+{
+  "downstream": 331.29203,
+  "rain": 10,
+  "reservoir": 213.39271,
+  "town": 33.811103,
+}
+`;

@@ -1,0 +1,68 @@
+:host {
+  display: block;
+  flex: none;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+}
+:host .bar {
+  height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 16px;
+}
+:host .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+  color: var(--text-primary);
+  text-decoration: none;
+  letter-spacing: -0.01em;
+}
+:host .mark {
+  width: 22px;
+  height: 22px;
+}
+:host .mark rect {
+  fill: var(--accent);
+}
+:host .mark path {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+:host .links {
+  display: flex;
+  gap: 4px;
+}
+:host .links a {
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  font-weight: 500;
+}
+:host .links a:hover {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+:host .links a[aria-current='page'] {
+  color: var(--text-primary);
+  background: var(--surface-sunken);
+}
+:host .end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 560px) {
+  :host .bar {
+    gap: 12px;
+  }
+  :host .kstate {
+    display: none;
+  }
+}

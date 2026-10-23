@@ -1,0 +1,11 @@
+# Architecture decisions
+
+| ADR                                           | Decision                                                             |
+| --------------------------------------------- | -------------------------------------------------------------------- |
+| [0001](0001-budget-app-foundation.md)         | Build on budget-app's foundation: no framework, no runtime deps      |
+| [0002](0002-shared-gssk-pin.md)               | Vendor the same SHA-256-pinned GSSK build as budget-app              |
+| [0003](0003-the-diagram-is-the-model.md)      | The saved file is a GSSK model; every symbol is a native kernel type |
+| [0004](0004-whole-runs-in-a-worker.md)        | Whole runs in a worker, then playback                                |
+| [0005](0005-no-network-in-v1.md)              | No network in v1; services later, opt-in and per call                |
+| [0006](0006-importing-gssk-dia.md)            | Import gssk-dia models, listing every change                         |
+| [0007](0007-svg-editor-and-chart-in-house.md) | The diagram editor and the chart are in-house SVG                    |

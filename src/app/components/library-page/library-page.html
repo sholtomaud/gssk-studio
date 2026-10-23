@@ -1,0 +1,29 @@
+<section class="screen">
+  <header class="head">
+    <div>
+      <h1>Models</h1>
+      <p class="lede">
+        Energy-systems models drawn in Odum's symbols. They are stored in this browser and nowhere
+        else.
+      </p>
+    </div>
+    <div class="actions">
+      <button type="button" class="import"><span class="i-upload"></span>Import</button>
+      <button type="button" class="primary new"><span class="i-plus"></span>New model</button>
+      <input type="file" class="file" accept=".json,application/json" hidden />
+    </div>
+  </header>
+
+  <section class="group" aria-labelledby="mine-h">
+    <h3 id="mine-h">Your models</h3>
+    <p class="empty" hidden>
+      No models yet. Start a new one, import a file, or open a copy of an example below.
+    </p>
+    <ul class="grid mine" role="list"></ul>
+  </section>
+
+  <section class="group" aria-labelledby="ex-h">
+    <h3 id="ex-h">Examples</h3>
+    <ul class="grid examples" role="list"></ul>
+  </section>
+</section>

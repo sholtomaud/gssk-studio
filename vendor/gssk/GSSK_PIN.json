@@ -1,0 +1,14 @@
+{
+  "repo": "https://github.com/energese-project/GSSK-Giannantoni",
+  "branch": "dist",
+  "commit": "3043a57ca4c39896f6784b8db2c0b80662416d46",
+  "tag": null,
+  "version": "5.3.0",
+  "sha256": {
+    "gssk.wasm": "279fa4ce9ce139ddf206589d55cb8ff86ec49e02d1ee28ef21b2b88e276c263e",
+    "gssk.js": "b662d5b94ca6d2193572b243660eb0091b28914146bab7aad0b04a3e3e6c23aa",
+    "gssk.d.ts": "3bd4791cbea59892eddef2955ef78480021386657a4fd1c40d45ca1af7142e18",
+    "gssk.h": "46f6ff002612b98bd274b3d1d7da91cd2dfaf05c66888c8b8a98dd4be1efd214",
+    "gssk.schema.json": "86e81675b1582dbf57c4e7b45cf819be8362084797146536bd3bdb0e28e70ad4"
+  }
+}
