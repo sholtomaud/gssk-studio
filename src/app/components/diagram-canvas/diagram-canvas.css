@@ -22,23 +22,6 @@
   stroke: var(--canvas-grid);
   stroke-width: 1;
 }
-:host symbol,
-:host symbol * {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 3;
-  stroke-linejoin: round;
-}
-:host symbol .solid,
-:host marker .solid {
-  fill: currentColor;
-  stroke: none;
-}
-:host symbol .glyph {
-  fill: currentColor;
-  stroke: none;
-  font: italic 600 26px var(--font-sans);
-}
 :host marker {
   color: var(--ink-flow);
 }
@@ -147,8 +130,6 @@
 }
 :host .edge .gate {
   color: var(--ink-flow);
-}
-:host .edge .gate path {
   fill: var(--canvas-bg);
 }
 :host .handle-line {
@@ -227,6 +208,15 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-1);
+}
+:host .zoom .sep {
+  width: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+:host .zoom button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 :host .zoom .pct {
   min-width: 46px;

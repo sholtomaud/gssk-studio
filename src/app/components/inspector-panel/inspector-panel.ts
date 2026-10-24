@@ -426,7 +426,11 @@ export class InspectorPanel extends BaseComponent {
         this.selectField<NodeType>(
           'Symbol',
           n.type,
-          NODE_TYPES.map((t) => ({ value: t, label: symbolFor(t).label })),
+          // The palette's symbols, plus this node's own if the palette no longer offers it.
+          NODE_TYPES.filter((t) => symbolFor(t).palette || t === n.type).map((t) => ({
+            value: t,
+            label: symbolFor(t).label,
+          })),
           (v) => {
             if (!v) return;
             this.emit(

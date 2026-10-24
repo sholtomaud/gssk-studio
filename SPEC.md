@@ -125,20 +125,20 @@ A model is one JSON document that is a valid GSSK Schema v4 model (ADR 0003):
 
 One symbol per kernel node type. `src/model/catalogue.ts` is the only table of node semantics.
 
-| Symbol (Odum 1983) | Kernel type    | Holds state     | Notes                                                    |
-| ------------------ | -------------- | --------------- | -------------------------------------------------------- |
-| Source             | `source`       | no              | Held at its value                                        |
-| Storage (tank)     | `storage`      | yes             | dQ/dt = inflows − outflows                               |
-| Heat sink          | `sink`         | yes             | Accumulates degraded energy                              |
-| Constant           | `constant`     | no              | A fixed level flows can read                             |
-| Producer           | `producer`     | yes (composite) | Expands to body, gate, heat; charted by its body         |
-| Consumer           | `consumer`     | yes (composite) | Expands to body, heat                                    |
-| Interaction        | `interaction`  | no              | Multiplicative work gate                                 |
-| Transaction        | `exchange`     | no              | Goods one way, money the other, at a price or price node |
-| Switch             | `switch`       | no              | On/off around a threshold                                |
-| Amplifier          | `gain`         | no              | Constant-gain amplifier                                  |
-| Receiver           | `loop_limited` | no              | k·Q/(1+Q/C)                                              |
-| Box                | `misc_box`     | yes (composite) | A subsystem not drawn in detail                          |
+| Symbol (Odum 1983) | Kernel type    | Holds state     | Notes                                                                                 |
+| ------------------ | -------------- | --------------- | ------------------------------------------------------------------------------------- |
+| Source             | `source`       | no              | Held at its value                                                                     |
+| Storage (tank)     | `storage`      | yes             | dQ/dt = inflows − outflows                                                            |
+| Heat sink          | `sink`         | yes             | Accumulates degraded energy                                                           |
+| Constant           | `constant`     | no              | Not in the palette: a source does the same job; imported constants still draw and run |
+| Producer           | `producer`     | yes (composite) | Expands to body, gate, heat; charted by its body                                      |
+| Consumer           | `consumer`     | yes (composite) | Expands to body, heat                                                                 |
+| Interaction        | `interaction`  | no              | Multiplicative work gate                                                              |
+| Transaction        | `exchange`     | no              | Goods one way, money the other, at a price or price node                              |
+| Switch             | `switch`       | no              | On/off around a threshold                                                             |
+| Amplifier          | `gain`         | no              | Constant-gain amplifier                                                               |
+| Receiver           | `loop_limited` | no              | k·Q/(1+Q/C)                                                                           |
+| Box                | `misc_box`     | yes (composite) | A subsystem not drawn in detail                                                       |
 
 Flow logics are the kernel's: `linear`, `constant`, `interaction`, `limit`, `threshold`, `ratio`,
 `reversible`, `subtract`, each with the parameters the kernel requires (§10).
@@ -163,6 +163,8 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
   keystrokes in one field is one step.
 - **FR-EDIT-008** Autosave to the library 400 ms after the last edit; "Saved" is shown only after
   the write commits.
+- **FR-EDIT-009** Symbols draw identically in every browser: each SVG shape carries its own
+  paint, because page CSS does not reliably reach the shadow copy a `<use>` renders.
 
 ## 7. Simulation (FR-SIM)
 
@@ -189,7 +191,8 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
 - **FR-RES-002** Hover crosshair with a tooltip of every charted value; direct end labels when four
   or fewer series are drawn; a table view of the same numbers.
 - **FR-RES-003** Playback: a time scrubber and play button drive the diagram — readings under each
-  label, storage gauges, flow widths proportional to |J|.
+  label and storage gauges. A **Flow widths** toggle (off by default, remembered) also draws each
+  flow as wide as |J| relative to the run's largest flow, a Sankey-style reading.
 - **FR-RES-004** CSV download of every sample, node and flow.
 - **FR-RES-005** A result older than the model is marked "Model changed since this run".
 

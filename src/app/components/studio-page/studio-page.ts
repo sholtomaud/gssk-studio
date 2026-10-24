@@ -4,7 +4,7 @@
  * the results panel shows runs. Runs happen in the sim worker.
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
-import { CATALOGUE } from '../../../model/catalogue.ts';
+import { PALETTE } from '../../../model/catalogue.ts';
 import { History } from '../../../model/history.ts';
 import { fileNameFor, serialiseModel } from '../../../model/io.ts';
 import { addBoundary, type Selection } from '../../../model/ops.ts';
@@ -148,7 +148,7 @@ export class StudioPage extends BaseComponent {
     );
 
     const grid = el('div', { class: 'grid' });
-    for (const s of CATALOGUE) {
+    for (const s of PALETTE) {
       const b = el(
         'button',
         {

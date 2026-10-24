@@ -12,6 +12,19 @@ test('an example opens, runs on the kernel and plays back onto the diagram', asy
   await expect(page.locator('[data-node="prey"] .reading')).toHaveText('40');
 });
 
+test('flow widths are off by default and toggle on', async ({ page }) => {
+  await openExample(page, 'household');
+  await run(page);
+  const width = () =>
+    page.locator('[data-edge="pay"] .line').evaluate((el) => (el as SVGElement).style.strokeWidth);
+  expect(await width()).toBe('');
+  const toggle = page.getByRole('button', { name: /Flow widths/ });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(width).toMatch(/^[\d.]+px$/);
+});
+
 test('build a model from the palette, wire it, run it, undo it', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('button', { name: 'New model' }).click();
@@ -26,8 +39,8 @@ test('build a model from the palette, wire it, run it, undo it', async ({ page }
   await expect(page.locator('studio-page .badge').filter({ hasText: 'Checks pass' })).toBeVisible();
 
   // Wiring a node onto a flow makes it that flow's control: an interaction with a gate.
-  await page.getByRole('button', { name: 'Add Constant' }).click();
-  await wire(page, 'constant', 'edge:storage_to_heat_sink');
+  await page.getByRole('button', { name: 'Add Source' }).click();
+  await wire(page, 'source_2', 'edge:storage_to_heat_sink');
   await expect(page.locator('[data-edge="storage_to_heat_sink"] .gate')).toHaveCount(1);
   await expect(page.locator('inspector-panel select[name="logic"]')).toHaveValue('interaction');
 

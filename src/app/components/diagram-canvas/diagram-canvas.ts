@@ -34,6 +34,15 @@ import style from './diagram-canvas.css?raw';
 
 export const NODE_DRAG_TYPE = 'application/x-gssk-node-type';
 const GRID = 10;
+const FLOW_WIDTHS_KEY = 'gssk-studio-flow-widths';
+
+function storedFlowWidths(): boolean {
+  try {
+    return localStorage.getItem(FLOW_WIDTHS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
 
@@ -67,6 +76,8 @@ export class DiagramCanvas extends BaseComponent {
   private _playback: Playback | null = null;
   private _invalid = new Set<string>();
   private view = { x: 0, y: 0, s: 1 };
+  /** Draw flows as wide as their rate during playback (FR-RES-003); off by default. */
+  private flowWidths = storedFlowWidths();
   private drag: Drag | null = null;
   private fitted = false;
   private gestureSeq = 0;
@@ -139,7 +150,32 @@ export class DiagramCanvas extends BaseComponent {
     zoomOut.onclick = () => this.zoomBy(0.8);
     fit.onclick = () => this.fit();
     this.pct = el('span', { class: 'pct', text: '100%' });
-    this.append(this.root, this.hint, el('div', { class: 'zoom' }, zoomOut, this.pct, zoomIn, fit));
+    const widths = iconButton('flow', 'Flow widths: draw each flow as wide as its rate');
+    widths.setAttribute('aria-pressed', String(this.flowWidths));
+    widths.onclick = () => {
+      this.flowWidths = !this.flowWidths;
+      widths.setAttribute('aria-pressed', String(this.flowWidths));
+      try {
+        localStorage.setItem(FLOW_WIDTHS_KEY, this.flowWidths ? '1' : '0');
+      } catch {
+        // Not remembered.
+      }
+      this.applyPlayback();
+    };
+    this.append(
+      this.root,
+      this.hint,
+      el(
+        'div',
+        { class: 'zoom' },
+        widths,
+        el('span', { class: 'sep' }),
+        zoomOut,
+        this.pct,
+        zoomIn,
+        fit
+      )
+    );
 
     this.root.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.root.addEventListener('pointermove', (e) => this.onPointerMove(e));
@@ -423,7 +459,10 @@ export class DiagramCanvas extends BaseComponent {
     }
   }
 
-  /** Update levels and flow widths in place; no re-render. */
+  /**
+   * Update levels and, when Flow widths is on, flow widths in place (a
+   * Sankey-style reading of the run, FR-RES-003); no re-render.
+   */
   private applyPlayback(): void {
     const p = this._playback;
     const m = this._model;
@@ -450,7 +489,7 @@ export class DiagramCanvas extends BaseComponent {
       if (!line) continue;
       const f = p?.flows.get(e.id);
       line.style.strokeWidth =
-        f === undefined || !(p && p.maxFlow > 0)
+        !this.flowWidths || f === undefined || !(p && p.maxFlow > 0)
           ? ''
           : `${1.2 + 4.8 * Math.min(1, Math.abs(f) / p.maxFlow)}px`;
     }

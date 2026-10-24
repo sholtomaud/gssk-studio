@@ -83,17 +83,7 @@
   color: var(--ink);
 }
 :host .palette svg.sym * {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 4;
-}
-:host .palette svg.sym .solid,
-:host .palette svg.sym text {
-  fill: currentColor;
-  stroke: none;
-}
-:host .palette svg.sym text {
-  font: italic 600 26px var(--font-sans);
+  stroke-width: 5;
 }
 :host .palette .boundary-tool svg {
   width: 30px;

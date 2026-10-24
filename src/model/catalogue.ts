@@ -17,6 +17,12 @@ export interface SymbolSpec {
   holdsState: boolean;
   /** A composite the kernel expands into several state columns at init. */
   composite: boolean;
+  /**
+   * Offered in the palette. Constant is not: it holds a value exactly as a
+   * source does, so the palette's Source covers it; models that use it still
+   * draw and run.
+   */
+  palette: boolean;
   /** What `value` means for this type, for the inspector. */
   valueLabel: string;
   summary: string;
@@ -30,6 +36,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 32, h: 32 },
     holdsState: false,
     composite: false,
+    palette: true,
     valueLabel: 'Supply',
     summary: 'An outside energy or material input, held at a fixed level.',
   },
@@ -40,6 +47,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 35, h: 32 },
     holdsState: true,
     composite: false,
+    palette: true,
     valueLabel: 'Initial quantity',
     summary: 'A tank: its quantity rises with inflows and falls with outflows.',
   },
@@ -50,6 +58,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 20, h: 30 },
     holdsState: true,
     composite: false,
+    palette: true,
     valueLabel: 'Initial quantity',
     summary: 'Degraded energy leaving the system; accumulates what it receives.',
   },
@@ -60,6 +69,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 32, h: 32 },
     holdsState: false,
     composite: false,
+    palette: false,
     valueLabel: 'Value',
     summary: 'A fixed force or level that flows can read.',
   },
@@ -70,6 +80,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 45, h: 25 },
     holdsState: true,
     composite: true,
+    palette: true,
     valueLabel: 'Initial biomass',
     summary: 'Captures energy through a work gate into its body, losing heat to respiration.',
   },
@@ -77,9 +88,10 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     type: 'consumer',
     label: 'Consumer',
     symbol: 'odum-consumer',
-    half: { w: 34, h: 30 },
+    half: { w: 30, h: 34 },
     holdsState: true,
     composite: true,
+    palette: true,
     valueLabel: 'Initial biomass',
     summary: 'A self-maintaining storage that metabolises what it takes in.',
   },
@@ -90,6 +102,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 30, h: 20 },
     holdsState: false,
     composite: false,
+    palette: true,
     valueLabel: 'Level',
     summary: 'A work gate: its output is the product of its inputs.',
   },
@@ -100,6 +113,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 32, h: 32 },
     holdsState: false,
     composite: false,
+    palette: true,
     valueLabel: 'Level',
     summary: 'Goods one way, money the other, at a price.',
   },
@@ -110,6 +124,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 35, h: 35 },
     holdsState: false,
     composite: false,
+    palette: true,
     valueLabel: 'Level',
     summary: 'Passes flow on or off around a threshold.',
   },
@@ -117,9 +132,10 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     type: 'gain',
     label: 'Amplifier',
     symbol: 'odum-amplifier',
-    half: { w: 30, h: 17 },
+    half: { w: 21, h: 24 },
     holdsState: false,
     composite: false,
+    palette: true,
     valueLabel: 'Level',
     summary: 'A constant-gain amplifier: output proportional to the control.',
   },
@@ -130,6 +146,7 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 26, h: 35 },
     holdsState: false,
     composite: false,
+    palette: true,
     valueLabel: 'Level',
     summary: 'A self-limiting receptor: output saturates as input grows (k·Q/(1+Q/C)).',
   },
@@ -140,10 +157,14 @@ export const CATALOGUE: readonly SymbolSpec[] = [
     half: { w: 35, h: 22 },
     holdsState: true,
     composite: true,
+    palette: true,
     valueLabel: 'Initial quantity',
     summary: 'A general-purpose unit for a subsystem not drawn in detail.',
   },
 ];
+
+/** The symbols the palette offers, in catalogue order. */
+export const PALETTE: readonly SymbolSpec[] = CATALOGUE.filter((s) => s.palette);
 
 const BY_TYPE = new Map(CATALOGUE.map((s) => [s.type, s]));
 

@@ -68,15 +68,5 @@
   color: var(--ink);
 }
 :host .types svg.sym * {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 4;
-}
-:host .types svg.sym .solid,
-:host .types svg.sym text {
-  fill: currentColor;
-  stroke: none;
-}
-:host .types svg.sym text {
-  font: italic 600 26px var(--font-sans);
+  stroke-width: 5;
 }

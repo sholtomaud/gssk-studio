@@ -46,6 +46,7 @@ const ICONS: Record<string, string> = {
   alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   back: '<path d="M15 18l-6-6 6-6"/>',
+  flow: '<path d="M4 6h16" style="stroke-width:1"/><path d="M4 12h16" style="stroke-width:2.4"/><path d="M4 18h16" style="stroke-width:4"/>',
   frame: '<rect x="3" y="5" width="18" height="14" rx="1" stroke-dasharray="3 2"/>',
   table: '<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16"/>',
   cpu: '<rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
