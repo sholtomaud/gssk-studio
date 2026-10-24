@@ -74,6 +74,8 @@ export interface EdgeVisual {
   ctrl1?: Point;
   /** Second Bézier control point, as an offset from the target anchor. */
   ctrl2?: Point;
+  /** Odum's sensor: a small box on the flow that reads its rate J (FR-EDIT-010). */
+  sensor?: boolean;
 }
 
 export interface ModelEdge {

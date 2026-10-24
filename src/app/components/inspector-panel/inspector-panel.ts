@@ -14,6 +14,7 @@ import {
   updateBoundary,
   updateEdge,
   updateNode,
+  toggleSensor,
   type Selection,
 } from '../../../model/ops.ts';
 import {
@@ -524,9 +525,23 @@ export class InspectorPanel extends BaseComponent {
     reset.disabled = !e.visual?.ctrl1 && !e.visual?.ctrl2;
     reset.onclick = () =>
       this.emit(
-        updateEdge(cur(), id, (x) => delete x.visual),
+        updateEdge(cur(), id, (x) => {
+          const { sensor } = x.visual ?? {};
+          if (sensor) x.visual = { sensor };
+          else delete x.visual;
+        }),
         'Straighten curve'
       );
+    const sensorBox = el('input', { type: 'checkbox', name: 'sensor' });
+    sensorBox.checked = e.visual?.sensor === true;
+    sensorBox.onchange = () =>
+      this.emit(toggleSensor(cur(), id), sensorBox.checked ? 'Add sensor' : 'Remove sensor');
+    const sensorField = el(
+      'label',
+      { class: 'check' },
+      sensorBox,
+      el('span', { text: 'Sensor on this flow: show its rate J and chart it' })
+    );
     const end = (nodeId: string) => {
       const b = el('button', { type: 'button', text: findNode(m, nodeId)?.visual.label ?? nodeId });
       b.onclick = () => this.selectRef({ kind: 'node', id: nodeId });
@@ -620,6 +635,7 @@ export class InspectorPanel extends BaseComponent {
               text: 'Or drag from a symbol’s port onto this flow to make it the control.',
             })
           : null,
+        sensorField,
         el('div', { class: 'actions' }, reset, del)
       )
     );

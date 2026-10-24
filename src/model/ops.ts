@@ -207,3 +207,17 @@ export function updateBoundary(
   if (b) patch(b);
   return next;
 }
+
+/** Put a sensor on a flow, or take it off (FR-EDIT-010). */
+export function toggleSensor(m: StudioModel, edgeId: string): StudioModel {
+  if (!findEdge(m, edgeId)) return m;
+  return updateEdge(m, edgeId, (e) => {
+    const { sensor, ...rest } = e.visual ?? {};
+    if (sensor) {
+      if (Object.keys(rest).length) e.visual = rest;
+      else delete e.visual;
+    } else {
+      e.visual = { ...rest, sensor: true };
+    }
+  });
+}

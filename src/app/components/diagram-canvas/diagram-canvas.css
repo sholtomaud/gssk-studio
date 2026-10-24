@@ -132,6 +132,20 @@
   color: var(--ink-flow);
   fill: var(--canvas-bg);
 }
+:host .edge .sensor {
+  fill: var(--canvas-bg);
+  stroke: var(--ink-flow);
+  stroke-width: 1.8;
+}
+:host .edge.selected .sensor {
+  stroke: var(--select);
+}
+:host .edge .sensor-reading {
+  fill: var(--text-secondary);
+  font: 11px var(--font-mono);
+  text-anchor: middle;
+  pointer-events: none;
+}
 :host .handle-line {
   stroke: var(--select);
   stroke-width: 1;

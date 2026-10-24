@@ -19,6 +19,12 @@ async function edgeMidpoint(page: Page, edgeId: string): Promise<{ x: number; y:
   });
 }
 
+/** Click a flow on its curve, selecting it. */
+export async function clickEdge(page: Page, edgeId: string): Promise<void> {
+  const p = await edgeMidpoint(page, edgeId);
+  await page.mouse.click(p.x, p.y);
+}
+
 /** Drag from a node's port onto another node (`node:<id>`) or flow (`edge:<id>`). */
 export async function wire(page: Page, from: string, onto: string): Promise<void> {
   await page.locator(`[data-node="${from}"]`).hover();

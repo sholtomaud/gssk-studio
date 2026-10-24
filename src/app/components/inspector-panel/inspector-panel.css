@@ -116,3 +116,14 @@
     max-height: 40vh;
   }
 }
+:host label.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+:host label.check input {
+  margin: 2px 0 0;
+}

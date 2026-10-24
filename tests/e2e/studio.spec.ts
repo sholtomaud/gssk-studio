@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures.ts';
-import { openExample, run, wire } from './helpers.ts';
+import { clickEdge, openExample, run, wire } from './helpers.ts';
 
 test('an example opens, runs on the kernel and plays back onto the diagram', async ({ page }) => {
   await openExample(page, 'predator-prey');
@@ -54,6 +54,21 @@ test('build a model from the palette, wire it, run it, undo it', async ({ page }
   await expect(page.locator('results-panel .status')).toContainText('Model changed since this run');
 });
 
+test('a sensor on a flow shows its rate and charts it (FR-EDIT-010)', async ({ page }) => {
+  await openExample(page, 'household');
+  await clickEdge(page, 'spend');
+  await page.getByRole('button', { name: 'Add sensor' }).click();
+  await expect(page.locator('[data-edge="spend"] .sensor')).toHaveCount(1);
+  await expect(page.locator('inspector-panel input[name="sensor"]')).toBeChecked();
+  await run(page);
+  await expect(page.locator('[data-edge="spend"] .sensor-reading')).toHaveText(/^J \d/);
+  const series = page.locator('results-panel .series button', { hasText: 'spend (J)' });
+  await expect(series).toHaveAttribute('aria-pressed', 'false');
+  await series.click();
+  await expect(series).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('results-panel .series-line')).toHaveCount(3);
+});
+
 test('the inspector edits a node, and edits survive a reload', async ({ page }) => {
   await openExample(page, 'household');
   await page.getByRole('button', { name: 'Storage: Bank account' }).click();
@@ -70,7 +85,7 @@ test('the inspector edits a node, and edits survive a reload', async ({ page }) 
 
 test('a model with a problem lists it and will not run', async ({ page }) => {
   await openExample(page, 'predator-prey');
-  await page.locator('[data-edge="predation"] .line').click({ force: true });
+  await clickEdge(page, 'predation');
   await page.locator('inspector-panel select[name="control_node"]').selectOption('');
   await expect(page.locator('inspector-panel .issues li.error')).toContainText(
     'needs a control node'

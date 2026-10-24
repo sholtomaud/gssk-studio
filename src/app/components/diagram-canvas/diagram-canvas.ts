@@ -17,6 +17,7 @@ import {
   snap,
   updateBoundary,
   updateEdge,
+  toggleSensor,
   type Selection,
 } from '../../../model/ops.ts';
 import type { ModelEdge, ModelNode, Point, StudioModel } from '../../../model/types.ts';
@@ -33,6 +34,8 @@ import { el, formatNumber, iconButton, svg } from '../../ui.ts';
 import style from './diagram-canvas.css?raw';
 
 export const NODE_DRAG_TYPE = 'application/x-gssk-node-type';
+/** Dragged from the palette's Sensor tool; dropped on a flow (FR-EDIT-010). */
+export const SENSOR_DRAG_TYPE = 'application/x-gssk-sensor';
 const GRID = 10;
 const FLOW_WIDTHS_KEY = 'gssk-studio-flow-widths';
 
@@ -185,7 +188,8 @@ export class DiagramCanvas extends BaseComponent {
     this.root.addEventListener('keydown', (e) => this.onKeyDown(e));
     this.root.addEventListener('dblclick', (e) => this.onDoubleClick(e));
     this.root.addEventListener('dragover', (e) => {
-      if (e.dataTransfer?.types.includes(NODE_DRAG_TYPE)) {
+      const types = e.dataTransfer?.types ?? [];
+      if (e.dataTransfer && (types.includes(NODE_DRAG_TYPE) || types.includes(SENSOR_DRAG_TYPE))) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
       }
@@ -418,8 +422,17 @@ export class DiagramCanvas extends BaseComponent {
         })
       );
     }
+    if (e.visual?.sensor) {
+      // Beside the work gate when there is one, else at the midpoint.
+      const at = pointAt(curve, control ? 0.3 : 0.5);
+      const reading = svg('text', { class: 'sensor-reading', x: at.x, y: at.y - 12 });
+      g.append(
+        svg('rect', { class: 'sensor', x: at.x - 7, y: at.y - 7, width: 14, height: 14, rx: 1.5 }),
+        reading
+      );
+    }
     const title = svg('title');
-    title.textContent = `${e.id}: ${e.logic}, k = ${e.params.k}${control ? `, controlled by ${control.id}` : ''}`;
+    title.textContent = `${e.id}: ${e.logic}, k = ${e.params.k}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}`;
     g.append(title);
     this.edgeEls.set(e.id, g);
     this.layers.edges.append(g);
@@ -488,6 +501,8 @@ export class DiagramCanvas extends BaseComponent {
       const line = this.edgeEls.get(e.id)?.querySelector<SVGPathElement>('.line');
       if (!line) continue;
       const f = p?.flows.get(e.id);
+      const reading = this.edgeEls.get(e.id)?.querySelector('.sensor-reading');
+      if (reading) reading.textContent = f === undefined ? '' : `J ${formatNumber(f)}`;
       line.style.strokeWidth =
         !this.flowWidths || f === undefined || !(p && p.maxFlow > 0)
           ? ''
@@ -758,6 +773,24 @@ export class DiagramCanvas extends BaseComponent {
   }
 
   private onDrop(e: DragEvent): void {
+    if (e.dataTransfer?.types.includes(SENSOR_DRAG_TYPE) && this._model) {
+      e.preventDefault();
+      const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-edge]');
+      const id = hit?.getAttribute('data-edge');
+      const edge = id ? this._model.edges.find((x) => x.id === id) : undefined;
+      if (edge && !edge.visual?.sensor) {
+        this.emit({
+          model: toggleSensor(this._model, edge.id),
+          label: `Sensor on ${edge.id}`,
+          select: { kind: 'edge', id: edge.id },
+        });
+      } else if (!edge) {
+        this.dispatchEvent(
+          new CustomEvent('diagram-hint', { detail: 'Drop the sensor onto a flow.', bubbles: true })
+        );
+      }
+      return;
+    }
     const type = e.dataTransfer?.getData(NODE_DRAG_TYPE);
     if (!type || !isNodeType(type) || !this._model) return;
     e.preventDefault();

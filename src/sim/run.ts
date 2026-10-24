@@ -25,6 +25,8 @@ export interface NodeSeries {
 
 export interface FlowSeries {
   id: string;
+  /** A sensor sits on this flow, so its rate is offered as a chart series (FR-EDIT-010). */
+  sensed: boolean;
   values: Float64Array;
 }
 
@@ -113,10 +115,14 @@ export async function runModel(kernel: GsskKernel, model: StudioModel): Promise<
         },
       ];
     });
-    const edgeCols = model.edges.map((e) => ({ id: e.id, column: inst.edgeIds.indexOf(e.id) }));
+    const edgeCols = model.edges.map((e) => ({
+      id: e.id,
+      sensed: e.visual?.sensor === true,
+      column: inst.edgeIds.indexOf(e.id),
+    }));
     const flows: FlowSeries[] = edgeCols
       .filter((e) => e.column >= 0)
-      .map((e) => ({ id: e.id, values: new Float64Array(samples) }));
+      .map((e) => ({ id: e.id, sensed: e.sensed, values: new Float64Array(samples) }));
     const flowCols = edgeCols.filter((e) => e.column >= 0).map((e) => e.column);
 
     const times = new Float64Array(samples);

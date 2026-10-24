@@ -76,8 +76,19 @@ describe('running models (FR-SIM-001)', () => {
   it('records flows per edge, signed, refreshed each step', async () => {
     const r = await runModel(kernel, EXAMPLES[3]!.model);
     const pay = r.flows.find((f) => f.id === 'pay');
+    expect(pay?.sensed).toBe(false);
     expect(pay?.values[0]).toBe(0);
     expect(pay?.values.at(-1)).toBeCloseTo(70, 6);
+  });
+
+  it('marks the flows that carry a sensor, without changing the run (FR-EDIT-010)', async () => {
+    const m = cloneModel(EXAMPLES[3]!.model);
+    m.edges[0]!.visual = { sensor: true };
+    const r = await runModel(kernel, m);
+    expect(r.flows.filter((f) => f.sensed).map((f) => f.id)).toEqual([m.edges[0]!.id]);
+    const plain = await runModel(kernel, EXAMPLES[3]!.model);
+    expect(r.manifest.modelHash).toBe(plain.manifest.modelHash);
+    expect(r.final).toEqual(plain.final);
   });
 
   it('reports a kernel refusal as an error, not a result', async () => {

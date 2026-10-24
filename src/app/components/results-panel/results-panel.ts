@@ -16,6 +16,35 @@ import style from './results-panel.css?raw';
 const M = { l: 56, r: 16, t: 14, b: 26 };
 const END_LABEL_W = 96;
 
+/** One chartable line: a node's level, or the rate of a flow that carries a sensor. */
+interface Series {
+  id: string;
+  label: string;
+  values: Float64Array;
+  /** Charted when a run first arrives: storages, not heat sinks or sensed flows. */
+  byDefault: boolean;
+}
+
+function seriesOf(r: RunResult): Series[] {
+  return [
+    ...r.nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      values: n.values,
+      // Heat sinks only accumulate and would flatten the axis.
+      byDefault: n.holdsState && n.type !== 'sink',
+    })),
+    ...r.flows
+      .filter((f) => f.sensed)
+      .map((f) => ({
+        id: `flow:${f.id}`,
+        label: `${f.id} (J)`,
+        values: f.values,
+        byDefault: false,
+      })),
+  ];
+}
+
 export type RunStatus =
   | { state: 'idle' }
   | { state: 'running' }
@@ -100,14 +129,11 @@ export class ResultsPanel extends BaseComponent {
     this.status = status;
     this.fileName = fileName;
     if (fresh && result) {
-      const ids = new Set(result.nodes.map((n) => n.id));
-      this.slots.retain(ids);
+      const all = seriesOf(result);
+      this.slots.retain(new Set(all.map((x) => x.id)));
       if (this.slots.ids().length === 0) {
-        // Storages by default; heat sinks only accumulate and would flatten the axis.
-        for (const n of result.nodes.filter((n) => n.holdsState && n.type !== 'sink')) {
-          this.slots.take(n.id);
-        }
-        if (this.slots.ids().length === 0) for (const n of result.nodes) this.slots.take(n.id);
+        for (const x of all.filter((x) => x.byDefault)) this.slots.take(x.id);
+        if (this.slots.ids().length === 0) for (const x of all) this.slots.take(x.id);
       }
       this.sample = result.times.length - 1;
       this.maxFlow = 0;
@@ -176,7 +202,7 @@ export class ResultsPanel extends BaseComponent {
     const r = this.result;
     this.seriesEl.replaceChildren();
     if (!r) return;
-    for (const n of r.nodes) {
+    for (const n of seriesOf(r)) {
       const slot = this.slots.get(n.id);
       const sw = el('span', { class: 'sw' });
       if (slot) sw.style.background = seriesColor(slot);
@@ -209,7 +235,7 @@ export class ResultsPanel extends BaseComponent {
   private visible(): { id: string; label: string; slot: number; values: Float64Array }[] {
     const r = this.result;
     if (!r) return [];
-    return r.nodes.flatMap((n) => {
+    return seriesOf(r).flatMap((n) => {
       const slot = this.slots.get(n.id);
       return slot === undefined ? [] : [{ id: n.id, label: n.label, slot, values: n.values }];
     });
@@ -368,7 +394,7 @@ export class ResultsPanel extends BaseComponent {
   private drawTable(r: RunResult, series: ReturnType<ResultsPanel['visible']>): void {
     const cols = series.length
       ? series
-      : r.nodes.map((n) => ({ id: n.id, label: n.label, slot: 0, values: n.values }));
+      : seriesOf(r).map((n) => ({ id: n.id, label: n.label, slot: 0, values: n.values }));
     const step = Math.max(1, Math.ceil(r.times.length / 200));
     const head = el(
       'tr',

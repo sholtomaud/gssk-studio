@@ -165,6 +165,11 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
   the write commits.
 - **FR-EDIT-009** Symbols draw identically in every browser: each SVG shape carries its own
   paint, because page CSS does not reliably reach the shadow copy a `<use>` renders.
+- **FR-EDIT-010** Sensor (Odum's small box on a pathway): a flow can carry a sensor, placed by
+  dragging the palette's Sensor onto the flow, by selecting the flow and clicking Sensor, or from
+  the inspector. It reads the flow's rate J without taking from it: during playback it shows J,
+  and the run offers the flow as a chart series. It does not change the model the kernel runs
+  (`visual.sensor`), and it cannot yet drive a control (K-5).
 
 ## 7. Simulation (FR-SIM)
 
@@ -292,6 +297,10 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   (pinned 5.3.0, Node 22: 1 storage ≈ 2 µs/step, 18 ≈ 64 µs, 50 ≈ 250 µs). Request: profile the
   per-step passes (quality accounting, reclassification) and skip those a model does not use.
   Until then long runs need progress and cancel (M2).
+- **K-5** A control can read only a node's level Q. Odum's sensor reads a flow's rate J and
+  drives a control from it (a flow-controlled switch or gate). Request: let `params.control_node`
+  (or a new `params.control_edge`) name an edge whose current J is the control value.
+  Until then a sensor displays and charts J only (FR-EDIT-010).
 
 ## 18. Repository layout
 

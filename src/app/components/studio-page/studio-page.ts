@@ -7,7 +7,7 @@ import { BaseComponent, define } from '../../core/base-component.ts';
 import { PALETTE } from '../../../model/catalogue.ts';
 import { History } from '../../../model/history.ts';
 import { fileNameFor, serialiseModel } from '../../../model/io.ts';
-import { addBoundary, type Selection } from '../../../model/ops.ts';
+import { addBoundary, toggleSensor, type Selection } from '../../../model/ops.ts';
 import type { StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
 import type { RunResult } from '../../../sim/run.ts';
@@ -18,6 +18,7 @@ import { symbolIcon } from '../../symbol-icon.ts';
 import { downloadText, el, icon, iconButton, toast } from '../../ui.ts';
 import {
   NODE_DRAG_TYPE,
+  SENSOR_DRAG_TYPE,
   type DiagramCanvas,
   type EditDetail,
   type Playback,
@@ -185,7 +186,32 @@ export class StudioPage extends BaseComponent {
       const { model, id } = addBoundary(this.model, { x: c.x - 160, y: c.y - 110, w: 320, h: 220 });
       this.commit({ model, label: 'Add boundary', select: { kind: 'boundary', id } });
     };
-    grid.append(frame);
+    const sensor = el(
+      'button',
+      {
+        type: 'button',
+        class: 'boundary-tool',
+        draggable: 'true',
+        title:
+          'Odum’s sensor: reads a flow’s rate J without taking from it. Drag onto a flow, or select a flow and click.',
+        'aria-label': 'Add sensor',
+      },
+      icon('sensor'),
+      el('span', { text: 'Sensor' })
+    );
+    sensor.addEventListener('dragstart', (e) => {
+      e.dataTransfer?.setData(SENSOR_DRAG_TYPE, 'sensor');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+    });
+    sensor.onclick = () => {
+      const s = this.selection;
+      if (!this.model || s?.kind !== 'edge') {
+        toast('Select a flow first, or drag the sensor onto a flow.');
+        return;
+      }
+      this.commit({ model: toggleSensor(this.model, s.id), label: `Sensor on ${s.id}` });
+    };
+    grid.append(frame, sensor);
     const palette = el(
       'aside',
       { class: 'palette', 'aria-label': 'Symbols' },
@@ -214,6 +240,7 @@ export class StudioPage extends BaseComponent {
         this.select((e as CustomEvent<Selection>).detail)
       );
     }
+    this.canvas.addEventListener('diagram-hint', (e) => toast((e as CustomEvent<string>).detail));
     this.canvas.addEventListener('diagram-rename', () => {
       this.inspector.querySelector<HTMLInputElement>('input[name="label"]')?.select();
     });

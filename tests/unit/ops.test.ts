@@ -9,6 +9,7 @@ import {
   renameNode,
   setControl,
   snap,
+  toggleSensor,
 } from '../../src/model/ops.ts';
 import { emptyModel, type StudioModel } from '../../src/model/types.ts';
 
@@ -91,5 +92,19 @@ describe('model operations (SPEC §6)', () => {
     expect(snap(14, 10)).toBe(10);
     expect(snap(15, 10)).toBe(20);
     expect(snap(7, 0)).toBe(7);
+  });
+
+  it('puts a sensor on a flow and takes it off, keeping its curve (FR-EDIT-010)', () => {
+    let m = connect(threeNodes(), 'sun', 'tank').model;
+    m.edges[0]!.visual = { ctrl1: { x: 1, y: 2 } };
+    const on = toggleSensor(m, 'sun_to_tank');
+    expect(on.edges[0]?.visual).toEqual({ ctrl1: { x: 1, y: 2 }, sensor: true });
+    const off = toggleSensor(on, 'sun_to_tank');
+    expect(off.edges[0]?.visual).toEqual({ ctrl1: { x: 1, y: 2 } });
+    m = connect(threeNodes(), 'sun', 'tank').model;
+    expect(
+      toggleSensor(toggleSensor(m, 'sun_to_tank'), 'sun_to_tank').edges[0]?.visual
+    ).toBeUndefined();
+    expect(toggleSensor(m, 'nope')).toBe(m);
   });
 });
