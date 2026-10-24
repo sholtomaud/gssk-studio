@@ -69,6 +69,17 @@ test('a sensor on a flow shows its rate and charts it (FR-EDIT-010)', async ({ p
   await expect(page.locator('results-panel .series-line')).toHaveCount(3);
 });
 
+test('a long run shows progress and can be cancelled (FR-SIM-005)', async ({ page }) => {
+  await openExample(page, 'reservoir');
+  await page.locator('inspector-panel input[name="dt"]').fill('0.0002');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('results-panel progress')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.locator('.toast')).toHaveText('Run cancelled.');
+  await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
+  await expect(page.locator('results-panel .series-line')).toHaveCount(0);
+});
+
 test('the inspector edits a node, and edits survive a reload', async ({ page }) => {
   await openExample(page, 'household');
   await page.getByRole('button', { name: 'Storage: Bank account' }).click();

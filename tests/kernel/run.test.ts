@@ -3,7 +3,7 @@ import { CATALOGUE } from '../../src/model/catalogue.ts';
 import { EXAMPLES } from '../../src/model/examples/index.ts';
 import { cloneModel, type StudioModel } from '../../src/model/types.ts';
 import type { GsskKernel } from '../../src/sim/gssk.ts';
-import { MAX_SAMPLES, runModel, sampleAt } from '../../src/sim/run.ts';
+import { MAX_SAMPLES, RunSession, runModel, sampleAt } from '../../src/sim/run.ts';
 import { loadKernel } from './helpers.ts';
 
 let kernel: GsskKernel;
@@ -95,6 +95,28 @@ describe('running models (FR-SIM-001)', () => {
     const m = cloneModel(EXAMPLES[0]!.model);
     m.edges[0]!.target = 'ghost';
     await expect(runModel(kernel, m)).rejects.toThrow(/GSSK_Init/);
+  });
+
+  it('gives the same run in chunks as in one go, and can be closed mid-run (FR-SIM-005)', async () => {
+    const model = EXAMPLES[1]!.model;
+    const whole = await runModel(kernel, model);
+    const session = await RunSession.start(kernel, model);
+    let chunks = 0;
+    while (!session.done) {
+      session.advance(0); // one 64-step slice per call
+      chunks++;
+    }
+    expect(chunks).toBe(Math.ceil(session.steps / 64));
+    const chunked = session.result();
+    expect(chunked.final).toEqual(whole.final);
+    expect(Array.from(chunked.times)).toEqual(Array.from(whole.times));
+    expect(chunked.manifest.modelHash).toBe(whole.manifest.modelHash);
+
+    const cancelled = await RunSession.start(kernel, model);
+    cancelled.advance(0);
+    cancelled.close();
+    cancelled.close();
+    expect(() => cancelled.advance()).toThrow(/closed/);
   });
 
   it('finds the nearest sample', () => {

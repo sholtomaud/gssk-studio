@@ -126,6 +126,7 @@ export class ResultsPanel extends BaseComponent {
   setRun(result: RunResult | null, status: RunStatus, fileName = 'results'): void {
     const fresh = result !== this.result;
     this.result = result;
+    if (status.state === 'running' && this.status.state !== 'running') this.lastFraction = 0;
     this.status = status;
     this.fileName = fileName;
     if (fresh && result) {
@@ -145,6 +146,17 @@ export class ResultsPanel extends BaseComponent {
     if (this.statusEl) this.renderAll();
   }
 
+  private lastFraction = 0;
+
+  /** Update the running run's progress in place (FR-SIM-005). */
+  setProgress(fraction: number): void {
+    this.lastFraction = fraction;
+    const bar = this.statusEl?.querySelector<HTMLProgressElement>('progress');
+    if (bar) bar.value = fraction;
+    const pct = this.statusEl?.querySelector('.pct');
+    if (pct) pct.textContent = ` ${Math.floor(fraction * 100)}%`;
+  }
+
   private renderAll(): void {
     this.renderStatus();
     this.renderSeries();
@@ -157,8 +169,20 @@ export class ResultsPanel extends BaseComponent {
     const s = this.status;
     const r = this.result;
     this.statusEl.replaceChildren();
-    if (s.state === 'running') this.statusEl.textContent = 'Running…';
-    else if (s.state === 'error') {
+    if (s.state === 'running') {
+      const bar = el('progress', {
+        class: 'progress',
+        max: '1',
+        value: '0',
+        'aria-label': 'Run progress',
+      });
+      this.statusEl.append(
+        el('span', { text: 'Running on the kernel… ' }),
+        bar,
+        el('span', { class: 'pct', text: ' 0%' })
+      );
+      this.setProgress(this.lastFraction);
+    } else if (s.state === 'error') {
       this.statusEl.append(el('span', { class: 'badge critical' }, icon('alert'), s.message));
     } else if (r) {
       const m = r.manifest;

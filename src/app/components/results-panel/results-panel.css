@@ -212,3 +212,9 @@
     max-height: 72px;
   }
 }
+:host .status progress {
+  width: 140px;
+  height: 8px;
+  vertical-align: middle;
+  accent-color: var(--accent);
+}

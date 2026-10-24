@@ -45,7 +45,8 @@ export class StudioPage extends BaseComponent {
   private dirty = false;
   private result: RunResult | null = null;
   private resultModel: StudioModel | null = null;
-  private running = false;
+  /** The run in progress: its worker token (0 while starting) and whether Cancel was pressed. */
+  private running: { token: number; cancelled: boolean } | null = null;
 
   private canvas!: DiagramCanvas;
   private inspector!: InspectorPanel;
@@ -74,6 +75,7 @@ export class StudioPage extends BaseComponent {
   override destroy(): void {
     document.removeEventListener('keydown', this.onKey);
     window.removeEventListener('pagehide', this.onUnload);
+    if (this.running) this.running.cancelled = true;
     void this.flush();
   }
 
@@ -132,7 +134,10 @@ export class StudioPage extends BaseComponent {
       icon('play'),
       'Run'
     );
-    this.runBtn.onclick = () => void this.run();
+    this.runBtn.onclick = () => {
+      if (this.running) this.running.cancelled = true;
+      else void this.run();
+    };
     const toolbar = el(
       'header',
       { class: 'toolbar' },
@@ -344,7 +349,8 @@ export class StudioPage extends BaseComponent {
     this.nameEl.textContent = m.metadata.name || 'Untitled model';
     this.undoBtn.disabled = !this.history.canUndo;
     this.redoBtn.disabled = !this.history.canRedo;
-    this.runBtn.disabled = this.running;
+    this.runBtn.replaceChildren(icon(this.running ? 'x' : 'play'), this.running ? 'Cancel' : 'Run');
+    this.runBtn.title = this.running ? 'Stop this run' : 'Run the model (Ctrl+Enter)';
     this.results.setRun(
       this.result,
       this.running
@@ -406,15 +412,32 @@ export class StudioPage extends BaseComponent {
       this.select(null);
       return;
     }
-    this.running = true;
+    const run = { token: 0, cancelled: false };
+    this.running = run;
     this.update();
+    const worker = simWorker();
     try {
-      this.result = await simWorker().run(m);
+      const { token } = await worker.begin(m);
+      run.token = token;
+      // Chunks of ~120 ms keep progress live and make Cancel take effect quickly.
+      for (;;) {
+        if (run.cancelled) {
+          await worker.cancel(token);
+          this.running = null;
+          this.update();
+          toast('Run cancelled.');
+          return;
+        }
+        const p = await worker.advance(token, 120);
+        this.results.setProgress(p.step / p.steps);
+        if (p.done) break;
+      }
+      this.result = await worker.finish(token);
       this.resultModel = m;
-      this.running = false;
+      this.running = null;
       this.update();
     } catch (err) {
-      this.running = false;
+      this.running = null;
       this.update();
       this.results.setRun(this.result, {
         state: 'error',

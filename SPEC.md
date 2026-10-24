@@ -188,6 +188,9 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   kernel JSON (layout-independent), method, dt, steps, samples, elapsed time.
 - **FR-SIM-004** Diagnostics: dual-solver confidence and the count of steps the kernel warned
   `GSSK_WARN_SOLVER_DIVERGENCE`; the result says "Solver diverged" if any.
+- **FR-SIM-005** Long runs advance in the worker in ~120 ms chunks: the results panel shows
+  progress, Run becomes Cancel, and a cancel takes effect at the next chunk and frees the
+  kernel instance. Starting a run closes any other run in the worker.
 
 ## 8. Results (FR-RES)
 
