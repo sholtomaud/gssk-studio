@@ -19,14 +19,15 @@ import {
   type Fragment,
   type Selection,
 } from '../../../model/ops.ts';
-import type { StudioModel } from '../../../model/types.ts';
+import { emptyModel, type StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
 import type { RunResult } from '../../../sim/run.ts';
 import { getModel, saveModel } from '../../../store/models.ts';
 import { importNotes } from '../../import-notes.ts';
 import { simWorker } from '../../sim-client.ts';
 import { symbolIcon } from '../../symbol-icon.ts';
-import { downloadText, el, icon, iconButton, toast } from '../../ui.ts';
+import { downloadBlob, downloadText, el, icon, iconButton, toast } from '../../ui.ts';
+import { diagramSvg, svgToPng } from '../../diagram-export.ts';
 import {
   NODE_DRAG_TYPE,
   SENSOR_DRAG_TYPE,
@@ -75,6 +76,7 @@ export class StudioPage extends BaseComponent {
 
   private readonly onKey = (e: KeyboardEvent) => this.onKeyDown(e);
   private readonly onUnload = () => void this.flush();
+  private closeMenu: ((e: Event) => void) | null = null;
 
   constructor() {
     super('', style);
@@ -90,6 +92,7 @@ export class StudioPage extends BaseComponent {
   override destroy(): void {
     document.removeEventListener('keydown', this.onKey);
     window.removeEventListener('pagehide', this.onUnload);
+    if (this.closeMenu) document.removeEventListener('click', this.closeMenu);
     if (this.running) this.running.cancelled = true;
     void this.flush();
   }
@@ -134,15 +137,7 @@ export class StudioPage extends BaseComponent {
     this.undoBtn.onclick = () => this.undo();
     this.redoBtn.onclick = () => this.redo();
     this.checksBadge = el('span', { class: 'badge hide-narrow' });
-    const exportBtn = el(
-      'button',
-      { type: 'button', title: 'Download the model as a .gssk.json file' },
-      icon('download'),
-      el('span', { class: 'hide-narrow', text: 'Export' })
-    );
-    exportBtn.onclick = () => {
-      if (this.model) downloadText(fileNameFor(this.model), serialiseModel(this.model));
-    };
+    const exportBtn = this.exportMenu();
     this.runBtn = el(
       'button',
       { type: 'button', class: 'primary run', title: 'Run the model (Ctrl+Enter)' },
@@ -270,6 +265,62 @@ export class StudioPage extends BaseComponent {
     );
     if (this.model) this.canvas.model = this.model;
     this.results.setRun(null, { state: 'idle' });
+  }
+
+  /** Export: the model file, or the diagram as SVG or PNG (FR-IO-001, FR-IO-004). */
+  private exportMenu(): HTMLElement {
+    const base = () => fileNameFor(this.model ?? emptyModel()).replace(/\.gssk\.json$/, '');
+    const item = (label: string, title: string, run: () => void | Promise<void>) => {
+      const b = el('button', { type: 'button', role: 'menuitem', text: label, title });
+      b.onclick = async () => {
+        menu.open = false;
+        try {
+          await run();
+        } catch (err) {
+          toast(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      };
+      return b;
+    };
+    const svgText = () => {
+      const m = this.model;
+      if (!m) throw new Error('No model');
+      const bg = getComputedStyle(this.canvas).backgroundColor;
+      return diagramSvg(this.canvas.svgElement, m, bg);
+    };
+    const summary = el(
+      'summary',
+      { class: 'button', title: 'Export the model or the diagram' },
+      icon('download'),
+      el('span', { class: 'hide-narrow', text: 'Export' })
+    );
+    const menu = el(
+      'details',
+      { class: 'menu' },
+      summary,
+      el(
+        'div',
+        { class: 'menu-items', role: 'menu' },
+        item(
+          'Model (.gssk.json)',
+          'The model file, loadable by GSSK Studio and by GSSK_Init',
+          () => {
+            if (this.model) downloadText(fileNameFor(this.model), serialiseModel(this.model));
+          }
+        ),
+        item('Diagram (SVG)', 'The diagram as a vector picture', () =>
+          downloadText(`${base()}.svg`, svgText(), 'image/svg+xml')
+        ),
+        item('Diagram (PNG)', 'The diagram as an image, at twice its size', async () =>
+          downloadBlob(`${base()}.png`, await svgToPng(svgText()))
+        )
+      )
+    );
+    this.closeMenu = (e: Event) => {
+      if (menu.open && !menu.contains(e.target as Node)) menu.open = false;
+    };
+    document.addEventListener('click', this.closeMenu);
+    return menu;
   }
 
   private setupSplitter(s: HTMLElement): void {

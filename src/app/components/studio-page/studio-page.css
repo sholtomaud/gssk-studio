@@ -148,3 +148,34 @@
     display: none;
   }
 }
+:host details.menu {
+  position: relative;
+}
+:host details.menu > summary {
+  list-style: none;
+}
+:host details.menu > summary::-webkit-details-marker {
+  display: none;
+}
+:host .menu-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  display: grid;
+  min-width: 200px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+:host .menu-items button {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  font-weight: 400;
+}
+:host .menu-items button:hover {
+  background: var(--surface-sunken);
+}

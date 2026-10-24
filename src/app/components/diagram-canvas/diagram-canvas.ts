@@ -840,6 +840,11 @@ export class DiagramCanvas extends BaseComponent {
     this.place(type, { x: snap(p.x, GRID), y: snap(p.y, GRID) });
   }
 
+  /** The drawn diagram, for export: the live SVG element. */
+  get svgElement(): SVGSVGElement {
+    return this.root;
+  }
+
   /** Pan just enough to bring a point (with a symbol's margin) into view. */
   reveal(p: Point): void {
     const w = this.root.clientWidth;

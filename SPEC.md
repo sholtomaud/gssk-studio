@@ -220,6 +220,8 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
 - **FR-IO-002** Import accepts a studio file, a plain kernel model, or a gssk-dia export.
 - **FR-IO-003** Import never silently changes a model: each change is listed under Checks
   (ADR 0006).
+- **FR-IO-004** Export the diagram as SVG or PNG (2×): a standalone picture with the theme's
+  colours written in, without editing chrome (ports, handles, selection).
 
 ## 10. Validation (FR-VAL)
 
