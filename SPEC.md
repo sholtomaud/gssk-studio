@@ -149,11 +149,11 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
 
 ## 6. Editor (FR-EDIT)
 
-- **FR-EDIT-001** Palette: every catalogue symbol, plus Boundary. Click places the symbol at the
-  first free spot near the viewport centre; drag places it where dropped.
+- **FR-EDIT-001** Palette: every palette symbol, plus Boundary and Sensor. Click places the symbol
+  at the free grid spot nearest the viewport centre, preferring one in view, and pans just enough
+  to show it; drag places it where dropped.
 - **FR-EDIT-002** Select, move (grid 10), delete (Delete/Backspace), nudge (arrows, Shift ×5).
-- **FR-EDIT-003** Wire: drag from a node's port (or Shift-drag its body) onto another node to add a
-  flow; onto a flow to make the node that flow's control, turning it into an interaction with a
+- **FR-EDIT-003** Wire: drag from a node's port onto another node to add a flow; onto a flow to make the node that flow's control, turning it into an interaction with a
   drawn work gate. Self-loops and duplicate flows are refused.
 - **FR-EDIT-004** Shape: a selected flow shows two Bézier handles; "Straighten curve" removes them.
 - **FR-EDIT-005** Inspector: properties of the selection or, with nothing selected, of the model
@@ -170,6 +170,12 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
   the inspector. It reads the flow's rate J without taking from it: during playback it shows J,
   and the run offers the flow as a chart series. It does not change the model the kernel runs
   (`visual.sensor`), and it cannot yet drive a control (K-5).
+- **FR-EDIT-011** Several symbols: Shift-click adds or removes one; Shift-drag on empty canvas
+  selects by marquee; Ctrl/⌘-A selects all. A selection moves, nudges and deletes together.
+  Ctrl/⌘-C, -X, -V and -D copy, cut, paste and duplicate it with the flows between its symbols,
+  under fresh ids; a control outside the copy keeps pointing at the original while it exists.
+- **FR-EDIT-012** Align (left, centre, right, top, middle, bottom) and distribute (horizontally,
+  vertically) several symbols from the inspector.
 
 ## 7. Simulation (FR-SIM)
 

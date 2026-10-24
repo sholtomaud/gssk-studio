@@ -19,6 +19,8 @@ import {
 /** What the editor has selected. */
 export type Selection =
   | { kind: 'node'; id: string }
+  /** Two or more nodes (FR-EDIT-011). */
+  | { kind: 'nodes'; ids: string[] }
   | { kind: 'edge'; id: string }
   | { kind: 'boundary'; id: string }
   | null;
@@ -149,6 +151,7 @@ export function removeEdge(m: StudioModel, id: string): StudioModel {
 export function removeSelection(m: StudioModel, sel: Selection): StudioModel {
   if (!sel) return m;
   if (sel.kind === 'node') return removeNode(m, sel.id);
+  if (sel.kind === 'nodes') return sel.ids.reduce(removeNode, m);
   if (sel.kind === 'edge') return removeEdge(m, sel.id);
   const next = cloneModel(m);
   next._diagram.boundaries = next._diagram.boundaries.filter((b) => b.id !== sel.id);
@@ -220,4 +223,169 @@ export function toggleSensor(m: StudioModel, edgeId: string): StudioModel {
       e.visual = { ...rest, sensor: true };
     }
   });
+}
+
+// ---- several nodes at once (FR-EDIT-011) -----------------------------------
+
+/** A stable string for a selection, to tell whether it changed. */
+export function selectionKey(sel: Selection): string {
+  if (!sel) return 'model';
+  if (sel.kind === 'nodes') return `nodes:${[...sel.ids].sort().join(',')}`;
+  return `${sel.kind}:${sel.id}`;
+}
+
+/** The selection with anything the model no longer has dropped. */
+export function pruneSelection(m: StudioModel, sel: Selection): Selection {
+  if (!sel) return null;
+  if (sel.kind === 'node' || sel.kind === 'nodes') {
+    return selectNodes(selectedNodeIds(sel).filter((id) => m.nodes.some((n) => n.id === id)));
+  }
+  if (sel.kind === 'edge') return m.edges.some((e) => e.id === sel.id) ? sel : null;
+  return m._diagram.boundaries.some((b) => b.id === sel.id) ? sel : null;
+}
+
+/** The node ids a selection covers. */
+export function selectedNodeIds(sel: Selection): string[] {
+  if (sel?.kind === 'node') return [sel.id];
+  if (sel?.kind === 'nodes') return [...sel.ids];
+  return [];
+}
+
+/** The selection for a set of node ids: none, one node, or several. */
+export function selectNodes(ids: readonly string[]): Selection {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return null;
+  if (unique.length === 1) return { kind: 'node', id: unique[0] ?? '' };
+  return { kind: 'nodes', ids: unique };
+}
+
+export function moveNodes(
+  m: StudioModel,
+  ids: readonly string[],
+  dx: number,
+  dy: number
+): StudioModel {
+  const set = new Set(ids);
+  const next = cloneModel(m);
+  for (const n of next.nodes) {
+    if (set.has(n.id)) {
+      n.visual.x += dx;
+      n.visual.y += dy;
+    }
+  }
+  return next;
+}
+
+/** Nodes, and the flows between them, as a self-contained piece of model. */
+export interface Fragment {
+  nodes: ModelNode[];
+  edges: ModelEdge[];
+}
+
+export function copyFragment(m: StudioModel, ids: readonly string[]): Fragment {
+  const set = new Set(ids);
+  return structuredClone({
+    nodes: m.nodes.filter((n) => set.has(n.id)),
+    edges: m.edges.filter((e) => set.has(e.origin) && set.has(e.target)),
+  });
+}
+
+/**
+ * Add a copy of a fragment, offset by `by`, with fresh ids. References inside
+ * the fragment follow the copies; a control or price node outside it keeps
+ * pointing at the original if the model still has it, and is dropped if not.
+ */
+export function pasteFragment(
+  m: StudioModel,
+  frag: Fragment,
+  by: Point
+): { model: StudioModel; ids: string[] } {
+  const next = cloneModel(m);
+  const taken = allIds(next);
+  const rename = new Map<string, string>();
+  for (const n of frag.nodes) {
+    const id = uniqueId(n.id, taken);
+    taken.add(id);
+    rename.set(n.id, id);
+  }
+  const ref = (id: string | undefined): string | undefined => {
+    if (id === undefined) return undefined;
+    const copied = rename.get(id);
+    if (copied) return copied;
+    return next.nodes.some((n) => n.id === id) ? id : undefined;
+  };
+  for (const src of frag.nodes) {
+    const n = structuredClone(src);
+    n.id = rename.get(src.id) ?? n.id;
+    n.visual.x += by.x;
+    n.visual.y += by.y;
+    if (n.params?.price_node !== undefined) {
+      const p = ref(n.params.price_node);
+      if (p) n.params.price_node = p;
+      else delete n.params.price_node;
+    }
+    next.nodes.push(n);
+  }
+  for (const src of frag.edges) {
+    const e = structuredClone(src);
+    e.origin = rename.get(src.origin) ?? e.origin;
+    e.target = rename.get(src.target) ?? e.target;
+    e.id = uniqueId(`${e.origin}_to_${e.target}`, taken);
+    taken.add(e.id);
+    for (const key of ['control_node', 'numerator_node'] as const) {
+      if (e.params[key] === undefined) continue;
+      const r = ref(e.params[key]);
+      if (r) e.params[key] = r;
+      else delete e.params[key];
+    }
+    next.edges.push(e);
+  }
+  return { model: next, ids: frag.nodes.map((n) => rename.get(n.id) ?? n.id) };
+}
+
+export type Alignment = 'left' | 'centre' | 'right' | 'top' | 'middle' | 'bottom';
+
+/** Line node centres up on one axis (FR-EDIT-012). */
+export function alignNodes(m: StudioModel, ids: readonly string[], how: Alignment): StudioModel {
+  const set = new Set(ids);
+  const nodes = m.nodes.filter((n) => set.has(n.id));
+  if (nodes.length < 2) return m;
+  const xs = nodes.map((n) => n.visual.x);
+  const ys = nodes.map((n) => n.visual.y);
+  const mid = (v: number[]) => (Math.min(...v) + Math.max(...v)) / 2;
+  const target: Record<Alignment, number> = {
+    left: Math.min(...xs),
+    centre: mid(xs),
+    right: Math.max(...xs),
+    top: Math.min(...ys),
+    middle: mid(ys),
+    bottom: Math.max(...ys),
+  };
+  const horizontal = how === 'left' || how === 'centre' || how === 'right';
+  const next = cloneModel(m);
+  for (const n of next.nodes) {
+    if (!set.has(n.id)) continue;
+    if (horizontal) n.visual.x = target[how];
+    else n.visual.y = target[how];
+  }
+  return next;
+}
+
+/** Space node centres evenly between the outermost two (FR-EDIT-012). */
+export function distributeNodes(
+  m: StudioModel,
+  ids: readonly string[],
+  axis: 'x' | 'y'
+): StudioModel {
+  const set = new Set(ids);
+  const next = cloneModel(m);
+  const nodes = next.nodes
+    .filter((n) => set.has(n.id))
+    .sort((a, b) => a.visual[axis] - b.visual[axis]);
+  if (nodes.length < 3) return m;
+  const first = nodes[0]?.visual[axis] ?? 0;
+  const last = nodes[nodes.length - 1]?.visual[axis] ?? 0;
+  const gap = (last - first) / (nodes.length - 1);
+  nodes.forEach((n, i) => (n.visual[axis] = Math.round(first + gap * i)));
+  return next;
 }

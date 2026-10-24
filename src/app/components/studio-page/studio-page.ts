@@ -7,7 +7,18 @@ import { BaseComponent, define } from '../../core/base-component.ts';
 import { PALETTE } from '../../../model/catalogue.ts';
 import { History } from '../../../model/history.ts';
 import { fileNameFor, serialiseModel } from '../../../model/io.ts';
-import { addBoundary, toggleSensor, type Selection } from '../../../model/ops.ts';
+import {
+  addBoundary,
+  copyFragment,
+  pasteFragment,
+  pruneSelection,
+  removeSelection,
+  selectedNodeIds,
+  selectNodes,
+  toggleSensor,
+  type Fragment,
+  type Selection,
+} from '../../../model/ops.ts';
 import type { StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
 import type { RunResult } from '../../../sim/run.ts';
@@ -31,6 +42,10 @@ import '../results-panel/results-panel.ts';
 import style from './studio-page.css?raw';
 
 const SAVE_DELAY_MS = 400;
+
+/** Copied symbols, kept for the session so they paste into any model (FR-EDIT-011). */
+let clipboard: Fragment | null = null;
+let pasteCount = 0;
 const RESULTS_H_KEY = 'gssk-studio-results-h';
 
 export class StudioPage extends BaseComponent {
@@ -313,17 +328,7 @@ export class StudioPage extends BaseComponent {
     const m = this.model;
     if (!m) return;
     // A selection whose target is gone (undo, delete) falls back to the model.
-    const s = this.selection;
-    if (
-      s &&
-      !(s.kind === 'node'
-        ? m.nodes.some((n) => n.id === s.id)
-        : s.kind === 'edge'
-          ? m.edges.some((e) => e.id === s.id)
-          : m._diagram.boundaries.some((b) => b.id === s.id))
-    ) {
-      this.selection = null;
-    }
+    this.selection = pruneSelection(m, this.selection);
     this.issues = validate(m);
     const errors = this.issues.filter((i) => i.severity === 'error').length;
     const warnings = this.issues.length - errors;
@@ -464,7 +469,36 @@ export class StudioPage extends BaseComponent {
     } else if (e.key.toLowerCase() === 's') {
       e.preventDefault();
       void this.flush();
+    } else if (!typing && ['c', 'x', 'v', 'd'].includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      this.clipboardKey(e.key.toLowerCase() as 'c' | 'x' | 'v' | 'd');
     }
+  }
+
+  /** Copy, cut, paste and duplicate the selected symbols and the flows between them. */
+  private clipboardKey(key: 'c' | 'x' | 'v' | 'd'): void {
+    const m = this.model;
+    if (!m) return;
+    const ids = selectedNodeIds(this.selection);
+    if (key === 'c' || key === 'x' || key === 'd') {
+      if (!ids.length) return;
+      clipboard = copyFragment(m, ids);
+      pasteCount = 0;
+      // Also as text, so a fragment can go into another tab or a bug report; best effort.
+      navigator.clipboard?.writeText(JSON.stringify(clipboard, null, 2)).catch(() => {});
+      if (key === 'x') {
+        this.commit({ model: removeSelection(m, this.selection), label: 'Cut', select: null });
+        return;
+      }
+      if (key === 'c') {
+        toast(`Copied ${ids.length} symbol${ids.length > 1 ? 's' : ''}.`);
+        return;
+      }
+    }
+    if (!clipboard || clipboard.nodes.length === 0) return;
+    const off = 40 * ++pasteCount;
+    const { model, ids: pasted } = pasteFragment(m, clipboard, { x: off, y: off });
+    this.commit({ model, label: key === 'd' ? 'Duplicate' : 'Paste', select: selectNodes(pasted) });
   }
 }
 

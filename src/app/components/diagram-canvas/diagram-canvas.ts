@@ -11,12 +11,15 @@ import {
   addNode,
   connect,
   findNode,
-  moveNode,
   removeSelection,
   setControl,
   snap,
   updateBoundary,
   updateEdge,
+  moveNodes,
+  selectedNodeIds,
+  selectNodes,
+  selectionKey,
   toggleSensor,
   type Selection,
 } from '../../../model/ops.ts';
@@ -37,6 +40,15 @@ export const NODE_DRAG_TYPE = 'application/x-gssk-node-type';
 /** Dragged from the palette's Sensor tool; dropped on a flow (FR-EDIT-010). */
 export const SENSOR_DRAG_TYPE = 'application/x-gssk-sensor';
 const GRID = 10;
+function rectOf(a: Point, b: Point): { x: number; y: number; w: number; h: number } {
+  return {
+    x: Math.min(a.x, b.x),
+    y: Math.min(a.y, b.y),
+    w: Math.abs(a.x - b.x),
+    h: Math.abs(a.y - b.y),
+  };
+}
+
 const FLOW_WIDTHS_KEY = 'gssk-studio-flow-widths';
 
 function storedFlowWidths(): boolean {
@@ -66,7 +78,9 @@ export interface Playback {
 }
 
 type Drag =
-  | { kind: 'node'; id: string; offset: Point; moved: boolean; key: string }
+  /** Moving one node or several; `applied` is the snapped offset already emitted. */
+  | { kind: 'node'; ids: string[]; start: Point; applied: Point; key: string }
+  | { kind: 'marquee'; start: Point; to: Point; add: boolean }
   | { kind: 'pan'; start: Point; view: { x: number; y: number }; moved: boolean }
   | { kind: 'wire'; from: string; to: Point }
   | { kind: 'ctrl'; edgeId: string; which: 1 | 2; key: string }
@@ -332,7 +346,7 @@ export class DiagramCanvas extends BaseComponent {
   private renderNode(n: ModelNode): void {
     const spec = symbolFor(n.type);
     const { w, h } = halfExtent(n.type);
-    const selected = this._selection?.kind === 'node' && this._selection.id === n.id;
+    const selected = selectedNodeIds(this._selection).includes(n.id);
     const label = n.visual.label ?? n.id;
     const g = svg('g', {
       class: `node${selected ? ' selected' : ''}${this._invalid.has(n.id) ? ' invalid' : ''}`,
@@ -551,20 +565,17 @@ export class DiagramCanvas extends BaseComponent {
       const id = node.getAttribute('data-node') ?? '';
       const n = findNode(this._model, id);
       if (!n) return;
+      const current = selectedNodeIds(this._selection);
       if (e.shiftKey) {
-        this.drag = { kind: 'wire', from: id, to: p };
-        this.root.classList.add('wiring');
-      } else {
-        this.drag = {
-          kind: 'node',
-          id,
-          offset: { x: p.x - n.visual.x, y: p.y - n.visual.y },
-          moved: false,
-          key,
-        };
-        if (!(this._selection?.kind === 'node' && this._selection.id === id))
-          this.select({ kind: 'node', id });
+        // Shift-click adds a node to the selection, or takes it out (FR-EDIT-011).
+        this.select(
+          selectNodes(current.includes(id) ? current.filter((x) => x !== id) : [...current, id])
+        );
+        return;
       }
+      const ids = current.includes(id) ? current : [id];
+      this.drag = { kind: 'node', ids, start: p, applied: { x: 0, y: 0 }, key };
+      if (!current.includes(id)) this.select({ kind: 'node', id });
     } else if (edge) {
       this.select({ kind: 'edge', id: edge.getAttribute('data-edge') ?? '' });
       return;
@@ -581,6 +592,8 @@ export class DiagramCanvas extends BaseComponent {
       };
       if (!(this._selection?.kind === 'boundary' && this._selection.id === id))
         this.select({ kind: 'boundary', id });
+    } else if (e.shiftKey) {
+      this.drag = { kind: 'marquee', start: p, to: p, add: true };
     } else {
       this.drag = {
         kind: 'pan',
@@ -606,11 +619,20 @@ export class DiagramCanvas extends BaseComponent {
         this.applyView();
         break;
       case 'node': {
-        const to = { x: snap(p.x - d.offset.x, GRID), y: snap(p.y - d.offset.y, GRID) };
-        const n = findNode(m, d.id);
-        if (!n || (n.visual.x === to.x && n.visual.y === to.y)) break;
-        d.moved = true;
-        this.emit({ model: moveNode(m, d.id, to), label: `Move ${d.id}`, coalesce: d.key });
+        const dx = snap(p.x - d.start.x, GRID);
+        const dy = snap(p.y - d.start.y, GRID);
+        if (dx === d.applied.x && dy === d.applied.y) break;
+        const model = moveNodes(m, d.ids, dx - d.applied.x, dy - d.applied.y);
+        d.applied = { x: dx, y: dy };
+        this.emit({ model, label: `Move ${d.ids.join(', ')}`, coalesce: d.key });
+        break;
+      }
+      case 'marquee': {
+        d.to = p;
+        const r = rectOf(d.start, p);
+        this.layers.overlay.replaceChildren(
+          svg('rect', { class: 'marquee', x: r.x, y: r.y, width: r.w, height: r.h })
+        );
         break;
       }
       case 'boundary': {
@@ -701,6 +723,18 @@ export class DiagramCanvas extends BaseComponent {
       }
     } else if (d?.kind === 'pan' && !d.moved) {
       this.select(null);
+    } else if (d?.kind === 'marquee' && m) {
+      const r = rectOf(d.start, d.to);
+      const inside = m.nodes
+        .filter(
+          (n) =>
+            n.visual.x >= r.x &&
+            n.visual.x <= r.x + r.w &&
+            n.visual.y >= r.y &&
+            n.visual.y <= r.y + r.h
+        )
+        .map((n) => n.id);
+      this.select(selectNodes([...(d.add ? selectedNodeIds(this._selection) : []), ...inside]));
     }
     this.endDrag();
   }
@@ -736,7 +770,11 @@ export class DiagramCanvas extends BaseComponent {
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel) {
       e.preventDefault();
-      this.emit({ model: removeSelection(m, sel), label: `Delete ${sel.id}`, select: null });
+      this.emit({
+        model: removeSelection(m, sel),
+        label: `Delete ${selectionKey(sel)}`,
+        select: null,
+      });
       return;
     }
     if (e.key === 'Escape') {
@@ -752,15 +790,19 @@ export class DiagramCanvas extends BaseComponent {
       ArrowDown: { x: 0, y: step },
     };
     const dir = dirs[e.key];
-    if (dir && sel?.kind === 'node') {
-      const n = findNode(m, sel.id);
-      if (!n) return;
+    const ids = selectedNodeIds(sel);
+    if (dir && ids.length) {
       e.preventDefault();
       this.emit({
-        model: moveNode(m, n.id, { x: n.visual.x + dir.x, y: n.visual.y + dir.y }),
-        label: `Move ${n.id}`,
-        coalesce: `nudge:${n.id}`,
+        model: moveNodes(m, ids, dir.x, dir.y),
+        label: `Move ${ids.join(', ')}`,
+        coalesce: `nudge:${ids.join(',')}`,
       });
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      this.select(selectNodes(m.nodes.map((n) => n.id)));
     }
   }
 
@@ -798,9 +840,36 @@ export class DiagramCanvas extends BaseComponent {
     this.place(type, { x: snap(p.x, GRID), y: snap(p.y, GRID) });
   }
 
+  /** Pan just enough to bring a point (with a symbol's margin) into view. */
+  reveal(p: Point): void {
+    const w = this.root.clientWidth;
+    const h = this.root.clientHeight;
+    const pad = SIZE * this.view.s;
+    const sx = p.x * this.view.s + this.view.x;
+    const sy = p.y * this.view.s + this.view.y;
+    if (sx < pad) this.view.x += pad - sx;
+    else if (sx > w - pad) this.view.x -= sx - (w - pad);
+    if (sy < pad) this.view.y += pad - sy;
+    else if (sy > h - pad) this.view.y -= sy - (h - pad);
+    this.applyView();
+  }
+
+  /** Is a model point inside the visible canvas, a symbol's margin in from the edge? */
+  private visible(p: Point): boolean {
+    const pad = (SIZE / 2) * this.view.s;
+    const sx = p.x * this.view.s + this.view.x;
+    const sy = p.y * this.view.s + this.view.y;
+    return (
+      sx >= pad &&
+      sy >= pad &&
+      sx <= this.root.clientWidth - pad &&
+      sy <= this.root.clientHeight - pad
+    );
+  }
+
   /**
    * Add a symbol and select it: at the drop point, or for a palette click at
-   * the first free spot spiralling out from the viewport centre.
+   * the free grid spot nearest the viewport centre, preferring one in view.
    */
   place(type: string, at?: Point): void {
     const m = this._model;
@@ -810,17 +879,19 @@ export class DiagramCanvas extends BaseComponent {
       const c = this.centre();
       const free = (q: Point) =>
         m.nodes.every((n) => Math.hypot(n.visual.x - q.x, n.visual.y - q.y) >= SIZE * 1.6);
-      p = c;
-      for (let i = 1; !free(p) && i < 400; i++) {
-        const ring = Math.ceil(i / 8);
-        const a = ((i % 8) / 8) * 2 * Math.PI;
-        p = {
-          x: snap(c.x + Math.cos(a) * SIZE * 1.75 * ring, GRID),
-          y: snap(c.y + Math.sin(a) * SIZE * 1.75 * ring, GRID),
-        };
+      const cells: Point[] = [];
+      for (let i = -8; i <= 8; i++) {
+        for (let j = -6; j <= 6; j++)
+          cells.push({ x: c.x + i * SIZE * 1.75, y: c.y + j * SIZE * 1.6 });
       }
+      // Nearest first; on a tie, right before left, so a row built by clicks reads left to right.
+      const near = (q: Point) => Math.hypot(q.x - c.x, (q.y - c.y) * 1.3) + (q.x < c.x ? 1 : 0);
+      cells.sort((a, b) => near(a) - near(b));
+      const spot = cells.find((q) => free(q) && this.visible(q)) ?? cells.find(free) ?? c;
+      p = { x: snap(spot.x, GRID), y: snap(spot.y, GRID) };
     }
     const { model, id } = addNode(m, type, p);
+    this.reveal(p);
     this.emit({ model, label: `Add ${symbolFor(type).label}`, select: { kind: 'node', id } });
   }
 }
