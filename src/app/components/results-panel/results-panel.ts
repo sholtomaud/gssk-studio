@@ -5,7 +5,7 @@
  * or fewer lines are drawn, and a table view of the same numbers.
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
-import type { RunResult } from '../../../sim/run.ts';
+import { sampleAt, type RunResult } from '../../../sim/run.ts';
 import { resultCsv } from '../../../viz/csv.ts';
 import { seriesColor, SlotAssigner } from '../../../viz/colors.ts';
 import { decimate, extent, linear, niceTicks, tickLabel } from '../../../viz/scale.ts';
@@ -69,6 +69,9 @@ export class ResultsPanel extends BaseComponent {
   private playBtn!: HTMLButtonElement;
   private tableBtn!: HTMLButtonElement;
   private csvBtn!: HTMLButtonElement;
+  private baselineBtn!: HTMLButtonElement;
+  /** A kept run, drawn dashed under the current one (FR-RES-006). */
+  private baseline: RunResult | null = null;
 
   constructor() {
     super('', style);
@@ -84,6 +87,12 @@ export class ResultsPanel extends BaseComponent {
       this.tableBtn.setAttribute('aria-pressed', String(this.showTable));
       this.drawPlot();
     };
+    this.baselineBtn = iconButton('pin', 'Keep this run as a baseline to compare against');
+    this.baselineBtn.setAttribute('aria-pressed', 'false');
+    this.baselineBtn.onclick = () => {
+      this.baseline = this.baseline ? null : this.result;
+      this.renderAll();
+    };
     this.csvBtn = iconButton('download', 'Download results as CSV');
     this.csvBtn.onclick = () => {
       if (this.result) downloadText(`${this.fileName}.csv`, resultCsv(this.result), 'text/csv');
@@ -95,6 +104,7 @@ export class ResultsPanel extends BaseComponent {
         el('h2', { text: 'Results' }),
         this.statusEl,
         el('span', { class: 'spacer' }),
+        this.baselineBtn,
         this.tableBtn,
         this.csvBtn
       )
@@ -219,6 +229,24 @@ export class ResultsPanel extends BaseComponent {
       this.statusEl.textContent = 'Run the model to see how it behaves over time.';
     }
     this.csvBtn.disabled = !r;
+    this.baselineBtn.disabled = !r && !this.baseline;
+    this.baselineBtn.setAttribute('aria-pressed', String(this.baseline !== null));
+    const label = this.baseline
+      ? 'Stop comparing against the baseline'
+      : 'Keep this run as a baseline to compare against';
+    this.baselineBtn.title = label;
+    this.baselineBtn.setAttribute('aria-label', label);
+    const b = this.baseline;
+    if (b && b !== r) {
+      this.statusEl.append(
+        ' ',
+        el('span', {
+          class: 'badge',
+          text: `Dashed: baseline, model ${b.manifest.modelHash.slice(0, 8)}`,
+          title: 'The kept run, drawn dashed in each series’ colour',
+        })
+      );
+    }
     this.tableBtn.disabled = !r;
   }
 
@@ -292,7 +320,13 @@ export class ResultsPanel extends BaseComponent {
     const t1 = r.times[r.times.length - 1] ?? 1;
     const xt = niceTicks(t0, t1, Math.max(2, Math.floor((W - M.l - right) / 90)));
     const x = linear([t0, t1], [M.l, W - right]);
-    const [lo, hi] = extent(series.map((s) => s.values));
+    const base = this.baseline && this.baseline !== r ? this.baseline : null;
+    const baseSeries = base ? seriesOf(base) : [];
+    const baseOf = (id: string) => baseSeries.find((b) => b.id === id);
+    const [lo, hi] = extent([
+      ...series.map((s) => s.values),
+      ...series.flatMap((s) => (baseOf(s.id) ? [baseOf(s.id)!.values] : [])),
+    ]);
     const yt = niceTicks(Math.min(0, lo), hi, Math.max(2, Math.floor((H - M.t - M.b) / 40)));
     const y = linear(yt.domain, [H - M.b, M.t]);
 
@@ -329,6 +363,17 @@ export class ResultsPanel extends BaseComponent {
         const v = s.values[i] ?? NaN;
         if (!Number.isFinite(v)) continue;
         d += `${d ? 'L' : 'M'}${x(r.times[i] ?? 0).toFixed(1)},${y(v).toFixed(1)}`;
+      }
+      const b = base ? baseOf(s.id) : undefined;
+      if (base && b) {
+        let bd = '';
+        for (const i of decimate(b.values, budget)) {
+          const v = b.values[i] ?? NaN;
+          const t = base.times[i] ?? NaN;
+          if (!Number.isFinite(v) || t < t0 || t > t1) continue;
+          bd += `${bd ? 'L' : 'M'}${x(t).toFixed(1)},${y(v).toFixed(1)}`;
+        }
+        root.append(svg('path', { class: 'series-line base', d: bd, stroke: seriesColor(s.slot) }));
       }
       root.append(svg('path', { class: 'series-line', d, stroke: seriesColor(s.slot) }));
       const last = s.values[s.values.length - 1] ?? NaN;
@@ -400,6 +445,19 @@ export class ResultsPanel extends BaseComponent {
             el('b', { text: formatNumber(v) })
           )
         );
+        const b = base ? baseOf(s.id) : undefined;
+        if (base && b) {
+          const bv = b.values[sampleAt(base.times, r.times[i] ?? 0)] ?? NaN;
+          tip.append(
+            el(
+              'div',
+              { class: 'r base' },
+              el('span', { class: 'sw' }),
+              el('span', { text: 'baseline' }),
+              el('b', { text: formatNumber(bv) })
+            )
+          );
+        }
       }
       tip.hidden = false;
       const tw = tip.offsetWidth;

@@ -218,3 +218,16 @@
   vertical-align: middle;
   accent-color: var(--accent);
 }
+:host .plot .series-line.base {
+  stroke-dasharray: 5 4;
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+:host .tip .r.base {
+  padding-left: 14px;
+  color: var(--text-muted);
+}
+:host .head button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}

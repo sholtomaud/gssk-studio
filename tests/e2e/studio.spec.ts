@@ -80,6 +80,21 @@ test('a long run shows progress and can be cancelled (FR-SIM-005)', async ({ pag
   await expect(page.locator('results-panel .series-line')).toHaveCount(0);
 });
 
+test('keep a run as a baseline and compare the next run against it (FR-RES-006)', async ({
+  page,
+}) => {
+  await openExample(page, 'household');
+  await run(page);
+  await page.getByRole('button', { name: /Keep this run as a baseline/ }).click();
+  await page.getByRole('button', { name: 'Storage: Bank account' }).click();
+  await page.locator('inspector-panel input[name="value"]').fill('3000');
+  await run(page);
+  await expect(page.locator('results-panel .status')).toContainText('Dashed: baseline');
+  await expect(page.locator('results-panel .series-line.base')).toHaveCount(2);
+  await page.getByRole('button', { name: /Stop comparing/ }).click();
+  await expect(page.locator('results-panel .series-line.base')).toHaveCount(0);
+});
+
 test('the inspector edits a node, and edits survive a reload', async ({ page }) => {
   await openExample(page, 'household');
   await page.getByRole('button', { name: 'Storage: Bank account' }).click();

@@ -153,8 +153,9 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
   at the free grid spot nearest the viewport centre, preferring one in view, and pans just enough
   to show it; drag places it where dropped.
 - **FR-EDIT-002** Select, move (grid 10), delete (Delete/Backspace), nudge (arrows, Shift ×5).
-- **FR-EDIT-003** Wire: drag from a node's port onto another node to add a flow; onto a flow to make the node that flow's control, turning it into an interaction with a
-  drawn work gate. Self-loops and duplicate flows are refused.
+- **FR-EDIT-003** Wire: drag from a node's port onto another node to add a flow; onto a flow to
+  make the node that flow's control, turning it into an interaction with a drawn work gate.
+  Self-loops and duplicate flows are refused.
 - **FR-EDIT-004** Shape: a selected flow shows two Bézier handles; "Straighten curve" removes them.
 - **FR-EDIT-005** Inspector: properties of the selection or, with nothing selected, of the model
   and its run settings. Renaming an id rewrites every reference to it.
@@ -209,6 +210,9 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   flow as wide as |J| relative to the run's largest flow, a Sankey-style reading.
 - **FR-RES-004** CSV download of every sample, node and flow.
 - **FR-RES-005** A result older than the model is marked "Model changed since this run".
+- **FR-RES-006** Compare: keep a run as a baseline; later runs draw it dashed in each series'
+  colour (dash as the second encoding), over the current run's time range, and the tooltip
+  gives the baseline value beside the current one. The baseline lasts for the session.
 
 ## 9. Library and files (FR-LIB, FR-IO)
 
@@ -323,7 +327,7 @@ See [AGENTS.md](AGENTS.md#layout).
 | --- | -------------------------------------------------------------------------------------------------------- | ----------- |
 | M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                           | done        |
 | M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback          | done        |
-| M2  | Polish: run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison | next        |
+| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done        |
 | M3  | Observations and fitness (§11)                                                                           | planned     |
 | M4  | Calibration and sensitivity (§12)                                                                        | planned     |
 | M5  | Forcing functions and ensembles (§12)                                                                    | planned     |
