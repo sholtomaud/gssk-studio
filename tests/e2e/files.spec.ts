@@ -51,3 +51,37 @@ test('export the diagram as SVG and PNG (FR-IO-004)', async ({ page }) => {
   expect(png.subarray(1, 4).toString()).toBe('PNG');
   expect(png.length).toBeGreaterThan(5000);
 });
+
+test('import observations, compare them and see the fit (FR-OBS-001, FR-FIT-001)', async ({
+  page,
+}) => {
+  await openExample(page, 'predator-prey');
+  await page
+    .locator('inspector-panel input[type="file"]')
+    .setInputFiles('tests/fixtures/predator-prey-counts.csv');
+  await expect(page.locator('.toast')).toContainText('Imported 3 series');
+  await expect(page.locator('inspector-panel select[name="obs-prey"]')).toHaveValue('prey');
+  await expect(page.locator('inspector-panel select[name="obs-rainfall"]')).toHaveValue('');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('results-panel .status')).toContainText('steps');
+  await expect(page.locator('results-panel circle.obs')).toHaveCount(8);
+  await page.getByRole('button', { name: 'Fit to observations' }).click();
+  const rows = page.locator('results-panel table.fit tbody tr');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first()).toContainText('Prey');
+  await expect(page.locator('results-panel .fit-note')).toContainText('no p-value');
+});
+
+test('the reservoir example carries synthetic gauge readings and fits them closely', async ({
+  page,
+}) => {
+  await openExample(page, 'reservoir');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('results-panel .status')).toContainText('steps');
+  await page.getByRole('button', { name: 'Fit to observations' }).click();
+  const row = page.locator('results-panel table.fit tr[data-obs="gauge"]');
+  await expect(row).toContainText('13');
+  // NSE (7th column) close to 1: the readings are the run plus ±4 %.
+  const nse = Number(await row.locator('td').nth(6).textContent());
+  expect(nse).toBeGreaterThan(0.95);
+});

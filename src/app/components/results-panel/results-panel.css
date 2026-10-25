@@ -231,3 +231,23 @@
   background: var(--accent-soft);
   color: var(--accent-strong);
 }
+:host .plot .obs {
+  fill: var(--surface-1);
+  stroke-width: 2;
+}
+:host table.fit td:first-child,
+:host table.fit th:first-child,
+:host table.fit td:nth-child(2),
+:host table.fit th:nth-child(2) {
+  text-align: left;
+}
+:host .fit-note {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 8px 10px;
+  max-width: 80ch;
+}
+:host .plot .obs-key {
+  fill: var(--text-secondary);
+  font: 11px var(--font-sans);
+}

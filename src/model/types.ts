@@ -115,6 +115,22 @@ export interface ModelMetadata {
   description?: string;
 }
 
+/**
+ * An observed series (FR-OBS-001): measurements to compare a run against,
+ * kept with the model, never sent to the kernel.
+ */
+export interface ObservationSeries {
+  id: string;
+  /** The column heading it came from. */
+  name: string;
+  /** What it measures: a node id, `flow:<edge id>` for a sensed flow, or null if unmapped. */
+  target: string | null;
+  times: number[];
+  values: number[];
+  /** The file it was imported from. */
+  source?: string;
+}
+
 export interface StudioModel {
   metadata: ModelMetadata;
   config: ModelConfig;
@@ -122,6 +138,8 @@ export interface StudioModel {
   edges: ModelEdge[];
   /** Editor-only: diagram regions. The kernel ignores `_`-prefixed keys. */
   _diagram: { boundaries: Boundary[] };
+  /** Editor-only: observed data to fit runs against (M3). */
+  _observations?: ObservationSeries[];
 }
 
 export const DEFAULT_CONFIG: ModelConfig = { t_start: 0, t_end: 100, dt: 0.1, method: 'auto' };

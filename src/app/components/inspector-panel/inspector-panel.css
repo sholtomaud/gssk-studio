@@ -127,3 +127,9 @@
 :host label.check input {
   margin: 2px 0 0;
 }
+:host .obs-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 4px;
+}

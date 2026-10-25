@@ -35,7 +35,8 @@ import {
 } from '../../../model/types.ts';
 import type { Issue } from '../../../model/validate.ts';
 import { symbolIcon } from '../../symbol-icon.ts';
-import { el, icon } from '../../ui.ts';
+import { el, icon, iconButton, toast } from '../../ui.ts';
+import { observationsFromCsv, observationTargets } from '../../../fit/observations.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import style from './inspector-panel.css?raw';
 
@@ -406,7 +407,71 @@ export class InspectorPanel extends BaseComponent {
           class: 'hint',
           text: 'auto lets the kernel pick the matrix exponential where it can and verify it against RK4.',
         })
-      )
+      ),
+      this.observationsSection(m)
+    );
+  }
+
+  /** Observed data to fit runs against (FR-OBS-001). */
+  private observationsSection(m: StudioModel): HTMLElement {
+    const cur = () => this._model ?? m;
+    const file = el('input', { type: 'file', accept: '.csv,text/csv,text/plain', hidden: '' });
+    const importBtn = el('button', { type: 'button' }, icon('upload'), 'Import CSV');
+    importBtn.onclick = () => file.click();
+    file.onchange = async () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) return;
+      try {
+        const added = observationsFromCsv(await f.text(), cur(), f.name);
+        const next = cloneModel(cur());
+        next._observations = [...(next._observations ?? []), ...added];
+        this.emit(next, `Import ${f.name}`);
+        const unmapped = added.filter((o) => !o.target).length;
+        toast(
+          `Imported ${added.length} series from ${f.name}${unmapped ? `; ${unmapped} need a target` : ''}.`
+        );
+        this.renderForm(true);
+      } catch (err) {
+        toast(`Couldn't read ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    const targets = [{ value: '', label: '— not compared —' }, ...observationTargets(m)];
+    const rows = (m._observations ?? []).map((o) => {
+      const del = iconButton('trash', `Remove ${o.name}`, 'ghost icon danger');
+      del.onclick = () => {
+        const next = cloneModel(cur());
+        next._observations = (next._observations ?? []).filter((x) => x.id !== o.id);
+        if (next._observations.length === 0) delete next._observations;
+        this.emit(next, `Remove ${o.name}`);
+        this.renderForm(true);
+      };
+      const select = this.selectField(
+        `${o.name} · ${o.times.length} points`,
+        o.target ?? '',
+        targets,
+        (v) => {
+          const next = cloneModel(cur());
+          const x = next._observations?.find((y) => y.id === o.id);
+          if (x) x.target = v || null;
+          this.emit(next, `Compare ${o.name}`);
+        },
+        `obs-${o.id}`
+      );
+      return el('div', { class: 'obs-row' }, select, del);
+    });
+    return el(
+      'section',
+      {},
+      el('h3', { text: 'Observations' }),
+      ...rows,
+      rows.length
+        ? null
+        : el('p', {
+            class: 'hint',
+            text: 'Import a CSV of measured data: model time in the first column, one series per column. Headings that match a symbol are compared with it.',
+          }),
+      el('div', { class: 'actions' }, importBtn, file)
     );
   }
 

@@ -402,6 +402,7 @@ export class StudioPage extends BaseComponent {
     this.inspector.model = m;
     this.inspector.selection = this.selection;
     this.inspector.issues = this.issues;
+    this.results.observations = m._observations ?? [];
     this.nameEl.textContent = m.metadata.name || 'Untitled model';
     this.undoBtn.disabled = !this.history.canUndo;
     this.redoBtn.disabled = !this.history.canRedo;
