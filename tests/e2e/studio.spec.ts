@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures.ts';
-import { openExample, run, wire } from './helpers.ts';
+import { clickEdge, openExample, run, wire } from './helpers.ts';
 
 test('an example opens, runs on the kernel and plays back onto the diagram', async ({ page }) => {
   await openExample(page, 'predator-prey');
@@ -10,6 +10,19 @@ test('an example opens, runs on the kernel and plays back onto the diagram', asy
   await expect(page.locator('[data-node="prey"] .reading')).not.toBeEmpty();
   await page.locator('results-panel input[type="range"]').fill('0');
   await expect(page.locator('[data-node="prey"] .reading')).toHaveText('40');
+});
+
+test('flow widths are off by default and toggle on', async ({ page }) => {
+  await openExample(page, 'household');
+  await run(page);
+  const width = () =>
+    page.locator('[data-edge="pay"] .line').evaluate((el) => (el as SVGElement).style.strokeWidth);
+  expect(await width()).toBe('');
+  const toggle = page.getByRole('button', { name: /Flow widths/ });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(width).toMatch(/^[\d.]+px$/);
 });
 
 test('build a model from the palette, wire it, run it, undo it', async ({ page }) => {
@@ -26,8 +39,8 @@ test('build a model from the palette, wire it, run it, undo it', async ({ page }
   await expect(page.locator('studio-page .badge').filter({ hasText: 'Checks pass' })).toBeVisible();
 
   // Wiring a node onto a flow makes it that flow's control: an interaction with a gate.
-  await page.getByRole('button', { name: 'Add Constant' }).click();
-  await wire(page, 'constant', 'edge:storage_to_heat_sink');
+  await page.getByRole('button', { name: 'Add Source' }).click();
+  await wire(page, 'source_2', 'edge:storage_to_heat_sink');
   await expect(page.locator('[data-edge="storage_to_heat_sink"] .gate')).toHaveCount(1);
   await expect(page.locator('inspector-panel select[name="logic"]')).toHaveValue('interaction');
 
@@ -39,6 +52,47 @@ test('build a model from the palette, wire it, run it, undo it', async ({ page }
   await page.keyboard.press('Control+z');
   await expect(page.locator('[data-edge="storage_to_heat_sink"] .gate')).toHaveCount(0);
   await expect(page.locator('results-panel .status')).toContainText('Model changed since this run');
+});
+
+test('a sensor on a flow shows its rate and charts it (FR-EDIT-010)', async ({ page }) => {
+  await openExample(page, 'household');
+  await clickEdge(page, 'spend');
+  await page.getByRole('button', { name: 'Add sensor' }).click();
+  await expect(page.locator('[data-edge="spend"] .sensor')).toHaveCount(1);
+  await expect(page.locator('inspector-panel input[name="sensor"]')).toBeChecked();
+  await run(page);
+  await expect(page.locator('[data-edge="spend"] .sensor-reading')).toHaveText(/^J \d/);
+  const series = page.locator('results-panel .series button', { hasText: 'spend (J)' });
+  await expect(series).toHaveAttribute('aria-pressed', 'false');
+  await series.click();
+  await expect(series).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('results-panel .series-line')).toHaveCount(3);
+});
+
+test('a long run shows progress and can be cancelled (FR-SIM-005)', async ({ page }) => {
+  await openExample(page, 'reservoir');
+  await page.locator('inspector-panel input[name="dt"]').fill('0.0002');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('results-panel progress')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.locator('.toast')).toHaveText('Run cancelled.');
+  await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
+  await expect(page.locator('results-panel .series-line')).toHaveCount(0);
+});
+
+test('keep a run as a baseline and compare the next run against it (FR-RES-006)', async ({
+  page,
+}) => {
+  await openExample(page, 'household');
+  await run(page);
+  await page.getByRole('button', { name: /Keep this run as a baseline/ }).click();
+  await page.getByRole('button', { name: 'Storage: Bank account' }).click();
+  await page.locator('inspector-panel input[name="value"]').fill('3000');
+  await run(page);
+  await expect(page.locator('results-panel .status')).toContainText('Dashed: baseline');
+  await expect(page.locator('results-panel .series-line.base')).toHaveCount(2);
+  await page.getByRole('button', { name: /Stop comparing/ }).click();
+  await expect(page.locator('results-panel .series-line.base')).toHaveCount(0);
 });
 
 test('the inspector edits a node, and edits survive a reload', async ({ page }) => {
@@ -57,7 +111,7 @@ test('the inspector edits a node, and edits survive a reload', async ({ page }) 
 
 test('a model with a problem lists it and will not run', async ({ page }) => {
   await openExample(page, 'predator-prey');
-  await page.locator('[data-edge="predation"] .line').click({ force: true });
+  await clickEdge(page, 'predation');
   await page.locator('inspector-panel select[name="control_node"]').selectOption('');
   await expect(page.locator('inspector-panel .issues li.error')).toContainText(
     'needs a control node'

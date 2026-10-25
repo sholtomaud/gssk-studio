@@ -64,6 +64,12 @@ describe('model files (FR-IO-001..003, ADR 0006)', () => {
     ).toThrow(/unknown logic/);
   });
 
+  it('keeps a sensor on a flow through a round trip', () => {
+    const m = structuredClone(EXAMPLES[3]!.model);
+    m.edges[0]!.visual = { sensor: true };
+    expect(parseModel(serialiseModel(m)).model.edges[0]?.visual).toEqual({ sensor: true });
+  });
+
   it('names files after the model', () => {
     expect(fileNameFor(EXAMPLES[0]!.model)).toBe('Grassland-food-chain.gssk.json');
   });

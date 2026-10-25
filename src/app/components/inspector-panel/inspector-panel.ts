@@ -14,6 +14,11 @@ import {
   updateBoundary,
   updateEdge,
   updateNode,
+  alignNodes,
+  distributeNodes,
+  selectionKey,
+  toggleSensor,
+  type Alignment,
   type Selection,
 } from '../../../model/ops.ts';
 import {
@@ -83,9 +88,7 @@ export class InspectorPanel extends BaseComponent {
   }
 
   set selection(s: Selection) {
-    const same =
-      (s?.kind ?? '') === (this._selection?.kind ?? '') &&
-      (s?.id ?? '') === (this._selection?.id ?? '');
+    const same = selectionKey(s) === selectionKey(this._selection);
     this._selection = s;
     if (this.form && !same) this.renderForm(true);
   }
@@ -186,7 +189,7 @@ export class InspectorPanel extends BaseComponent {
   private renderForm(force: boolean): void {
     const m = this._model;
     const s = this._selection;
-    const key = s ? `${s.kind}:${s.id}` : 'model';
+    const key = selectionKey(s);
     if (!force && key === this.formKey) return;
     this.formKey = key;
     this.form.replaceChildren();
@@ -194,6 +197,8 @@ export class InspectorPanel extends BaseComponent {
     if (s?.kind === 'node') {
       const n = findNode(m, s.id);
       if (n) return this.nodeForm(m, n);
+    } else if (s?.kind === 'nodes') {
+      return this.multiForm(m, s.ids);
     } else if (s?.kind === 'edge') {
       const e = findEdge(m, s.id);
       if (e) return this.edgeForm(m, e);
@@ -239,6 +244,74 @@ export class InspectorPanel extends BaseComponent {
       }
     }
     this.modelForm(m);
+  }
+
+  /** Several symbols: align, distribute, delete (FR-EDIT-011, FR-EDIT-012). */
+  private multiForm(m: StudioModel, ids: string[]): void {
+    const cur = () => this._model ?? m;
+    const button = (label: string, title: string, run: () => StudioModel) => {
+      const b = el('button', { type: 'button', text: label, title });
+      b.onclick = () => this.emit(run(), title);
+      return b;
+    };
+    const align = (how: Alignment, label: string) =>
+      button(label, `Align ${how}`, () => alignNodes(cur(), ids, how));
+    const del = el(
+      'button',
+      { type: 'button', class: 'danger' },
+      icon('trash'),
+      `Delete ${ids.length}`
+    );
+    del.onclick = () =>
+      this.emit(
+        removeSelection(cur(), { kind: 'nodes', ids }),
+        `Delete ${ids.length} symbols`,
+        undefined,
+        null
+      );
+    this.form.append(
+      el(
+        'section',
+        {},
+        el(
+          'div',
+          { class: 'kind' },
+          el(
+            'div',
+            {},
+            el('div', { class: 't', text: `${ids.length} symbols selected` }),
+            el('div', { class: 's', text: 'Shift-click to add or remove one' })
+          )
+        ),
+        el('h3', { text: 'Align' }),
+        el(
+          'div',
+          { class: 'links' },
+          align('left', 'Left'),
+          align('centre', 'Centre'),
+          align('right', 'Right')
+        ),
+        el(
+          'div',
+          { class: 'links' },
+          align('top', 'Top'),
+          align('middle', 'Middle'),
+          align('bottom', 'Bottom')
+        ),
+        el('h3', { text: 'Distribute' }),
+        el(
+          'div',
+          { class: 'links' },
+          button('Horizontally', 'Distribute horizontally', () => distributeNodes(cur(), ids, 'x')),
+          button('Vertically', 'Distribute vertically', () => distributeNodes(cur(), ids, 'y'))
+        ),
+        el('p', {
+          class: 'hint',
+          text: 'Ctrl/⌘-C copies, Ctrl/⌘-D duplicates, with the flows between them.',
+        }),
+        el('div', { class: 'actions' }, del)
+      )
+    );
   }
 
   private modelForm(m: StudioModel): void {
@@ -426,7 +499,11 @@ export class InspectorPanel extends BaseComponent {
         this.selectField<NodeType>(
           'Symbol',
           n.type,
-          NODE_TYPES.map((t) => ({ value: t, label: symbolFor(t).label })),
+          // The palette's symbols, plus this node's own if the palette no longer offers it.
+          NODE_TYPES.filter((t) => symbolFor(t).palette || t === n.type).map((t) => ({
+            value: t,
+            label: symbolFor(t).label,
+          })),
           (v) => {
             if (!v) return;
             this.emit(
@@ -520,9 +597,23 @@ export class InspectorPanel extends BaseComponent {
     reset.disabled = !e.visual?.ctrl1 && !e.visual?.ctrl2;
     reset.onclick = () =>
       this.emit(
-        updateEdge(cur(), id, (x) => delete x.visual),
+        updateEdge(cur(), id, (x) => {
+          const { sensor } = x.visual ?? {};
+          if (sensor) x.visual = { sensor };
+          else delete x.visual;
+        }),
         'Straighten curve'
       );
+    const sensorBox = el('input', { type: 'checkbox', name: 'sensor' });
+    sensorBox.checked = e.visual?.sensor === true;
+    sensorBox.onchange = () =>
+      this.emit(toggleSensor(cur(), id), sensorBox.checked ? 'Add sensor' : 'Remove sensor');
+    const sensorField = el(
+      'label',
+      { class: 'check' },
+      sensorBox,
+      el('span', { text: 'Sensor on this flow: show its rate J and chart it' })
+    );
     const end = (nodeId: string) => {
       const b = el('button', { type: 'button', text: findNode(m, nodeId)?.visual.label ?? nodeId });
       b.onclick = () => this.selectRef({ kind: 'node', id: nodeId });
@@ -616,6 +707,7 @@ export class InspectorPanel extends BaseComponent {
               text: 'Or drag from a symbol’s port onto this flow to make it the control.',
             })
           : null,
+        sensorField,
         el('div', { class: 'actions' }, reset, del)
       )
     );

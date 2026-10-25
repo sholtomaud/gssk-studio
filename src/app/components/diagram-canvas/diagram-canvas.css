@@ -22,23 +22,6 @@
   stroke: var(--canvas-grid);
   stroke-width: 1;
 }
-:host symbol,
-:host symbol * {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 3;
-  stroke-linejoin: round;
-}
-:host symbol .solid,
-:host marker .solid {
-  fill: currentColor;
-  stroke: none;
-}
-:host symbol .glyph {
-  fill: currentColor;
-  stroke: none;
-  font: italic 600 26px var(--font-sans);
-}
 :host marker {
   color: var(--ink-flow);
 }
@@ -147,9 +130,21 @@
 }
 :host .edge .gate {
   color: var(--ink-flow);
-}
-:host .edge .gate path {
   fill: var(--canvas-bg);
+}
+:host .edge .sensor {
+  fill: var(--canvas-bg);
+  stroke: var(--ink-flow);
+  stroke-width: 1.8;
+}
+:host .edge.selected .sensor {
+  stroke: var(--select);
+}
+:host .edge .sensor-reading {
+  fill: var(--text-secondary);
+  font: 11px var(--font-mono);
+  text-anchor: middle;
+  pointer-events: none;
 }
 :host .handle-line {
   stroke: var(--select);
@@ -228,10 +223,27 @@
   border-radius: var(--radius);
   box-shadow: var(--shadow-1);
 }
+:host .zoom .sep {
+  width: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+:host .zoom button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
 :host .zoom .pct {
   min-width: 46px;
   display: grid;
   place-items: center;
   font-size: 12px;
   color: var(--text-secondary);
+}
+:host .marquee {
+  fill: var(--accent-soft);
+  fill-opacity: 0.5;
+  stroke: var(--select);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
 }

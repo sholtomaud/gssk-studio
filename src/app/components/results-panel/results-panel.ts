@@ -5,7 +5,7 @@
  * or fewer lines are drawn, and a table view of the same numbers.
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
-import type { RunResult } from '../../../sim/run.ts';
+import { sampleAt, type RunResult } from '../../../sim/run.ts';
 import { resultCsv } from '../../../viz/csv.ts';
 import { seriesColor, SlotAssigner } from '../../../viz/colors.ts';
 import { decimate, extent, linear, niceTicks, tickLabel } from '../../../viz/scale.ts';
@@ -15,6 +15,35 @@ import style from './results-panel.css?raw';
 
 const M = { l: 56, r: 16, t: 14, b: 26 };
 const END_LABEL_W = 96;
+
+/** One chartable line: a node's level, or the rate of a flow that carries a sensor. */
+interface Series {
+  id: string;
+  label: string;
+  values: Float64Array;
+  /** Charted when a run first arrives: storages, not heat sinks or sensed flows. */
+  byDefault: boolean;
+}
+
+function seriesOf(r: RunResult): Series[] {
+  return [
+    ...r.nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      values: n.values,
+      // Heat sinks only accumulate and would flatten the axis.
+      byDefault: n.holdsState && n.type !== 'sink',
+    })),
+    ...r.flows
+      .filter((f) => f.sensed)
+      .map((f) => ({
+        id: `flow:${f.id}`,
+        label: `${f.id} (J)`,
+        values: f.values,
+        byDefault: false,
+      })),
+  ];
+}
 
 export type RunStatus =
   | { state: 'idle' }
@@ -40,6 +69,9 @@ export class ResultsPanel extends BaseComponent {
   private playBtn!: HTMLButtonElement;
   private tableBtn!: HTMLButtonElement;
   private csvBtn!: HTMLButtonElement;
+  private baselineBtn!: HTMLButtonElement;
+  /** A kept run, drawn dashed under the current one (FR-RES-006). */
+  private baseline: RunResult | null = null;
 
   constructor() {
     super('', style);
@@ -55,6 +87,12 @@ export class ResultsPanel extends BaseComponent {
       this.tableBtn.setAttribute('aria-pressed', String(this.showTable));
       this.drawPlot();
     };
+    this.baselineBtn = iconButton('pin', 'Keep this run as a baseline to compare against');
+    this.baselineBtn.setAttribute('aria-pressed', 'false');
+    this.baselineBtn.onclick = () => {
+      this.baseline = this.baseline ? null : this.result;
+      this.renderAll();
+    };
     this.csvBtn = iconButton('download', 'Download results as CSV');
     this.csvBtn.onclick = () => {
       if (this.result) downloadText(`${this.fileName}.csv`, resultCsv(this.result), 'text/csv');
@@ -66,6 +104,7 @@ export class ResultsPanel extends BaseComponent {
         el('h2', { text: 'Results' }),
         this.statusEl,
         el('span', { class: 'spacer' }),
+        this.baselineBtn,
         this.tableBtn,
         this.csvBtn
       )
@@ -97,17 +136,15 @@ export class ResultsPanel extends BaseComponent {
   setRun(result: RunResult | null, status: RunStatus, fileName = 'results'): void {
     const fresh = result !== this.result;
     this.result = result;
+    if (status.state === 'running' && this.status.state !== 'running') this.lastFraction = 0;
     this.status = status;
     this.fileName = fileName;
     if (fresh && result) {
-      const ids = new Set(result.nodes.map((n) => n.id));
-      this.slots.retain(ids);
+      const all = seriesOf(result);
+      this.slots.retain(new Set(all.map((x) => x.id)));
       if (this.slots.ids().length === 0) {
-        // Storages by default; heat sinks only accumulate and would flatten the axis.
-        for (const n of result.nodes.filter((n) => n.holdsState && n.type !== 'sink')) {
-          this.slots.take(n.id);
-        }
-        if (this.slots.ids().length === 0) for (const n of result.nodes) this.slots.take(n.id);
+        for (const x of all.filter((x) => x.byDefault)) this.slots.take(x.id);
+        if (this.slots.ids().length === 0) for (const x of all) this.slots.take(x.id);
       }
       this.sample = result.times.length - 1;
       this.maxFlow = 0;
@@ -117,6 +154,17 @@ export class ResultsPanel extends BaseComponent {
       }
     }
     if (this.statusEl) this.renderAll();
+  }
+
+  private lastFraction = 0;
+
+  /** Update the running run's progress in place (FR-SIM-005). */
+  setProgress(fraction: number): void {
+    this.lastFraction = fraction;
+    const bar = this.statusEl?.querySelector<HTMLProgressElement>('progress');
+    if (bar) bar.value = fraction;
+    const pct = this.statusEl?.querySelector('.pct');
+    if (pct) pct.textContent = ` ${Math.floor(fraction * 100)}%`;
   }
 
   private renderAll(): void {
@@ -131,8 +179,20 @@ export class ResultsPanel extends BaseComponent {
     const s = this.status;
     const r = this.result;
     this.statusEl.replaceChildren();
-    if (s.state === 'running') this.statusEl.textContent = 'Running…';
-    else if (s.state === 'error') {
+    if (s.state === 'running') {
+      const bar = el('progress', {
+        class: 'progress',
+        max: '1',
+        value: '0',
+        'aria-label': 'Run progress',
+      });
+      this.statusEl.append(
+        el('span', { text: 'Running on the kernel… ' }),
+        bar,
+        el('span', { class: 'pct', text: ' 0%' })
+      );
+      this.setProgress(this.lastFraction);
+    } else if (s.state === 'error') {
       this.statusEl.append(el('span', { class: 'badge critical' }, icon('alert'), s.message));
     } else if (r) {
       const m = r.manifest;
@@ -169,6 +229,24 @@ export class ResultsPanel extends BaseComponent {
       this.statusEl.textContent = 'Run the model to see how it behaves over time.';
     }
     this.csvBtn.disabled = !r;
+    this.baselineBtn.disabled = !r && !this.baseline;
+    this.baselineBtn.setAttribute('aria-pressed', String(this.baseline !== null));
+    const label = this.baseline
+      ? 'Stop comparing against the baseline'
+      : 'Keep this run as a baseline to compare against';
+    this.baselineBtn.title = label;
+    this.baselineBtn.setAttribute('aria-label', label);
+    const b = this.baseline;
+    if (b && b !== r) {
+      this.statusEl.append(
+        ' ',
+        el('span', {
+          class: 'badge',
+          text: `Dashed: baseline, model ${b.manifest.modelHash.slice(0, 8)}`,
+          title: 'The kept run, drawn dashed in each series’ colour',
+        })
+      );
+    }
     this.tableBtn.disabled = !r;
   }
 
@@ -176,7 +254,7 @@ export class ResultsPanel extends BaseComponent {
     const r = this.result;
     this.seriesEl.replaceChildren();
     if (!r) return;
-    for (const n of r.nodes) {
+    for (const n of seriesOf(r)) {
       const slot = this.slots.get(n.id);
       const sw = el('span', { class: 'sw' });
       if (slot) sw.style.background = seriesColor(slot);
@@ -209,7 +287,7 @@ export class ResultsPanel extends BaseComponent {
   private visible(): { id: string; label: string; slot: number; values: Float64Array }[] {
     const r = this.result;
     if (!r) return [];
-    return r.nodes.flatMap((n) => {
+    return seriesOf(r).flatMap((n) => {
       const slot = this.slots.get(n.id);
       return slot === undefined ? [] : [{ id: n.id, label: n.label, slot, values: n.values }];
     });
@@ -242,7 +320,13 @@ export class ResultsPanel extends BaseComponent {
     const t1 = r.times[r.times.length - 1] ?? 1;
     const xt = niceTicks(t0, t1, Math.max(2, Math.floor((W - M.l - right) / 90)));
     const x = linear([t0, t1], [M.l, W - right]);
-    const [lo, hi] = extent(series.map((s) => s.values));
+    const base = this.baseline && this.baseline !== r ? this.baseline : null;
+    const baseSeries = base ? seriesOf(base) : [];
+    const baseOf = (id: string) => baseSeries.find((b) => b.id === id);
+    const [lo, hi] = extent([
+      ...series.map((s) => s.values),
+      ...series.flatMap((s) => (baseOf(s.id) ? [baseOf(s.id)!.values] : [])),
+    ]);
     const yt = niceTicks(Math.min(0, lo), hi, Math.max(2, Math.floor((H - M.t - M.b) / 40)));
     const y = linear(yt.domain, [H - M.b, M.t]);
 
@@ -279,6 +363,17 @@ export class ResultsPanel extends BaseComponent {
         const v = s.values[i] ?? NaN;
         if (!Number.isFinite(v)) continue;
         d += `${d ? 'L' : 'M'}${x(r.times[i] ?? 0).toFixed(1)},${y(v).toFixed(1)}`;
+      }
+      const b = base ? baseOf(s.id) : undefined;
+      if (base && b) {
+        let bd = '';
+        for (const i of decimate(b.values, budget)) {
+          const v = b.values[i] ?? NaN;
+          const t = base.times[i] ?? NaN;
+          if (!Number.isFinite(v) || t < t0 || t > t1) continue;
+          bd += `${bd ? 'L' : 'M'}${x(t).toFixed(1)},${y(v).toFixed(1)}`;
+        }
+        root.append(svg('path', { class: 'series-line base', d: bd, stroke: seriesColor(s.slot) }));
       }
       root.append(svg('path', { class: 'series-line', d, stroke: seriesColor(s.slot) }));
       const last = s.values[s.values.length - 1] ?? NaN;
@@ -350,6 +445,19 @@ export class ResultsPanel extends BaseComponent {
             el('b', { text: formatNumber(v) })
           )
         );
+        const b = base ? baseOf(s.id) : undefined;
+        if (base && b) {
+          const bv = b.values[sampleAt(base.times, r.times[i] ?? 0)] ?? NaN;
+          tip.append(
+            el(
+              'div',
+              { class: 'r base' },
+              el('span', { class: 'sw' }),
+              el('span', { text: 'baseline' }),
+              el('b', { text: formatNumber(bv) })
+            )
+          );
+        }
       }
       tip.hidden = false;
       const tw = tip.offsetWidth;
@@ -368,7 +476,7 @@ export class ResultsPanel extends BaseComponent {
   private drawTable(r: RunResult, series: ReturnType<ResultsPanel['visible']>): void {
     const cols = series.length
       ? series
-      : r.nodes.map((n) => ({ id: n.id, label: n.label, slot: 0, values: n.values }));
+      : seriesOf(r).map((n) => ({ id: n.id, label: n.label, slot: 0, values: n.values }));
     const step = Math.max(1, Math.ceil(r.times.length / 200));
     const head = el(
       'tr',

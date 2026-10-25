@@ -174,7 +174,14 @@ export function normaliseModel(raw: unknown): ParseResult {
         : undefined;
     const c1 = pt(v.ctrl1);
     const c2 = pt(v.ctrl2);
-    if (c1 || c2) edge.visual = { ...(c1 ? { ctrl1: c1 } : {}), ...(c2 ? { ctrl2: c2 } : {}) };
+    const sensor = v.sensor === true;
+    if (c1 || c2 || sensor) {
+      edge.visual = {
+        ...(c1 ? { ctrl1: c1 } : {}),
+        ...(c2 ? { ctrl2: c2 } : {}),
+        ...(sensor ? { sensor: true } : {}),
+      };
+    }
     edges.push(edge);
   });
 

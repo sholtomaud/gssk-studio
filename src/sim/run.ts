@@ -25,6 +25,8 @@ export interface NodeSeries {
 
 export interface FlowSeries {
   id: string;
+  /** A sensor sits on this flow, so its rate is offered as a chart series (FR-EDIT-010). */
+  sensed: boolean;
   values: Float64Array;
 }
 
@@ -87,19 +89,50 @@ export function columnsFor(model: StudioModel, inst: GsskInstance): Map<string, 
   return cols;
 }
 
-export async function runModel(kernel: GsskKernel, model: StudioModel): Promise<RunResult> {
-  const started = performance.now();
-  const json = canonicalJson(toKernelModel(model));
-  const modelHash = await sha256Hex(json);
-  const inst = kernel.init(json);
-  try {
-    const { t_start, t_end, dt } = { t_start: inst.tStart, t_end: inst.tEnd, dt: inst.dt };
-    const steps = Math.max(1, Math.round((t_end - t_start) / dt));
-    const stride = Math.max(1, Math.ceil(steps / (MAX_SAMPLES - 1)));
-    const samples = Math.floor(steps / stride) + 1 + (steps % stride ? 1 : 0);
+/**
+ * A run in progress (FR-SIM-005). It owns its kernel instance and advances
+ * in time-boxed chunks, so the worker can report progress between chunks and
+ * a cancel takes effect at the next one. `close()` frees the instance; it is
+ * safe to call twice.
+ */
+export class RunSession {
+  readonly steps: number;
+  private readonly started = performance.now();
+  private readonly kernel: GsskKernel;
+  private readonly model: StudioModel;
+  private readonly modelHash: string;
+  private inst: GsskInstance | null;
+  private readonly t0: number;
+  private readonly dt: number;
+  private readonly tEnd: number;
+  private readonly stride: number;
+  private readonly nodes: NodeSeries[];
+  private readonly flows: FlowSeries[];
+  private readonly flowCols: number[];
+  private readonly times: Float64Array;
+  private readonly state: Float64Array;
+  private readonly flowBuf: Float64Array;
+  private sample = 0;
+  private step = 0;
+  private confident = true;
+  private divergedSteps = 0;
+  private maxCons = 0;
+
+  private constructor(kernel: GsskKernel, model: StudioModel, json: string, modelHash: string) {
+    this.kernel = kernel;
+    this.model = model;
+    this.modelHash = modelHash;
+    const inst = kernel.init(json);
+    this.inst = inst;
+    this.t0 = inst.tStart;
+    this.tEnd = inst.tEnd;
+    this.dt = inst.dt;
+    this.steps = Math.max(1, Math.round((this.tEnd - this.t0) / this.dt));
+    this.stride = Math.max(1, Math.ceil(this.steps / (MAX_SAMPLES - 1)));
+    const samples = Math.floor(this.steps / this.stride) + 1 + (this.steps % this.stride ? 1 : 0);
 
     const cols = columnsFor(model, inst);
-    const nodes: NodeSeries[] = model.nodes.flatMap((n) => {
+    this.nodes = model.nodes.flatMap((n) => {
       const column = cols.get(n.id);
       if (column === undefined) return [];
       return [
@@ -113,65 +146,122 @@ export async function runModel(kernel: GsskKernel, model: StudioModel): Promise<
         },
       ];
     });
-    const edgeCols = model.edges.map((e) => ({ id: e.id, column: inst.edgeIds.indexOf(e.id) }));
-    const flows: FlowSeries[] = edgeCols
-      .filter((e) => e.column >= 0)
-      .map((e) => ({ id: e.id, values: new Float64Array(samples) }));
-    const flowCols = edgeCols.filter((e) => e.column >= 0).map((e) => e.column);
+    const edgeCols = model.edges
+      .map((e) => ({
+        id: e.id,
+        sensed: e.visual?.sensor === true,
+        column: inst.edgeIds.indexOf(e.id),
+      }))
+      .filter((e) => e.column >= 0);
+    this.flows = edgeCols.map((e) => ({
+      id: e.id,
+      sensed: e.sensed,
+      values: new Float64Array(samples),
+    }));
+    this.flowCols = edgeCols.map((e) => e.column);
+    this.times = new Float64Array(samples);
+    this.state = new Float64Array(inst.nodeIds.length);
+    this.flowBuf = new Float64Array(inst.edgeIds.length);
+    this.record(this.t0);
+  }
 
-    const times = new Float64Array(samples);
-    const state = new Float64Array(inst.nodeIds.length);
-    const flowBuf = new Float64Array(inst.edgeIds.length);
-    let sample = 0;
-    const record = (t: number) => {
-      inst.stateInto(state);
-      inst.flowsInto(flowBuf);
-      times[sample] = t;
-      for (const s of nodes) s.values[sample] = state[s.column] ?? NaN;
-      flows.forEach((f, i) => (f.values[sample] = flowBuf[flowCols[i] ?? -1] ?? NaN));
-      sample++;
-    };
+  static async start(kernel: GsskKernel, model: StudioModel): Promise<RunSession> {
+    const json = canonicalJson(toKernelModel(model));
+    return new RunSession(kernel, model, json, await sha256Hex(json));
+  }
 
-    let confident = true;
-    let divergedSteps = 0;
-    let maxCons = 0;
-    record(t_start);
-    for (let s = 1; s <= steps; s++) {
-      if (inst.step(dt)) divergedSteps++;
-      confident &&= inst.solverConfident();
-      const ce = Math.abs(inst.conservationError());
-      if (Number.isFinite(ce)) maxCons = Math.max(maxCons, ce);
-      if (s % stride === 0 || s === steps) record(t_start + s * dt);
+  get done(): boolean {
+    return this.step >= this.steps;
+  }
+
+  /** Steps taken so far. */
+  get progress(): number {
+    return this.step;
+  }
+
+  private get live(): GsskInstance {
+    if (!this.inst) throw new Error('Run already closed');
+    return this.inst;
+  }
+
+  private record(t: number): void {
+    const inst = this.live;
+    inst.stateInto(this.state);
+    inst.flowsInto(this.flowBuf);
+    this.times[this.sample] = t;
+    for (const s of this.nodes) s.values[this.sample] = this.state[s.column] ?? NaN;
+    this.flows.forEach(
+      (f, i) => (f.values[this.sample] = this.flowBuf[this.flowCols[i] ?? -1] ?? NaN)
+    );
+    this.sample++;
+  }
+
+  /** Step until done or about `budgetMs` has passed; returns steps taken so far. */
+  advance(budgetMs = Infinity): number {
+    const inst = this.live;
+    const deadline = performance.now() + budgetMs;
+    while (this.step < this.steps) {
+      // Check the clock every 64 steps: reading it costs more than a small step.
+      for (let k = 0; k < 64 && this.step < this.steps; k++) {
+        const s = ++this.step;
+        if (inst.step(this.dt)) this.divergedSteps++;
+        this.confident &&= inst.solverConfident();
+        const ce = Math.abs(inst.conservationError());
+        if (Number.isFinite(ce)) this.maxCons = Math.max(this.maxCons, ce);
+        if (s % this.stride === 0 || s === this.steps) this.record(this.t0 + s * this.dt);
+      }
+      if (performance.now() >= deadline) break;
     }
+    return this.step;
+  }
 
+  /** The finished run. Closes the session. */
+  result(): RunResult {
+    if (!this.done) throw new Error('Run not finished');
+    const n = this.sample;
     const final: Record<string, number> = {};
-    for (const s of nodes) final[s.id] = s.values[sample - 1] ?? NaN;
-
-    return {
+    for (const s of this.nodes) final[s.id] = s.values[n - 1] ?? NaN;
+    const result: RunResult = {
       manifest: {
-        kernelVersion: kernel.info.version,
-        kernelSha256: kernel.info.sha256,
-        modelHash,
-        method: model.config.method,
-        t_start,
-        t_end,
-        dt,
-        steps,
-        samples: sample,
+        kernelVersion: this.kernel.info.version,
+        kernelSha256: this.kernel.info.sha256,
+        modelHash: this.modelHash,
+        method: this.model.config.method,
+        t_start: this.t0,
+        t_end: this.tEnd,
+        dt: this.dt,
+        steps: this.steps,
+        samples: n,
       },
-      times: times.subarray(0, sample),
-      nodes: nodes.map((n) => ({ ...n, values: n.values.subarray(0, sample) })),
-      flows: flows.map((f) => ({ ...f, values: f.values.subarray(0, sample) })),
+      times: this.times.subarray(0, n),
+      nodes: this.nodes.map((x) => ({ ...x, values: x.values.subarray(0, n) })),
+      flows: this.flows.map((x) => ({ ...x, values: x.values.subarray(0, n) })),
       final,
       diagnostics: {
-        solverConfident: confident && divergedSteps === 0,
-        divergedSteps,
-        maxConservationError: maxCons,
+        solverConfident: this.confident && this.divergedSteps === 0,
+        divergedSteps: this.divergedSteps,
+        maxConservationError: this.maxCons,
       },
-      elapsedMs: performance.now() - started,
+      elapsedMs: performance.now() - this.started,
     };
+    this.close();
+    return result;
+  }
+
+  close(): void {
+    this.inst?.free();
+    this.inst = null;
+  }
+}
+
+/** A whole run in one call: for tests, the self-test and small models. */
+export async function runModel(kernel: GsskKernel, model: StudioModel): Promise<RunResult> {
+  const session = await RunSession.start(kernel, model);
+  try {
+    session.advance();
+    return session.result();
   } finally {
-    inst.free();
+    session.close();
   }
 }
 

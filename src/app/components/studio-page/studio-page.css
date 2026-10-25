@@ -83,17 +83,7 @@
   color: var(--ink);
 }
 :host .palette svg.sym * {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 4;
-}
-:host .palette svg.sym .solid,
-:host .palette svg.sym text {
-  fill: currentColor;
-  stroke: none;
-}
-:host .palette svg.sym text {
-  font: italic 600 26px var(--font-sans);
+  stroke-width: 5;
 }
 :host .palette .boundary-tool svg {
   width: 30px;
@@ -157,4 +147,35 @@
   :host .toolbar .hide-narrow {
     display: none;
   }
+}
+:host details.menu {
+  position: relative;
+}
+:host details.menu > summary {
+  list-style: none;
+}
+:host details.menu > summary::-webkit-details-marker {
+  display: none;
+}
+:host .menu-items {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  display: grid;
+  min-width: 200px;
+  padding: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+:host .menu-items button {
+  justify-content: flex-start;
+  border-color: transparent;
+  background: transparent;
+  font-weight: 400;
+}
+:host .menu-items button:hover {
+  background: var(--surface-sunken);
 }

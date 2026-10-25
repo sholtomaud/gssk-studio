@@ -3,7 +3,7 @@ import { CATALOGUE } from '../../src/model/catalogue.ts';
 import { EXAMPLES } from '../../src/model/examples/index.ts';
 import { cloneModel, type StudioModel } from '../../src/model/types.ts';
 import type { GsskKernel } from '../../src/sim/gssk.ts';
-import { MAX_SAMPLES, runModel, sampleAt } from '../../src/sim/run.ts';
+import { MAX_SAMPLES, RunSession, runModel, sampleAt } from '../../src/sim/run.ts';
 import { loadKernel } from './helpers.ts';
 
 let kernel: GsskKernel;
@@ -76,14 +76,47 @@ describe('running models (FR-SIM-001)', () => {
   it('records flows per edge, signed, refreshed each step', async () => {
     const r = await runModel(kernel, EXAMPLES[3]!.model);
     const pay = r.flows.find((f) => f.id === 'pay');
+    expect(pay?.sensed).toBe(false);
     expect(pay?.values[0]).toBe(0);
     expect(pay?.values.at(-1)).toBeCloseTo(70, 6);
+  });
+
+  it('marks the flows that carry a sensor, without changing the run (FR-EDIT-010)', async () => {
+    const m = cloneModel(EXAMPLES[3]!.model);
+    m.edges[0]!.visual = { sensor: true };
+    const r = await runModel(kernel, m);
+    expect(r.flows.filter((f) => f.sensed).map((f) => f.id)).toEqual([m.edges[0]!.id]);
+    const plain = await runModel(kernel, EXAMPLES[3]!.model);
+    expect(r.manifest.modelHash).toBe(plain.manifest.modelHash);
+    expect(r.final).toEqual(plain.final);
   });
 
   it('reports a kernel refusal as an error, not a result', async () => {
     const m = cloneModel(EXAMPLES[0]!.model);
     m.edges[0]!.target = 'ghost';
     await expect(runModel(kernel, m)).rejects.toThrow(/GSSK_Init/);
+  });
+
+  it('gives the same run in chunks as in one go, and can be closed mid-run (FR-SIM-005)', async () => {
+    const model = EXAMPLES[1]!.model;
+    const whole = await runModel(kernel, model);
+    const session = await RunSession.start(kernel, model);
+    let chunks = 0;
+    while (!session.done) {
+      session.advance(0); // one 64-step slice per call
+      chunks++;
+    }
+    expect(chunks).toBe(Math.ceil(session.steps / 64));
+    const chunked = session.result();
+    expect(chunked.final).toEqual(whole.final);
+    expect(Array.from(chunked.times)).toEqual(Array.from(whole.times));
+    expect(chunked.manifest.modelHash).toBe(whole.manifest.modelHash);
+
+    const cancelled = await RunSession.start(kernel, model);
+    cancelled.advance(0);
+    cancelled.close();
+    cancelled.close();
+    expect(() => cancelled.advance()).toThrow(/closed/);
   });
 
   it('finds the nearest sample', () => {

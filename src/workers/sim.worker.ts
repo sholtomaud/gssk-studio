@@ -5,7 +5,7 @@
 import wasmUrl from '../../vendor/gssk/gssk.wasm?url';
 import pinJson from '../../vendor/gssk/GSSK_PIN.json' with { type: 'json' };
 import { GsskKernel, type GsskPin, type KernelInfo } from '../sim/gssk.ts';
-import { runModel, type RunResult } from '../sim/run.ts';
+import { RunSession, runModel, type RunResult } from '../sim/run.ts';
 import type { StudioModel } from '../model/types.ts';
 import { expose, type Endpoint } from './rpc.ts';
 
@@ -23,12 +23,54 @@ function getKernel(): Promise<GsskKernel> {
   return kernel;
 }
 
+/**
+ * The run in progress (FR-SIM-005). One at a time: starting a run closes any
+ * other, so a run abandoned by a closed screen cannot leak its instance.
+ */
+let session: { token: number; run: RunSession } | null = null;
+let nextToken = 1;
+
+function current(token: number): RunSession {
+  if (!session || session.token !== token) throw new Error('That run was cancelled or replaced.');
+  return session.run;
+}
+
+export interface RunProgress {
+  step: number;
+  steps: number;
+  done: boolean;
+}
+
 const api = {
   async kernelInfo(): Promise<KernelInfo> {
     return (await getKernel()).info;
   },
   async run(model: StudioModel): Promise<RunResult> {
     return runModel(await getKernel(), model);
+  },
+  /** Start a run to advance in chunks; returns its token and step count. */
+  async begin(model: StudioModel): Promise<{ token: number; steps: number }> {
+    const run = await RunSession.start(await getKernel(), model);
+    session?.run.close();
+    session = { token: nextToken++, run };
+    return { token: session.token, steps: run.steps };
+  },
+  /** Step for about `budgetMs`, then report where the run is. */
+  advance(token: number, budgetMs: number): RunProgress {
+    const run = current(token);
+    const step = run.advance(budgetMs);
+    return { step, steps: run.steps, done: run.done };
+  },
+  finish(token: number): RunResult {
+    const result = current(token).result();
+    session = null;
+    return result;
+  },
+  cancel(token: number): void {
+    if (session?.token === token) {
+      session.run.close();
+      session = null;
+    }
   },
 };
 

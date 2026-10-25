@@ -4,20 +4,33 @@
  * the results panel shows runs. Runs happen in the sim worker.
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
-import { CATALOGUE } from '../../../model/catalogue.ts';
+import { PALETTE } from '../../../model/catalogue.ts';
 import { History } from '../../../model/history.ts';
 import { fileNameFor, serialiseModel } from '../../../model/io.ts';
-import { addBoundary, type Selection } from '../../../model/ops.ts';
-import type { StudioModel } from '../../../model/types.ts';
+import {
+  addBoundary,
+  copyFragment,
+  pasteFragment,
+  pruneSelection,
+  removeSelection,
+  selectedNodeIds,
+  selectNodes,
+  toggleSensor,
+  type Fragment,
+  type Selection,
+} from '../../../model/ops.ts';
+import { emptyModel, type StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
 import type { RunResult } from '../../../sim/run.ts';
 import { getModel, saveModel } from '../../../store/models.ts';
 import { importNotes } from '../../import-notes.ts';
 import { simWorker } from '../../sim-client.ts';
 import { symbolIcon } from '../../symbol-icon.ts';
-import { downloadText, el, icon, iconButton, toast } from '../../ui.ts';
+import { downloadBlob, downloadText, el, icon, iconButton, toast } from '../../ui.ts';
+import { diagramSvg, svgToPng } from '../../diagram-export.ts';
 import {
   NODE_DRAG_TYPE,
+  SENSOR_DRAG_TYPE,
   type DiagramCanvas,
   type EditDetail,
   type Playback,
@@ -30,6 +43,10 @@ import '../results-panel/results-panel.ts';
 import style from './studio-page.css?raw';
 
 const SAVE_DELAY_MS = 400;
+
+/** Copied symbols, kept for the session so they paste into any model (FR-EDIT-011). */
+let clipboard: Fragment | null = null;
+let pasteCount = 0;
 const RESULTS_H_KEY = 'gssk-studio-results-h';
 
 export class StudioPage extends BaseComponent {
@@ -44,7 +61,8 @@ export class StudioPage extends BaseComponent {
   private dirty = false;
   private result: RunResult | null = null;
   private resultModel: StudioModel | null = null;
-  private running = false;
+  /** The run in progress: its worker token (0 while starting) and whether Cancel was pressed. */
+  private running: { token: number; cancelled: boolean } | null = null;
 
   private canvas!: DiagramCanvas;
   private inspector!: InspectorPanel;
@@ -58,6 +76,7 @@ export class StudioPage extends BaseComponent {
 
   private readonly onKey = (e: KeyboardEvent) => this.onKeyDown(e);
   private readonly onUnload = () => void this.flush();
+  private closeMenu: ((e: Event) => void) | null = null;
 
   constructor() {
     super('', style);
@@ -73,6 +92,8 @@ export class StudioPage extends BaseComponent {
   override destroy(): void {
     document.removeEventListener('keydown', this.onKey);
     window.removeEventListener('pagehide', this.onUnload);
+    if (this.closeMenu) document.removeEventListener('click', this.closeMenu);
+    if (this.running) this.running.cancelled = true;
     void this.flush();
   }
 
@@ -116,22 +137,17 @@ export class StudioPage extends BaseComponent {
     this.undoBtn.onclick = () => this.undo();
     this.redoBtn.onclick = () => this.redo();
     this.checksBadge = el('span', { class: 'badge hide-narrow' });
-    const exportBtn = el(
-      'button',
-      { type: 'button', title: 'Download the model as a .gssk.json file' },
-      icon('download'),
-      el('span', { class: 'hide-narrow', text: 'Export' })
-    );
-    exportBtn.onclick = () => {
-      if (this.model) downloadText(fileNameFor(this.model), serialiseModel(this.model));
-    };
+    const exportBtn = this.exportMenu();
     this.runBtn = el(
       'button',
       { type: 'button', class: 'primary run', title: 'Run the model (Ctrl+Enter)' },
       icon('play'),
       'Run'
     );
-    this.runBtn.onclick = () => void this.run();
+    this.runBtn.onclick = () => {
+      if (this.running) this.running.cancelled = true;
+      else void this.run();
+    };
     const toolbar = el(
       'header',
       { class: 'toolbar' },
@@ -148,7 +164,7 @@ export class StudioPage extends BaseComponent {
     );
 
     const grid = el('div', { class: 'grid' });
-    for (const s of CATALOGUE) {
+    for (const s of PALETTE) {
       const b = el(
         'button',
         {
@@ -185,7 +201,32 @@ export class StudioPage extends BaseComponent {
       const { model, id } = addBoundary(this.model, { x: c.x - 160, y: c.y - 110, w: 320, h: 220 });
       this.commit({ model, label: 'Add boundary', select: { kind: 'boundary', id } });
     };
-    grid.append(frame);
+    const sensor = el(
+      'button',
+      {
+        type: 'button',
+        class: 'boundary-tool',
+        draggable: 'true',
+        title:
+          'Odum’s sensor: reads a flow’s rate J without taking from it. Drag onto a flow, or select a flow and click.',
+        'aria-label': 'Add sensor',
+      },
+      icon('sensor'),
+      el('span', { text: 'Sensor' })
+    );
+    sensor.addEventListener('dragstart', (e) => {
+      e.dataTransfer?.setData(SENSOR_DRAG_TYPE, 'sensor');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+    });
+    sensor.onclick = () => {
+      const s = this.selection;
+      if (!this.model || s?.kind !== 'edge') {
+        toast('Select a flow first, or drag the sensor onto a flow.');
+        return;
+      }
+      this.commit({ model: toggleSensor(this.model, s.id), label: `Sensor on ${s.id}` });
+    };
+    grid.append(frame, sensor);
     const palette = el(
       'aside',
       { class: 'palette', 'aria-label': 'Symbols' },
@@ -214,6 +255,7 @@ export class StudioPage extends BaseComponent {
         this.select((e as CustomEvent<Selection>).detail)
       );
     }
+    this.canvas.addEventListener('diagram-hint', (e) => toast((e as CustomEvent<string>).detail));
     this.canvas.addEventListener('diagram-rename', () => {
       this.inspector.querySelector<HTMLInputElement>('input[name="label"]')?.select();
     });
@@ -223,6 +265,62 @@ export class StudioPage extends BaseComponent {
     );
     if (this.model) this.canvas.model = this.model;
     this.results.setRun(null, { state: 'idle' });
+  }
+
+  /** Export: the model file, or the diagram as SVG or PNG (FR-IO-001, FR-IO-004). */
+  private exportMenu(): HTMLElement {
+    const base = () => fileNameFor(this.model ?? emptyModel()).replace(/\.gssk\.json$/, '');
+    const item = (label: string, title: string, run: () => void | Promise<void>) => {
+      const b = el('button', { type: 'button', role: 'menuitem', text: label, title });
+      b.onclick = async () => {
+        menu.open = false;
+        try {
+          await run();
+        } catch (err) {
+          toast(`Export failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      };
+      return b;
+    };
+    const svgText = () => {
+      const m = this.model;
+      if (!m) throw new Error('No model');
+      const bg = getComputedStyle(this.canvas).backgroundColor;
+      return diagramSvg(this.canvas.svgElement, m, bg);
+    };
+    const summary = el(
+      'summary',
+      { class: 'button', title: 'Export the model or the diagram' },
+      icon('download'),
+      el('span', { class: 'hide-narrow', text: 'Export' })
+    );
+    const menu = el(
+      'details',
+      { class: 'menu' },
+      summary,
+      el(
+        'div',
+        { class: 'menu-items', role: 'menu' },
+        item(
+          'Model (.gssk.json)',
+          'The model file, loadable by GSSK Studio and by GSSK_Init',
+          () => {
+            if (this.model) downloadText(fileNameFor(this.model), serialiseModel(this.model));
+          }
+        ),
+        item('Diagram (SVG)', 'The diagram as a vector picture', () =>
+          downloadText(`${base()}.svg`, svgText(), 'image/svg+xml')
+        ),
+        item('Diagram (PNG)', 'The diagram as an image, at twice its size', async () =>
+          downloadBlob(`${base()}.png`, await svgToPng(svgText()))
+        )
+      )
+    );
+    this.closeMenu = (e: Event) => {
+      if (menu.open && !menu.contains(e.target as Node)) menu.open = false;
+    };
+    document.addEventListener('click', this.closeMenu);
+    return menu;
   }
 
   private setupSplitter(s: HTMLElement): void {
@@ -281,17 +379,7 @@ export class StudioPage extends BaseComponent {
     const m = this.model;
     if (!m) return;
     // A selection whose target is gone (undo, delete) falls back to the model.
-    const s = this.selection;
-    if (
-      s &&
-      !(s.kind === 'node'
-        ? m.nodes.some((n) => n.id === s.id)
-        : s.kind === 'edge'
-          ? m.edges.some((e) => e.id === s.id)
-          : m._diagram.boundaries.some((b) => b.id === s.id))
-    ) {
-      this.selection = null;
-    }
+    this.selection = pruneSelection(m, this.selection);
     this.issues = validate(m);
     const errors = this.issues.filter((i) => i.severity === 'error').length;
     const warnings = this.issues.length - errors;
@@ -317,7 +405,8 @@ export class StudioPage extends BaseComponent {
     this.nameEl.textContent = m.metadata.name || 'Untitled model';
     this.undoBtn.disabled = !this.history.canUndo;
     this.redoBtn.disabled = !this.history.canRedo;
-    this.runBtn.disabled = this.running;
+    this.runBtn.replaceChildren(icon(this.running ? 'x' : 'play'), this.running ? 'Cancel' : 'Run');
+    this.runBtn.title = this.running ? 'Stop this run' : 'Run the model (Ctrl+Enter)';
     this.results.setRun(
       this.result,
       this.running
@@ -379,15 +468,32 @@ export class StudioPage extends BaseComponent {
       this.select(null);
       return;
     }
-    this.running = true;
+    const run = { token: 0, cancelled: false };
+    this.running = run;
     this.update();
+    const worker = simWorker();
     try {
-      this.result = await simWorker().run(m);
+      const { token } = await worker.begin(m);
+      run.token = token;
+      // Chunks of ~120 ms keep progress live and make Cancel take effect quickly.
+      for (;;) {
+        if (run.cancelled) {
+          await worker.cancel(token);
+          this.running = null;
+          this.update();
+          toast('Run cancelled.');
+          return;
+        }
+        const p = await worker.advance(token, 120);
+        this.results.setProgress(p.step / p.steps);
+        if (p.done) break;
+      }
+      this.result = await worker.finish(token);
       this.resultModel = m;
-      this.running = false;
+      this.running = null;
       this.update();
     } catch (err) {
-      this.running = false;
+      this.running = null;
       this.update();
       this.results.setRun(this.result, {
         state: 'error',
@@ -414,7 +520,36 @@ export class StudioPage extends BaseComponent {
     } else if (e.key.toLowerCase() === 's') {
       e.preventDefault();
       void this.flush();
+    } else if (!typing && ['c', 'x', 'v', 'd'].includes(e.key.toLowerCase())) {
+      e.preventDefault();
+      this.clipboardKey(e.key.toLowerCase() as 'c' | 'x' | 'v' | 'd');
     }
+  }
+
+  /** Copy, cut, paste and duplicate the selected symbols and the flows between them. */
+  private clipboardKey(key: 'c' | 'x' | 'v' | 'd'): void {
+    const m = this.model;
+    if (!m) return;
+    const ids = selectedNodeIds(this.selection);
+    if (key === 'c' || key === 'x' || key === 'd') {
+      if (!ids.length) return;
+      clipboard = copyFragment(m, ids);
+      pasteCount = 0;
+      // Also as text, so a fragment can go into another tab or a bug report; best effort.
+      navigator.clipboard?.writeText(JSON.stringify(clipboard, null, 2)).catch(() => {});
+      if (key === 'x') {
+        this.commit({ model: removeSelection(m, this.selection), label: 'Cut', select: null });
+        return;
+      }
+      if (key === 'c') {
+        toast(`Copied ${ids.length} symbol${ids.length > 1 ? 's' : ''}.`);
+        return;
+      }
+    }
+    if (!clipboard || clipboard.nodes.length === 0) return;
+    const off = 40 * ++pasteCount;
+    const { model, ids: pasted } = pasteFragment(m, clipboard, { x: off, y: off });
+    this.commit({ model, label: key === 'd' ? 'Duplicate' : 'Paste', select: selectNodes(pasted) });
   }
 }
 

@@ -125,20 +125,20 @@ A model is one JSON document that is a valid GSSK Schema v4 model (ADR 0003):
 
 One symbol per kernel node type. `src/model/catalogue.ts` is the only table of node semantics.
 
-| Symbol (Odum 1983) | Kernel type    | Holds state     | Notes                                                    |
-| ------------------ | -------------- | --------------- | -------------------------------------------------------- |
-| Source             | `source`       | no              | Held at its value                                        |
-| Storage (tank)     | `storage`      | yes             | dQ/dt = inflows − outflows                               |
-| Heat sink          | `sink`         | yes             | Accumulates degraded energy                              |
-| Constant           | `constant`     | no              | A fixed level flows can read                             |
-| Producer           | `producer`     | yes (composite) | Expands to body, gate, heat; charted by its body         |
-| Consumer           | `consumer`     | yes (composite) | Expands to body, heat                                    |
-| Interaction        | `interaction`  | no              | Multiplicative work gate                                 |
-| Transaction        | `exchange`     | no              | Goods one way, money the other, at a price or price node |
-| Switch             | `switch`       | no              | On/off around a threshold                                |
-| Amplifier          | `gain`         | no              | Constant-gain amplifier                                  |
-| Receiver           | `loop_limited` | no              | k·Q/(1+Q/C)                                              |
-| Box                | `misc_box`     | yes (composite) | A subsystem not drawn in detail                          |
+| Symbol (Odum 1983) | Kernel type    | Holds state     | Notes                                                                                 |
+| ------------------ | -------------- | --------------- | ------------------------------------------------------------------------------------- |
+| Source             | `source`       | no              | Held at its value                                                                     |
+| Storage (tank)     | `storage`      | yes             | dQ/dt = inflows − outflows                                                            |
+| Heat sink          | `sink`         | yes             | Accumulates degraded energy                                                           |
+| Constant           | `constant`     | no              | Not in the palette: a source does the same job; imported constants still draw and run |
+| Producer           | `producer`     | yes (composite) | Expands to body, gate, heat; charted by its body                                      |
+| Consumer           | `consumer`     | yes (composite) | Expands to body, heat                                                                 |
+| Interaction        | `interaction`  | no              | Multiplicative work gate                                                              |
+| Transaction        | `exchange`     | no              | Goods one way, money the other, at a price or price node                              |
+| Switch             | `switch`       | no              | On/off around a threshold                                                             |
+| Amplifier          | `gain`         | no              | Constant-gain amplifier                                                               |
+| Receiver           | `loop_limited` | no              | k·Q/(1+Q/C)                                                                           |
+| Box                | `misc_box`     | yes (composite) | A subsystem not drawn in detail                                                       |
 
 Flow logics are the kernel's: `linear`, `constant`, `interaction`, `limit`, `threshold`, `ratio`,
 `reversible`, `subtract`, each with the parameters the kernel requires (§10).
@@ -149,12 +149,13 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
 
 ## 6. Editor (FR-EDIT)
 
-- **FR-EDIT-001** Palette: every catalogue symbol, plus Boundary. Click places the symbol at the
-  first free spot near the viewport centre; drag places it where dropped.
+- **FR-EDIT-001** Palette: every palette symbol, plus Boundary and Sensor. Click places the symbol
+  at the free grid spot nearest the viewport centre, preferring one in view, and pans just enough
+  to show it; drag places it where dropped.
 - **FR-EDIT-002** Select, move (grid 10), delete (Delete/Backspace), nudge (arrows, Shift ×5).
-- **FR-EDIT-003** Wire: drag from a node's port (or Shift-drag its body) onto another node to add a
-  flow; onto a flow to make the node that flow's control, turning it into an interaction with a
-  drawn work gate. Self-loops and duplicate flows are refused.
+- **FR-EDIT-003** Wire: drag from a node's port onto another node to add a flow; onto a flow to
+  make the node that flow's control, turning it into an interaction with a drawn work gate.
+  Self-loops and duplicate flows are refused.
 - **FR-EDIT-004** Shape: a selected flow shows two Bézier handles; "Straighten curve" removes them.
 - **FR-EDIT-005** Inspector: properties of the selection or, with nothing selected, of the model
   and its run settings. Renaming an id rewrites every reference to it.
@@ -163,6 +164,19 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
   keystrokes in one field is one step.
 - **FR-EDIT-008** Autosave to the library 400 ms after the last edit; "Saved" is shown only after
   the write commits.
+- **FR-EDIT-009** Symbols draw identically in every browser: each SVG shape carries its own
+  paint, because page CSS does not reliably reach the shadow copy a `<use>` renders.
+- **FR-EDIT-010** Sensor (Odum's small box on a pathway): a flow can carry a sensor, placed by
+  dragging the palette's Sensor onto the flow, by selecting the flow and clicking Sensor, or from
+  the inspector. It reads the flow's rate J without taking from it: during playback it shows J,
+  and the run offers the flow as a chart series. It does not change the model the kernel runs
+  (`visual.sensor`), and it cannot yet drive a control (K-5).
+- **FR-EDIT-011** Several symbols: Shift-click adds or removes one; Shift-drag on empty canvas
+  selects by marquee; Ctrl/⌘-A selects all. A selection moves, nudges and deletes together.
+  Ctrl/⌘-C, -X, -V and -D copy, cut, paste and duplicate it with the flows between its symbols,
+  under fresh ids; a control outside the copy keeps pointing at the original while it exists.
+- **FR-EDIT-012** Align (left, centre, right, top, middle, bottom) and distribute (horizontally,
+  vertically) several symbols from the inspector.
 
 ## 7. Simulation (FR-SIM)
 
@@ -181,6 +195,9 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   kernel JSON (layout-independent), method, dt, steps, samples, elapsed time.
 - **FR-SIM-004** Diagnostics: dual-solver confidence and the count of steps the kernel warned
   `GSSK_WARN_SOLVER_DIVERGENCE`; the result says "Solver diverged" if any.
+- **FR-SIM-005** Long runs advance in the worker in ~120 ms chunks: the results panel shows
+  progress, Run becomes Cancel, and a cancel takes effect at the next chunk and frees the
+  kernel instance. Starting a run closes any other run in the worker.
 
 ## 8. Results (FR-RES)
 
@@ -189,9 +206,13 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
 - **FR-RES-002** Hover crosshair with a tooltip of every charted value; direct end labels when four
   or fewer series are drawn; a table view of the same numbers.
 - **FR-RES-003** Playback: a time scrubber and play button drive the diagram — readings under each
-  label, storage gauges, flow widths proportional to |J|.
+  label and storage gauges. A **Flow widths** toggle (off by default, remembered) also draws each
+  flow as wide as |J| relative to the run's largest flow, a Sankey-style reading.
 - **FR-RES-004** CSV download of every sample, node and flow.
 - **FR-RES-005** A result older than the model is marked "Model changed since this run".
+- **FR-RES-006** Compare: keep a run as a baseline; later runs draw it dashed in each series'
+  colour (dash as the second encoding), over the current run's time range, and the tooltip
+  gives the baseline value beside the current one. The baseline lasts for the session.
 
 ## 9. Library and files (FR-LIB, FR-IO)
 
@@ -203,6 +224,8 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
 - **FR-IO-002** Import accepts a studio file, a plain kernel model, or a gssk-dia export.
 - **FR-IO-003** Import never silently changes a model: each change is listed under Checks
   (ADR 0006).
+- **FR-IO-004** Export the diagram as SVG or PNG (2×): a standalone picture with the theme's
+  colours written in, without editing chrome (ports, handles, selection).
 
 ## 10. Validation (FR-VAL)
 
@@ -289,6 +312,10 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   (pinned 5.3.0, Node 22: 1 storage ≈ 2 µs/step, 18 ≈ 64 µs, 50 ≈ 250 µs). Request: profile the
   per-step passes (quality accounting, reclassification) and skip those a model does not use.
   Until then long runs need progress and cancel (M2).
+- **K-5** A control can read only a node's level Q. Odum's sensor reads a flow's rate J and
+  drives a control from it (a flow-controlled switch or gate). Request: let `params.control_node`
+  (or a new `params.control_edge`) name an edge whose current J is the control value.
+  Until then a sensor displays and charts J only (FR-EDIT-010).
 
 ## 18. Repository layout
 
@@ -300,7 +327,7 @@ See [AGENTS.md](AGENTS.md#layout).
 | --- | -------------------------------------------------------------------------------------------------------- | ----------- |
 | M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                           | done        |
 | M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback          | done        |
-| M2  | Polish: run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison | next        |
+| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done        |
 | M3  | Observations and fitness (§11)                                                                           | planned     |
 | M4  | Calibration and sensitivity (§12)                                                                        | planned     |
 | M5  | Forcing functions and ensembles (§12)                                                                    | planned     |

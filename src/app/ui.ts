@@ -46,6 +46,9 @@ const ICONS: Record<string, string> = {
   alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   back: '<path d="M15 18l-6-6 6-6"/>',
+  flow: '<path d="M4 6h16" style="stroke-width:1"/><path d="M4 12h16" style="stroke-width:2.4"/><path d="M4 18h16" style="stroke-width:4"/>',
+  sensor: '<path d="M2 12h6M16 12h6"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
+  pin: '<path d="M9 4h6l-1 6 4 3v1H6v-1l4-3z"/><path d="M12 14v6"/>',
   frame: '<rect x="3" y="5" width="18" height="14" rx="1" stroke-dasharray="3 2"/>',
   table: '<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16"/>',
   cpu: '<rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
@@ -77,7 +80,11 @@ export function toast(message: string): void {
 
 /** Save text as a file through the browser's download, nothing over the network. */
 export function downloadText(name: string, text: string, type = 'application/json'): void {
-  const url = URL.createObjectURL(new Blob([text], { type }));
+  downloadBlob(name, new Blob([text], { type }));
+}
+
+export function downloadBlob(name: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const a = el('a', { href: url, download: name });
   document.body.append(a);
   a.click();
