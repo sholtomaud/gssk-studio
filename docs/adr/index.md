@@ -9,3 +9,4 @@
 | [0005](0005-no-network-in-v1.md)              | No network in v1; services later, opt-in and per call                |
 | [0006](0006-importing-gssk-dia.md)            | Import gssk-dia models, listing every change                         |
 | [0007](0007-svg-editor-and-chart-in-house.md) | The diagram editor and the chart are in-house SVG                    |
+| [0008](0008-calibration-in-the-app.md)        | Calibration and sensitivity in the app, over kernel runs             |
