@@ -6,6 +6,8 @@
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
 import { sampleAt, type RunResult } from '../../../sim/run.ts';
+import { fitSeries } from '../../../fit/stats.ts';
+import type { ObservationSeries } from '../../../model/types.ts';
 import { resultCsv } from '../../../viz/csv.ts';
 import { seriesColor, SlotAssigner } from '../../../viz/colors.ts';
 import { decimate, extent, linear, niceTicks, tickLabel } from '../../../viz/scale.ts';
@@ -56,7 +58,9 @@ export class ResultsPanel extends BaseComponent {
   private status: RunStatus = { state: 'idle' };
   private readonly slots = new SlotAssigner();
   private sample = 0;
-  private showTable = false;
+  /** What the plot area shows: the chart, its numbers, or fit to observations. */
+  private view: 'chart' | 'table' | 'fit' = 'chart';
+  private obs: ObservationSeries[] = [];
   private playing = 0;
   private fileName = 'results';
   private maxFlow = 0;
@@ -70,6 +74,7 @@ export class ResultsPanel extends BaseComponent {
   private tableBtn!: HTMLButtonElement;
   private csvBtn!: HTMLButtonElement;
   private baselineBtn!: HTMLButtonElement;
+  private fitBtn!: HTMLButtonElement;
   /** A kept run, drawn dashed under the current one (FR-RES-006). */
   private baseline: RunResult | null = null;
 
@@ -82,11 +87,10 @@ export class ResultsPanel extends BaseComponent {
     this.statusEl = el('span', { class: 'status', role: 'status' });
     this.tableBtn = iconButton('table', 'Show as table');
     this.tableBtn.setAttribute('aria-pressed', 'false');
-    this.tableBtn.onclick = () => {
-      this.showTable = !this.showTable;
-      this.tableBtn.setAttribute('aria-pressed', String(this.showTable));
-      this.drawPlot();
-    };
+    this.tableBtn.onclick = () => this.setView(this.view === 'table' ? 'chart' : 'table');
+    this.fitBtn = iconButton('target', 'Fit to observations');
+    this.fitBtn.setAttribute('aria-pressed', 'false');
+    this.fitBtn.onclick = () => this.setView(this.view === 'fit' ? 'chart' : 'fit');
     this.baselineBtn = iconButton('pin', 'Keep this run as a baseline to compare against');
     this.baselineBtn.setAttribute('aria-pressed', 'false');
     this.baselineBtn.onclick = () => {
@@ -105,6 +109,7 @@ export class ResultsPanel extends BaseComponent {
         this.statusEl,
         el('span', { class: 'spacer' }),
         this.baselineBtn,
+        this.fitBtn,
         this.tableBtn,
         this.csvBtn
       )
@@ -157,6 +162,19 @@ export class ResultsPanel extends BaseComponent {
   }
 
   private lastFraction = 0;
+
+  /** The model's observed series (FR-OBS-002), drawn over the series they measure. */
+  set observations(o: ObservationSeries[]) {
+    this.obs = o;
+    if (this.plot) this.drawPlot();
+  }
+
+  private setView(v: 'chart' | 'table' | 'fit'): void {
+    this.view = v;
+    this.tableBtn.setAttribute('aria-pressed', String(v === 'table'));
+    this.fitBtn.setAttribute('aria-pressed', String(v === 'fit'));
+    this.drawPlot();
+  }
 
   /** Update the running run's progress in place (FR-SIM-005). */
   setProgress(fraction: number): void {
@@ -310,7 +328,8 @@ export class ResultsPanel extends BaseComponent {
       return;
     }
     const series = this.visible();
-    if (this.showTable) return this.drawTable(r, series);
+    if (this.view === 'table') return this.drawTable(r, series);
+    if (this.view === 'fit') return this.drawFit(r);
     const W = this.plot.clientWidth;
     const H = this.plot.clientHeight;
     if (W < 50 || H < 50) return;
@@ -323,8 +342,10 @@ export class ResultsPanel extends BaseComponent {
     const base = this.baseline && this.baseline !== r ? this.baseline : null;
     const baseSeries = base ? seriesOf(base) : [];
     const baseOf = (id: string) => baseSeries.find((b) => b.id === id);
+    const obsFor = (id: string) => this.obs.filter((o) => o.target === id);
     const [lo, hi] = extent([
       ...series.map((s) => s.values),
+      ...series.flatMap((s) => obsFor(s.id).map((o) => o.values)),
       ...series.flatMap((s) => (baseOf(s.id) ? [baseOf(s.id)!.values] : [])),
     ]);
     const yt = niceTicks(Math.min(0, lo), hi, Math.max(2, Math.floor((H - M.t - M.b) / 40)));
@@ -378,6 +399,31 @@ export class ResultsPanel extends BaseComponent {
       root.append(svg('path', { class: 'series-line', d, stroke: seriesColor(s.slot) }));
       const last = s.values[s.values.length - 1] ?? NaN;
       if (Number.isFinite(last)) ends.push({ y: y(last), label: s.label, slot: s.slot });
+    }
+    // Observations: hollow markers in the series' colour; hollow vs line is the second encoding.
+    for (const s of series) {
+      for (const o of obsFor(s.id)) {
+        o.times.forEach((t, i) => {
+          const v = o.values[i] ?? NaN;
+          if (t < t0 || t > t1 || !Number.isFinite(v)) return;
+          const c = svg('circle', {
+            class: 'obs',
+            cx: x(t),
+            cy: y(v),
+            r: 4,
+            stroke: seriesColor(s.slot),
+          });
+          const title = svg('title');
+          title.textContent = `${o.name}: ${formatNumber(v)} at t = ${formatNumber(t)}`;
+          c.append(title);
+          root.append(c);
+        });
+      }
+    }
+    if (root.querySelector('circle.obs')) {
+      const key = svg('text', { class: 'obs-key', x: M.l + 8, y: M.t + 12 });
+      key.textContent = '○ observed';
+      root.append(key);
     }
     if (endLabels) {
       ends.sort((a, b) => a.y - b.y);
@@ -471,6 +517,59 @@ export class ResultsPanel extends BaseComponent {
     });
     hit.addEventListener('click', (ev) => this.seek(nearest(ev.clientX)));
     this.plot.append(root, tip);
+  }
+
+  /** Fit of each compared observation series to this run (FR-FIT-001). */
+  private drawFit(r: RunResult): void {
+    const all = new Map(seriesOf(r).map((x) => [x.id, x]));
+    const compared = this.obs.filter((o) => o.target && all.has(o.target));
+    if (compared.length === 0) {
+      this.plot.append(
+        el('div', {
+          class: 'empty',
+          text: this.obs.length
+            ? 'No observation series is compared with a series of this run. Pick a target under Observations, then run.'
+            : 'No observations yet. Import a CSV under Observations (select nothing on the canvas to see it).',
+        })
+      );
+      return;
+    }
+    const f = (v: number) => (Number.isFinite(v) ? formatNumber(v) : '—');
+    const head = el(
+      'tr',
+      {},
+      ...['Observed', 'Compared with', 'n', 'RMSE', 'MAE', 'Bias', 'NSE', 'KGE', 'r²'].map((h) =>
+        el('th', { text: h })
+      )
+    );
+    const rows = compared.map((o) => {
+      const sim = all.get(o.target ?? '');
+      const st = fitSeries(r.times, sim?.values ?? [], o.times, o.values);
+      return el(
+        'tr',
+        { 'data-obs': o.id },
+        el('td', { text: o.name, title: o.source ?? '' }),
+        el('td', { text: sim?.label ?? '' }),
+        el('td', {
+          text: st.excluded ? `${st.n} (+${st.excluded} outside the run)` : String(st.n),
+        }),
+        ...[st.rmse, st.mae, st.bias, st.nse, st.kge, st.r2].map((v) =>
+          el('td', { class: 'num', text: f(v) })
+        )
+      );
+    });
+    const note = el('p', {
+      class: 'fit-note',
+      text: 'The run is interpolated at each observation time. RMSE, MAE and bias (sim − obs) are in the series’ units. NSE: Nash–Sutcliffe efficiency, 1 is perfect, 0 is no better than the observed mean. KGE: Kling–Gupta efficiency (Gupta et al. 2009). r²: squared Pearson correlation. These describe fit; none is a significance test, so no p-value is given.',
+    });
+    this.plot.append(
+      el(
+        'div',
+        { class: 'table-wrap' },
+        el('table', { class: 'fit' }, el('thead', {}, head), el('tbody', {}, ...rows)),
+        note
+      )
+    );
   }
 
   private drawTable(r: RunResult, series: ReturnType<ResultsPanel['visible']>): void {

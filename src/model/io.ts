@@ -16,6 +16,7 @@ import {
   type ModelEdge,
   type ModelNode,
   type NodeType,
+  type ObservationSeries,
   type StudioModel,
 } from './types.ts';
 
@@ -123,7 +124,9 @@ export function normaliseModel(raw: unknown): ParseResult {
       if (Object.keys(p).length) node.params = p;
     }
     if (rn.dataType !== undefined) {
-      notes.push(`“${id}”: the data-stream mapping (dataType) is not imported yet (SPEC M3).`);
+      notes.push(
+        `“${id}”: its data-stream mapping (dataType ${String(rn.dataType)}) is not kept; import observations as CSV with a column named “${id}” to compare them.`
+      );
     }
     taken.add(id);
     nodes.push(node);
@@ -215,6 +218,28 @@ export function normaliseModel(raw: unknown): ParseResult {
     boundaries.push({ id, x, y, w, h, label: str(rb.label) ?? '' });
   }
 
+  const observations: ObservationSeries[] = [];
+  const known = new Set([...nodes.map((n) => n.id), ...edges.map((e) => `flow:${e.id}`)]);
+  for (const ro of Array.isArray(raw._observations) ? raw._observations : []) {
+    if (!isObj(ro) || !Array.isArray(ro.times) || !Array.isArray(ro.values)) continue;
+    const times = ro.times.map((t) => num(t) ?? NaN);
+    const values = ro.values.map((v) => num(v) ?? NaN);
+    if (times.length !== values.length || times.some((t) => Number.isNaN(t))) {
+      notes.push(`Observations “${String(ro.name ?? ro.id)}” were malformed and left out.`);
+      continue;
+    }
+    const id = str(ro.id) ?? uniqueId('obs', taken);
+    const target = str(ro.target);
+    observations.push({
+      id,
+      name: str(ro.name) ?? id,
+      target: target && known.has(target) ? target : null,
+      times,
+      values,
+      ...(str(ro.source) ? { source: str(ro.source) } : {}),
+    });
+  }
+
   return {
     model: {
       metadata: { schema_version: 4, name, ...(description ? { description } : {}) },
@@ -222,6 +247,7 @@ export function normaliseModel(raw: unknown): ParseResult {
       nodes,
       edges,
       _diagram: { boundaries },
+      ...(observations.length ? { _observations: observations } : {}),
     },
     notes,
   };

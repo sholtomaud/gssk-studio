@@ -56,7 +56,7 @@ Studio makes it dependable.
 
 - **Modeller**: draws a system, sets rates, runs, compares runs, exports the model and its results.
 - **Educator**: opens an example, plays it back to a class, changes one rate and runs again.
-- **Analyst** (M3–M5): loads observed data, measures fit, calibrates rates, runs ensembles.
+- **Analyst**: loads observed data and measures fit (M3); calibrates rates, runs ensembles (M4–M5).
 
 ## 4. Architecture
 
@@ -234,13 +234,22 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   start, more than 500,000 steps) and warnings (isolated symbols, flows into a source, flows out of
   a heat sink, long composite ids). Each names and links to the node or flow at fault.
 
-## 11. Observations and fitness (M3, planned)
+## 11. Observations and fitness (M3)
 
-- **FR-OBS-001** Import observed series (CSV: time, value per column) and map each to a node.
-- **FR-OBS-002** Overlay observations on the chart.
-- **FR-FIT-001** Fit per mapped node, aligned by interpolating the run at observation times:
-  RMSE, R², Nash–Sutcliffe efficiency and Kling–Gupta efficiency. No p-value is shown unless its
-  test and assumptions are stated (gssk-dia's `1 − R²` is not a p-value).
+- **FR-OBS-001** Import observed series from CSV (Observations, in the inspector with nothing
+  selected): model time in the first column, one series per column, a heading row; comma,
+  semicolon or tab separated, RFC 4180 quoting. A heading matching a node's id or label (case and
+  punctuation ignored), or a sensed flow's id, is compared with it; others stay unmapped until a
+  target is picked. Series live in the model's `_observations` (never sent to the kernel), follow
+  renames, and lose their target when it is deleted. A non-numeric time names its row.
+- **FR-OBS-002** Observations are drawn over the series they measure as hollow markers in its
+  colour (hollow vs line as the second encoding), with a "○ observed" key.
+- **FR-FIT-001** Fit view in Results: for each compared series, the run is linearly interpolated
+  at each observation time inside the run (others are counted and left out), and the panel shows
+  n, RMSE, MAE, bias (sim − obs), NSE (Nash–Sutcliffe), KGE (Kling–Gupta, Gupta et al. 2009) and
+  r² (squared Pearson correlation), with their definitions. None is a significance test, so no
+  p-value is shown (gssk-dia's `1 − R²` was not one).
+- The Reservoir example carries synthetic gauge readings (the run with a fixed ±4 % pattern).
 
 ## 12. Calibration, sensitivity and ensembles (M4–M5, planned)
 
@@ -328,7 +337,7 @@ See [AGENTS.md](AGENTS.md#layout).
 | M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                           | done        |
 | M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback          | done        |
 | M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done        |
-| M3  | Observations and fitness (§11)                                                                           | planned     |
+| M3  | Observations and fitness (§11)                                                                           | done        |
 | M4  | Calibration and sensitivity (§12)                                                                        | planned     |
 | M5  | Forcing functions and ensembles (§12)                                                                    | planned     |
 | M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned     |

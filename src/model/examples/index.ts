@@ -110,6 +110,16 @@ const reservoir: StudioModel = {
     },
   ],
   _diagram: { boundaries: [] },
+  // Synthetic gauge readings (the run with a fixed ±4 % error pattern), to show the fit (M3).
+  _observations: [
+    {
+      id: 'gauge',
+      name: 'Reservoir gauge (synthetic)',
+      target: 'reservoir',
+      times: [0, 5, 10, 15, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+      values: [50, 76.4, 92.4, 115.8, 122.1, 150.7, 160.2, 184, 196.4, 196.7, 209, 203.4, 215.5],
+    },
+  ],
 };
 
 const household: StudioModel = {

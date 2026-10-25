@@ -124,9 +124,17 @@ export function setControl(m: StudioModel, edgeId: string, controlId: string): S
   return next;
 }
 
+/** Point observations measuring `from` at `to`, or unmap them (null). */
+function retarget(m: StudioModel, from: string, to: string | null): void {
+  for (const o of m._observations ?? []) if (o.target === from) o.target = to;
+}
+
 /** Remove a node, every flow touching it, and every control reference to it. */
 export function removeNode(m: StudioModel, id: string): StudioModel {
   const next = cloneModel(m);
+  retarget(next, id, null);
+  for (const e of m.edges)
+    if (e.origin === id || e.target === id) retarget(next, `flow:${e.id}`, null);
   next.nodes = next.nodes.filter((n) => n.id !== id);
   next.edges = next.edges.filter((e) => e.origin !== id && e.target !== id);
   for (const e of next.edges) {
@@ -144,6 +152,7 @@ export function removeNode(m: StudioModel, id: string): StudioModel {
 
 export function removeEdge(m: StudioModel, id: string): StudioModel {
   const next = cloneModel(m);
+  retarget(next, `flow:${id}`, null);
   next.edges = next.edges.filter((e) => e.id !== id);
   return next;
 }
@@ -162,6 +171,7 @@ export function removeSelection(m: StudioModel, sel: Selection): StudioModel {
 export function renameNode(m: StudioModel, from: string, to: string): StudioModel {
   if (from === to || !findNode(m, from) || allIds(m).has(to)) return m;
   const next = cloneModel(m);
+  retarget(next, from, to);
   for (const n of next.nodes) {
     if (n.id === from) n.id = to;
     if (n.params?.price_node === from) n.params.price_node = to;
@@ -213,16 +223,21 @@ export function updateBoundary(
 
 /** Put a sensor on a flow, or take it off (FR-EDIT-010). */
 export function toggleSensor(m: StudioModel, edgeId: string): StudioModel {
-  if (!findEdge(m, edgeId)) return m;
-  return updateEdge(m, edgeId, (e) => {
-    const { sensor, ...rest } = e.visual ?? {};
-    if (sensor) {
-      if (Object.keys(rest).length) e.visual = rest;
-      else delete e.visual;
-    } else {
-      e.visual = { ...rest, sensor: true };
-    }
-  });
+  const e0 = findEdge(m, edgeId);
+  if (!e0) return m;
+  const next = cloneModel(m);
+  const e = findEdge(next, edgeId);
+  if (!e) return m;
+  const { sensor, ...rest } = e.visual ?? {};
+  if (sensor) {
+    // Observations of this flow's J lose their target with the sensor.
+    retarget(next, `flow:${edgeId}`, null);
+    if (Object.keys(rest).length) e.visual = rest;
+    else delete e.visual;
+  } else {
+    e.visual = { ...rest, sensor: true };
+  }
+  return next;
 }
 
 // ---- several nodes at once (FR-EDIT-011) -----------------------------------
