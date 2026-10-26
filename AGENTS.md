@@ -72,6 +72,13 @@ All must pass. CI runs the same on every PR.
 
 ## Workflow
 
-Work on a feature branch, one milestone (SPEC §19) or smaller per PR, with green CI. The author
-does not merge their own PR. A task is done when it is merged and, for anything user-facing, when
-the deployed page has been checked.
+Work on a feature branch, one milestone (SPEC §19) or smaller per PR, with green CI.
+
+- **Always work from a branch.** Never commit or push to `main`; changes reach `main` only by a
+  merged PR.
+- **Never force-push** (no `--force`, no `--force-with-lease`), and never rewrite pushed history
+  (no rebase, amend or reset of commits already on the remote). To bring a branch up to date,
+  merge `main` into it, or fast-forward it when it holds only merged history.
+  The author
+  does not merge their own PR. A task is done when it is merged and, for anything user-facing, when
+  the deployed page has been checked.
