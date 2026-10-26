@@ -79,6 +79,5 @@ Work on a feature branch, one milestone (SPEC §19) or smaller per PR, with gree
 - **Never force-push** (no `--force`, no `--force-with-lease`), and never rewrite pushed history
   (no rebase, amend or reset of commits already on the remote). To bring a branch up to date,
   merge `main` into it, or fast-forward it when it holds only merged history.
-  The author
-  does not merge their own PR. A task is done when it is merged and, for anything user-facing, when
-  the deployed page has been checked.
+- The author does not merge their own PR. A task is done when it is merged and, for anything
+  user-facing, when the deployed page has been checked.
