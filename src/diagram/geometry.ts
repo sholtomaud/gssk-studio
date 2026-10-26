@@ -4,7 +4,7 @@
  * model coordinates, unit-tested without a DOM.
  */
 import { symbolFor } from '../model/catalogue.ts';
-import type { ModelEdge, ModelNode, NodeType, Point } from '../model/types.ts';
+import type { ModelEdge, NodeType, Point } from '../model/types.ts';
 
 /** Symbols are drawn SIZE canvas units across (their 100-unit viewBox scaled). */
 export const SIZE = 80;
@@ -12,7 +12,17 @@ export const SCALE = SIZE / 100;
 
 type Outline = 'ellipse' | 'rect' | 'diamond' | 'port-top';
 
-const OUTLINE: Record<NodeType, Outline> = {
+/** A packed zoom group draws as a box of this half-size (FR-GRP-001). */
+export const GROUP_HALF = { w: 48, h: 32 };
+
+/** Something a flow can end on: a symbol, or a packed group (`type: 'group'`). */
+export interface Shape {
+  type: NodeType | 'group';
+  visual: Point;
+}
+
+const OUTLINE: Record<NodeType | 'group', Outline> = {
+  group: 'rect',
   source: 'ellipse',
   storage: 'rect',
   sink: 'port-top',
@@ -28,13 +38,14 @@ const OUTLINE: Record<NodeType, Outline> = {
 };
 
 /** Half-extents of a node's outline in canvas units. */
-export function halfExtent(type: NodeType): { w: number; h: number } {
+export function halfExtent(type: NodeType | 'group'): { w: number; h: number } {
+  if (type === 'group') return GROUP_HALF;
   const h = symbolFor(type).half;
   return { w: h.w * SCALE, h: h.h * SCALE };
 }
 
 /** The point on a node's outline in the direction of `toward`. */
-export function anchor(node: ModelNode, toward: Point): Point {
+export function anchor(node: Shape, toward: Point): Point {
   const { x: cx, y: cy } = node.visual;
   const { w, h } = halfExtent(node.type);
   const dx = toward.x - cx;
@@ -70,7 +81,11 @@ export interface Curve {
  * The cubic Bézier for a flow. Without stored control points the curve bows
  * slightly, so a pair of opposite flows between two nodes never overlap.
  */
-export function edgeCurve(edge: ModelEdge, origin: ModelNode, target: ModelNode): Curve {
+export function edgeCurve(
+  edge: Pick<ModelEdge, 'origin' | 'target' | 'visual'>,
+  origin: Shape,
+  target: Shape
+): Curve {
   const a = { x: origin.visual.x, y: origin.visual.y };
   const b = { x: target.visual.x, y: target.visual.y };
   if (edge.origin === edge.target) {

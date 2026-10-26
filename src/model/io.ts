@@ -6,12 +6,14 @@
  */
 import { isNodeType } from './catalogue.ts';
 import { parseForcing } from './forcing.ts';
+import { tidyGroups } from './groups.ts';
 import { uniqueId } from './ids.ts';
 import {
   DEFAULT_CONFIG,
   EDGE_LOGICS,
   METHODS,
   type Boundary,
+  type Group,
   type EdgeLogic,
   type Method,
   type ModelEdge,
@@ -227,6 +229,28 @@ export function normaliseModel(raw: unknown): ParseResult {
     boundaries.push({ id, x, y, w, h, label: str(rb.label) ?? '' });
   }
 
+  // Zoom groups (FR-GRP-001): members must exist and sit in one group only.
+  const groups: Group[] = [];
+  const placed = new Set<string>();
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  for (const rg of Array.isArray(diagram.groups) ? diagram.groups : []) {
+    if (!isObj(rg) || !Array.isArray(rg.nodes)) continue;
+    const id =
+      str(rg.id) && !taken.has(rg.id as string) ? (rg.id as string) : uniqueId('group', taken);
+    taken.add(id);
+    const members = rg.nodes.filter(
+      (n): n is string => typeof n === 'string' && nodeIds.has(n) && !placed.has(n)
+    );
+    for (const n of members) placed.add(n);
+    groups.push({
+      id,
+      label: str(rg.label) ?? id,
+      nodes: members,
+      collapsed: rg.collapsed === true,
+      ...(str(rg.parent) ? { parent: str(rg.parent) } : {}),
+    });
+  }
+
   const observations: ObservationSeries[] = [];
   const known = new Set([...nodes.map((n) => n.id), ...edges.map((e) => `flow:${e.id}`)]);
   for (const ro of Array.isArray(raw._observations) ? raw._observations : []) {
@@ -249,17 +273,16 @@ export function normaliseModel(raw: unknown): ParseResult {
     });
   }
 
-  return {
-    model: {
-      metadata: { schema_version: 4, name, ...(description ? { description } : {}) },
-      config,
-      nodes,
-      edges,
-      _diagram: { boundaries },
-      ...(observations.length ? { _observations: observations } : {}),
-    },
-    notes,
+  const model: StudioModel = {
+    metadata: { schema_version: 4, name, ...(description ? { description } : {}) },
+    config,
+    nodes,
+    edges,
+    _diagram: { boundaries, ...(groups.length ? { groups } : {}) },
+    ...(observations.length ? { _observations: observations } : {}),
   };
+  tidyGroups(model);
+  return { model, notes };
 }
 
 /** The file contents for a model: pretty, stable, loadable by GSSK_Init as-is. */

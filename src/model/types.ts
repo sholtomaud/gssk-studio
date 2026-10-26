@@ -145,6 +145,21 @@ export interface Boundary {
   label: string;
 }
 
+/**
+ * A zoom group (FR-GRP-001): symbols packed into one. Editor-only: the kernel
+ * always runs every symbol inside, so packing never changes a result.
+ */
+export interface Group {
+  id: string;
+  label: string;
+  /** Node ids directly in this group (not in a group inside it). */
+  nodes: string[];
+  /** The group this one is nested in. */
+  parent?: string;
+  /** Packed: drawn as one symbol, its flows across the edge combined. */
+  collapsed: boolean;
+}
+
 export interface ModelConfig {
   t_start: number;
   t_end: number;
@@ -180,7 +195,7 @@ export interface StudioModel {
   nodes: ModelNode[];
   edges: ModelEdge[];
   /** Editor-only: diagram regions. The kernel ignores `_`-prefixed keys. */
-  _diagram: { boundaries: Boundary[] };
+  _diagram: { boundaries: Boundary[]; groups?: Group[] };
   /** Editor-only: observed data to fit runs against (M3). */
   _observations?: ObservationSeries[];
 }

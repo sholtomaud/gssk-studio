@@ -19,6 +19,8 @@ import {
   type Fragment,
   type Selection,
 } from '../../../model/ops.ts';
+import { revealNode } from '../../../model/groups.ts';
+import { canonicalJson, toKernelModel } from '../../../model/kernel-json.ts';
 import { emptyModel, type StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
 import type { RunResult } from '../../../sim/run.ts';
@@ -418,6 +420,24 @@ export class StudioPage extends BaseComponent {
   }
 
   private select(s: Selection): void {
+    // Selecting a symbol or flow packed out of sight unpacks what hides it (FR-GRP-001).
+    const m = this.model;
+    const ends =
+      s?.kind === 'node'
+        ? [s.id]
+        : s?.kind === 'edge' && m
+          ? (() => {
+              const e = m.edges.find((x) => x.id === s.id);
+              return e ? [e.origin, e.target] : [];
+            })()
+          : [];
+    if (m && ends.length) {
+      const shown = ends.reduce(revealNode, m);
+      if (shown !== m) {
+        this.commit({ model: shown, label: 'Unpack to show', select: s });
+        return;
+      }
+    }
     this.selection = s;
     this.lastCoalesce = undefined;
     this.canvas.selection = s;
@@ -466,10 +486,17 @@ export class StudioPage extends BaseComponent {
       this.running
         ? { state: 'running' }
         : this.result
-          ? { state: 'done', stale: this.resultModel !== m }
+          ? { state: 'done', stale: this.changedSinceRun(m) }
           : { state: 'idle' },
       fileNameFor(m).replace(/\.gssk\.json$/, '')
     );
+  }
+
+  /** Has the model the kernel sees changed since the run? Layout and packing do not count. */
+  private changedSinceRun(m: StudioModel): boolean {
+    const r = this.resultModel;
+    if (!r || r === m) return r === null;
+    return canonicalJson(toKernelModel(r)) !== canonicalJson(toKernelModel(m));
   }
 
   private undo(): void {

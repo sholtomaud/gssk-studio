@@ -11,3 +11,4 @@
 | [0007](0007-svg-editor-and-chart-in-house.md) | The diagram editor and the chart are in-house SVG                    |
 | [0008](0008-calibration-in-the-app.md)        | Calibration and sensitivity in the app, over kernel runs             |
 | [0009](0009-forcing-and-ensembles.md)         | Forcing in the kernel's schema; ensembles in one kernel call         |
+| [0010](0010-zoom-groups-are-a-view.md)        | Zoom groups are a view; the kernel runs every symbol                 |
