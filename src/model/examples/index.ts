@@ -204,6 +204,98 @@ const seasonal: StudioModel = {
   _diagram: { boundaries: [] },
 };
 
+/** A bill of `amount` per month, out of the bank to whoever is paid (`to`). */
+const bill = (to: string, amount: number): ModelEdge =>
+  f(`${to}_bill`, 'bank', to, amount, 'constant');
+
+/** A charge of `amount` in the first month of every `months`, as a repeating table. */
+const renewal = (to: string, amount: number, months: number): ModelEdge => ({
+  ...bill(to, 0),
+  forcing: {
+    waveform: 'table',
+    times: [0, 1, months],
+    values: [amount, 0, 0],
+    interpolation: 'step',
+    extrapolation: 'cycle',
+  },
+});
+
+const budget: StudioModel = {
+  metadata: {
+    schema_version: 4,
+    name: 'Household budget',
+    description:
+      'Pay into the bank; every bill and renewal is its own flow out, packed into nested groups (FR-GRP-001).',
+  },
+  // Months.
+  config: { t_start: 0, t_end: 36, dt: 0.05, method: 'rk4' },
+  nodes: [
+    n('salary', 'source', 5200, 100, 300, 'Salary'),
+    n('bank', 'storage', 2000, 340, 300, 'Bank account', 25000),
+    n('savings', 'storage', 0, 340, 520, 'Savings', 50000),
+    n('rent', 'sink', 0, 640, 90, 'Rent'),
+    n('electricity', 'sink', 0, 760, 90, 'Electricity'),
+    n('water', 'sink', 0, 880, 90, 'Water'),
+    n('phone', 'sink', 0, 640, 250, 'Phone'),
+    n('internet', 'sink', 0, 760, 250, 'Internet'),
+    n('groceries', 'sink', 0, 640, 410, 'Groceries'),
+    n('eating_out', 'sink', 0, 760, 410, 'Eating out'),
+    n('clothes', 'sink', 0, 880, 410, 'Clothes'),
+    n('shoes', 'sink', 0, 1000, 410, 'Shoes'),
+    n('car_insurance', 'sink', 0, 640, 570, 'Car insurance'),
+    n('computer', 'sink', 0, 760, 570, 'Computer'),
+  ],
+  edges: [
+    f('pay', 'salary', 'bank', 1),
+    f('save', 'bank', 'savings', 0.1),
+    bill('rent', 1800),
+    bill('electricity', 150),
+    bill('water', 60),
+    bill('phone', 50),
+    bill('internet', 70),
+    bill('groceries', 700),
+    bill('eating_out', 250),
+    bill('clothes', 120),
+    renewal('shoes', 150, 6),
+    renewal('car_insurance', 1200, 12),
+    renewal('computer', 2400, 36),
+  ],
+  _diagram: {
+    boundaries: [],
+    groups: [
+      { id: 'expenses', label: 'Expenses', nodes: [], collapsed: true },
+      {
+        id: 'housing',
+        label: 'Housing',
+        nodes: ['rent', 'electricity', 'water'],
+        parent: 'expenses',
+        collapsed: false,
+      },
+      {
+        id: 'comms',
+        label: 'Phone and internet',
+        nodes: ['phone', 'internet'],
+        parent: 'expenses',
+        collapsed: false,
+      },
+      {
+        id: 'living',
+        label: 'Living',
+        nodes: ['groceries', 'eating_out', 'clothes', 'shoes'],
+        parent: 'expenses',
+        collapsed: false,
+      },
+      {
+        id: 'renewals',
+        label: 'Renewals',
+        nodes: ['car_insurance', 'computer'],
+        parent: 'expenses',
+        collapsed: true,
+      },
+    ],
+  },
+};
+
 export const EXAMPLES: readonly Example[] = [
   {
     id: 'grassland',
@@ -240,6 +332,12 @@ export const EXAMPLES: readonly Example[] = [
     title: seasonal.metadata.name,
     summary: seasonal.metadata.description ?? '',
     model: seasonal,
+  },
+  {
+    id: 'budget',
+    title: budget.metadata.name,
+    summary: budget.metadata.description ?? '',
+    model: budget,
   },
 ];
 

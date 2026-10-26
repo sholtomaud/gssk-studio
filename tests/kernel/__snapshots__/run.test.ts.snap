@@ -1,5 +1,24 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`running models (FR-SIM-001) > runs the budget example cleanly and reproducibly 1`] = `
+{
+  "bank": 18693.706,
+  "car_insurance": 3600,
+  "clothes": 4320,
+  "computer": 2400,
+  "eating_out": 9000,
+  "electricity": 5400,
+  "groceries": 25200,
+  "internet": 2520,
+  "phone": 1800,
+  "rent": 64800,
+  "salary": 5200,
+  "savings": 48406.294,
+  "shoes": 900,
+  "water": 2160,
+}
+`;
+
 exports[`running models (FR-SIM-001) > runs the economy example cleanly and reproducibly 1`] = `
 {
   "capital": 4205.9544,

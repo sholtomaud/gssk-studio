@@ -41,6 +41,7 @@
 }
 :host .series button {
   height: 26px;
+  flex: none;
   justify-content: flex-start;
   border-color: transparent;
   background: transparent;

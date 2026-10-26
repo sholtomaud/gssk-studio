@@ -28,7 +28,7 @@ const PAINT = [
 
 /** Editing chrome that has no place in a picture of the model. */
 const CHROME =
-  '.port, .halo, .handle, .handle-line, .wire, .marquee, .hit, .grab, .resize, .badge, title';
+  '.port, .halo, .handle, .handle-line, .wire, .marquee, .hit, .grab, .resize, .badge, .group-toggle, title';
 
 export function diagramSvg(canvas: SVGSVGElement, model: StudioModel, background: string): string {
   const copy = canvas.cloneNode(true) as SVGSVGElement;

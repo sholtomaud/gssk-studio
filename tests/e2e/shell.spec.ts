@@ -3,7 +3,7 @@ import { expect, test } from './fixtures.ts';
 test('the library lists the examples and the kernel verifies', async ({ page }) => {
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Models', exact: true })).toBeVisible();
-  await expect(page.locator('[data-example]')).toHaveCount(6);
+  await expect(page.locator('[data-example]')).toHaveCount(7);
   await expect(page.locator('app-nav .kstate')).toHaveText(/verified/);
 });
 
@@ -25,5 +25,5 @@ test('the kernel self-test runs every example', async ({ page }) => {
   await page.getByRole('button', { name: 'Run self-test' }).click();
   await expect(page.locator('table.result')).toHaveAttribute('data-ready', 'true');
   await expect(page.locator('table.result')).toHaveAttribute('data-passed', 'true');
-  await expect(page.locator('table.result tbody tr')).toHaveCount(6);
+  await expect(page.locator('table.result tbody tr')).toHaveCount(7);
 });

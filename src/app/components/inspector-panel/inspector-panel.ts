@@ -17,10 +17,24 @@ import {
   alignNodes,
   distributeNodes,
   selectionKey,
+  selectNodes,
   toggleSensor,
   type Alignment,
   type Selection,
 } from '../../../model/ops.ts';
+import {
+  childGroups,
+  diagramView,
+  findGroup,
+  groupNodes,
+  groupOfNode,
+  nodesIn,
+  renameGroup,
+  revealNode,
+  setCollapsed,
+  ungroup,
+  type End,
+} from '../../../model/groups.ts';
 import {
   canForceNode,
   defaultForcing,
@@ -215,6 +229,11 @@ export class InspectorPanel extends BaseComponent {
     } else if (s?.kind === 'edge') {
       const e = findEdge(m, s.id);
       if (e) return this.edgeForm(m, e);
+    } else if (s?.kind === 'group') {
+      if (findGroup(m, s.id)) return this.groupForm(m, s.id);
+    } else if (s?.kind === 'bundle') {
+      const b = diagramView(m).bundles.find((x) => x.id === s.id);
+      if (b) return this.bundleForm(m, b.id);
     } else if (s?.kind === 'boundary') {
       const b = m._diagram.boundaries.find((x) => x.id === s.id);
       if (b) {
@@ -259,6 +278,180 @@ export class InspectorPanel extends BaseComponent {
     this.modelForm(m);
   }
 
+  /** A zoom group (FR-GRP-001): its name, packing, what it holds and what crosses its edge. */
+  private groupForm(m: StudioModel, id: string): void {
+    const g = findGroup(m, id);
+    if (!g) return;
+    const cur = () => this._model ?? m;
+    const inside = new Set(nodesIn(m, id));
+    const flowsIn = m.edges.filter((e) => inside.has(e.target) && !inside.has(e.origin));
+    const flowsOut = m.edges.filter((e) => inside.has(e.origin) && !inside.has(e.target));
+    const internal = m.edges.filter((e) => inside.has(e.origin) && inside.has(e.target));
+    const subgroups = childGroups(m, id);
+    const toggle = el(
+      'button',
+      { type: 'button', class: 'primary', name: 'pack' },
+      g.collapsed ? 'Unpack' : 'Pack'
+    );
+    toggle.onclick = () =>
+      this.emit(
+        setCollapsed(cur(), id, !g.collapsed),
+        `${g.collapsed ? 'Unpack' : 'Pack'} ${g.label}`
+      );
+    const ung = el('button', { type: 'button', text: 'Ungroup' });
+    ung.title = 'Remove the group and keep everything in it';
+    ung.onclick = () =>
+      this.emit(ungroup(cur(), id), `Ungroup ${g.label}`, undefined, selectNodes(g.nodes));
+    const del = el(
+      'button',
+      { type: 'button', class: 'danger' },
+      icon('trash'),
+      `Delete group and ${inside.size} symbols`
+    );
+    del.onclick = () =>
+      this.emit(
+        removeSelection(cur(), { kind: 'group', id }),
+        `Delete ${g.label}`,
+        undefined,
+        null
+      );
+    const nodeLink = (nodeId: string) => {
+      const n = findNode(m, nodeId);
+      const b = el('button', { type: 'button', text: n?.visual.label ?? nodeId });
+      b.onclick = () =>
+        this.emit(revealNode(cur(), nodeId), `Show ${nodeId}`, undefined, {
+          kind: 'node',
+          id: nodeId,
+        });
+      return b;
+    };
+    const groupLink = (gid: string) => {
+      const b = el('button', { type: 'button', text: findGroup(m, gid)?.label ?? gid });
+      b.onclick = () => this.selectRef({ kind: 'group', id: gid });
+      return b;
+    };
+    const parent = g.parent ? findGroup(m, g.parent) : undefined;
+    this.form.append(
+      el(
+        'section',
+        {},
+        el(
+          'div',
+          { class: 'kind' },
+          el(
+            'div',
+            {},
+            el('div', { class: 't', text: 'Group' }),
+            el('div', {
+              class: 's',
+              text: `${inside.size} symbols${subgroups.length ? `, ${subgroups.length} groups inside` : ''} · ${g.collapsed ? 'packed' : 'unpacked'}`,
+            })
+          )
+        ),
+        el('p', {
+          class: 'summary',
+          text: 'Packed, the group draws as one symbol and its flows across the edge as one combined flow. The kernel always runs every symbol inside, so packing never changes a result.',
+        }),
+        this.textField(
+          'Label',
+          g.label,
+          (v) => this.emit(renameGroup(cur(), id, v), 'Rename group', 'label'),
+          'label'
+        ),
+        parent
+          ? el(
+              'div',
+              { class: 'links' },
+              el('span', { class: 'hint', text: 'Inside' }),
+              groupLink(parent.id)
+            )
+          : null,
+        el('div', { class: 'actions' }, toggle, ung)
+      ),
+      el(
+        'section',
+        {},
+        el('h3', { text: 'Holds' }),
+        subgroups.length
+          ? el('div', { class: 'links' }, ...subgroups.map((c) => groupLink(c.id)))
+          : null,
+        g.nodes.length ? el('div', { class: 'links' }, ...g.nodes.map(nodeLink)) : null,
+        el('p', {
+          class: 'hint',
+          text: `${internal.length} flows inside; ${flowsIn.length} in and ${flowsOut.length} out across its edge.`,
+        }),
+        el('div', { class: 'actions' }, del)
+      )
+    );
+  }
+
+  /** A combined flow: the flows it stands for, each a link that unpacks to it. */
+  private bundleForm(m: StudioModel, bundleId: string): void {
+    const b = diagramView(m).bundles.find((x) => x.id === bundleId);
+    if (!b) return;
+    const cur = () => this._model ?? m;
+    const name = (e: End) =>
+      e.kind === 'group'
+        ? (findGroup(m, e.id)?.label ?? e.id)
+        : (findNode(m, e.id)?.visual.label ?? e.id);
+    const rows = b.edges.flatMap((id) => {
+      const e = findEdge(m, id);
+      if (!e) return [];
+      const show = el('button', { type: 'button', text: id, title: 'Unpack to this flow' });
+      show.onclick = () => {
+        const next = revealNode(revealNode(cur(), e.origin), e.target);
+        this.emit(next, `Show ${id}`, undefined, { kind: 'edge', id });
+      };
+      return [
+        el(
+          'tr',
+          { 'data-flow': id },
+          el('td', {}, show),
+          el('td', {
+            text: `${findNode(m, e.origin)?.visual.label ?? e.origin} → ${findNode(m, e.target)?.visual.label ?? e.target}`,
+          }),
+          el('td', { class: 'num', text: e.forcing ? '∿' : String(e.params.k) })
+        ),
+      ];
+    });
+    this.form.append(
+      el(
+        'section',
+        {},
+        el(
+          'div',
+          { class: 'kind' },
+          el(
+            'div',
+            {},
+            el('div', { class: 't', text: 'Combined flow' }),
+            el('div', { class: 's', text: `${name(b.origin)} → ${name(b.target)}` })
+          )
+        ),
+        el('p', {
+          class: 'summary',
+          text: `${b.edges.length} flow${b.edges.length === 1 ? '' : 's'} across a packed group’s edge, drawn as one. During playback its reading ΣJ is the sum of their rates.`,
+        }),
+        el(
+          'table',
+          { class: 'bundle-flows' },
+          el(
+            'thead',
+            {},
+            el(
+              'tr',
+              {},
+              el('th', { text: 'Flow' }),
+              el('th', { text: 'From → to' }),
+              el('th', { text: 'k' })
+            )
+          ),
+          el('tbody', {}, ...rows)
+        )
+      )
+    );
+  }
+
   /** Several symbols: align, distribute, delete (FR-EDIT-011, FR-EDIT-012). */
   private multiForm(m: StudioModel, ids: string[]): void {
     const cur = () => this._model ?? m;
@@ -295,6 +488,24 @@ export class InspectorPanel extends BaseComponent {
             el('div', { class: 't', text: `${ids.length} symbols selected` }),
             el('div', { class: 's', text: 'Shift-click to add or remove one' })
           )
+        ),
+        el(
+          'div',
+          { class: 'actions' },
+          (() => {
+            const b = el(
+              'button',
+              { type: 'button', class: 'primary', name: 'group' },
+              `Group ${ids.length} (Ctrl+G)`
+            );
+            b.title = 'Pack these symbols into one group symbol';
+            b.onclick = () => {
+              const { model, id } = groupNodes(cur(), ids);
+              if (id)
+                this.emit(model, `Group ${ids.length} symbols`, undefined, { kind: 'group', id });
+            };
+            return b;
+          })()
         ),
         el('h3', { text: 'Align' }),
         el(
@@ -566,6 +777,15 @@ export class InspectorPanel extends BaseComponent {
           )
         ),
         el('p', { class: 'summary', text: spec.summary }),
+        ...(() => {
+          const g = groupOfNode(m, id);
+          if (!g) return [];
+          const b = el('button', { type: 'button', text: g.label });
+          b.onclick = () => this.selectRef({ kind: 'group', id: g.id });
+          return [
+            el('div', { class: 'links' }, el('span', { class: 'hint', text: 'In group' }), b),
+          ];
+        })(),
         this.textField(
           'Label',
           n.visual.label ?? '',

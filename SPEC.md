@@ -147,6 +147,11 @@ Flow logics are the kernel's: `linear`, `constant`, `interaction`, `limit`, `thr
 
 A boundary is a labelled dashed region drawn beneath the nodes. It is never sent to the kernel.
 
+### 5.4 Zoom groups (FR-MOD-004)
+
+A group (`_diagram.groups`) names the symbols packed into it and may sit inside another group. It
+is never sent to the kernel (ADR 0010): the run, and its model hash, are the same packed or not.
+
 ## 6. Editor (FR-EDIT)
 
 - **FR-EDIT-001** Palette: every palette symbol, plus Boundary and Sensor. Click places the symbol
@@ -177,6 +182,38 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
   under fresh ids; a control outside the copy keeps pointing at the original while it exists.
 - **FR-EDIT-012** Align (left, centre, right, top, middle, bottom) and distribute (horizontally,
   vertically) several symbols from the inspector.
+
+### 6.1 Packing and unpacking (M7a, FR-GRP-001)
+
+Odum's diagrams zoom: a storage drawn once at one scale is many storages at the next, and an
+"Expenses" flow out of a bank is every bill paid. Zoom groups let one diagram be read at both.
+
+- **Pack**: select symbols and press Ctrl/⌘-G (or **Group** in the inspector). The new group goes
+  inside the deepest group that holds them all; a selected symbol inside a group below that brings
+  its whole group along, so nesting is kept. Groups nest to any depth.
+- **Packed**, a group draws as one stacked box at the centre of what it holds, with its name and
+  how many symbols it holds. Every flow between the same two visible ends, at least one a packed
+  group, draws as **one combined flow** labelled with its count. During playback the combined flow
+  reads ΣJ, the sum of its flows' rates, and is drawn that wide when Flow widths is on; the group
+  reads Σ, the total of the storages inside when they share one carrier, and nothing otherwise.
+  A control packed in a group is drawn from the group's symbol.
+- **Unpacked**, a group draws as a tinted frame around its contents, with its name and a pack
+  button. Groups inside it keep their own packing.
+- Double-click, or the + on a packed group, unpacks it; the − on a frame packs it. Dragging a
+  group moves everything in it. Selecting a symbol or flow that is packed out of sight (from the
+  checks, or a combined flow's list) unpacks what hides it.
+- A combined flow, selected, lists its flows with their rates; each is a link that unpacks to it.
+- A packed group carries the worst problem among its contents (FR-VAL-002), so nothing hides an
+  error. A combined flow carries its flows' problems.
+- **Ungroup** removes a group and keeps its contents, moved up a level. Deleting a group deletes
+  what it holds. Groups follow renames and deletions, and a group left empty goes.
+- You cannot wire to a packed group: unpack it to connect to a symbol inside.
+- Packing and moving are layout: neither marks a run "Model changed since this run" (FR-RES-005).
+- The **Household budget** example packs eleven bills and renewals into Expenses, with Housing,
+  Phone and internet, Living and Renewals inside it. Bills are constant flows; renewals are
+  repeating table forcings (FR-FRC-001).
+- Later (M7b): save a group as a reusable symbol (a kernel `archetypes` template), and unpack a
+  built-in composite (producer, consumer) into the members the kernel runs.
 
 ## 7. Simulation (FR-SIM)
 
@@ -209,7 +246,8 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   label and storage gauges. A **Flow widths** toggle (off by default, remembered) also draws each
   flow as wide as |J| relative to the run's largest flow, a Sankey-style reading.
 - **FR-RES-004** CSV download of every sample, node and flow.
-- **FR-RES-005** A result older than the model is marked "Model changed since this run".
+- **FR-RES-005** A result older than the model is marked "Model changed since this run": when
+  the model the kernel would be given differs, not when only layout, packing or notes changed.
 - **FR-RES-006** Compare: keep a run as a baseline; later runs draw it dashed in each series'
   colour (dash as the second encoding), over the current run's time range, and the tooltip
   gives the baseline value beside the current one. The baseline lasts for the session.
@@ -405,7 +443,8 @@ See [AGENTS.md](AGENTS.md#layout).
 | M4  | Calibration and sensitivity (§12)                                                                        | done        |
 | M5  | Forcing functions and ensembles (§12)                                                                    | done        |
 | M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned     |
-| M7  | Hierarchy: archetypes and nested sub-models (kernel Schema v4 `archetypes`)                              | exploratory |
+| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                 | done        |
+| M7b | Reusable group symbols (kernel `archetypes`), unpacking built-in composites                              | exploratory |
 
 ## 20. Open questions
 
