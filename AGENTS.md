@@ -20,24 +20,25 @@ the requirements document. Cite its IDs (`FR-…`, `NFR-…`, `K-…`) in commit
 
 ## Layout
 
-| Path                  | What                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `src/app/core/`       | Boba-style `BaseComponent` and `Router` (shared with budget-app).                                                    |
-| `src/app/components/` | One folder per custom element: `.ts`, `.css`, and `.html` where the markup is static.                                |
-| `src/model/`          | The model document: types, symbol catalogue, edit operations, checks, history, import/export, kernel JSON, examples. |
-| `src/diagram/`        | Odum symbols as SVG and the geometry of anchors and Bézier flows.                                                    |
-| `src/sim/`            | `gssk.ts`, the only code that touches WASM memory; `run.ts`, a whole run with sampling, manifest and diagnostics.    |
-| `src/viz/`            | Chart scales, series colour slots, results CSV.                                                                      |
-| `src/store/`          | IndexedDB with versioned migrations; the model library.                                                              |
-| `src/workers/`        | `sim.worker.ts` and the in-house RPC. The UI never touches WASM directly.                                            |
-| `src/sw/sw.js`        | Service-worker template; the build fills in the precache list.                                                       |
-| `vendor/gssk/`        | Pinned kernel and `GSSK_PIN.json`.                                                                                   |
-| `tests/unit`          | Vitest, DOM-free logic.                                                                                              |
-| `tests/kernel`        | Vitest against the real pinned kernel.                                                                               |
-| `tests/e2e`           | Playwright against the production build, served the way GitHub Pages serves it.                                      |
-| `tests/fixtures`      | Synthetic model files.                                                                                               |
-| `scripts/`            | GSSK verify and update, bundle size, the Pages-like static server.                                                   |
-| `docs/adr/`           | Architecture decisions.                                                                                              |
+| Path                  | What                                                                                                                                            |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/app/core/`       | Boba-style `BaseComponent` and `Router` (shared with budget-app).                                                                               |
+| `src/app/components/` | One folder per custom element: `.ts`, `.css`, and `.html` where the markup is static.                                                           |
+| `src/model/`          | The model document: types, symbol catalogue, edit operations, checks, history, import/export, kernel JSON, examples.                            |
+| `src/sdk/`            | `gssk/`, the domain-neutral model builder; `energese/`, Odum's symbols as constructs, and code generation (ADR 0010). Never imports `src/app/`. |
+| `src/diagram/`        | Odum symbols as SVG and the geometry of anchors and Bézier flows.                                                                               |
+| `src/sim/`            | `gssk.ts`, the only code that touches WASM memory; `run.ts`, a whole run with sampling, manifest and diagnostics.                               |
+| `src/viz/`            | Chart scales, series colour slots, results CSV.                                                                                                 |
+| `src/store/`          | IndexedDB with versioned migrations; the model library.                                                                                         |
+| `src/workers/`        | `sim.worker.ts` and the in-house RPC. The UI never touches WASM directly.                                                                       |
+| `src/sw/sw.js`        | Service-worker template; the build fills in the precache list.                                                                                  |
+| `vendor/gssk/`        | Pinned kernel and `GSSK_PIN.json`.                                                                                                              |
+| `tests/unit`          | Vitest, DOM-free logic.                                                                                                                         |
+| `tests/kernel`        | Vitest against the real pinned kernel.                                                                                                          |
+| `tests/e2e`           | Playwright against the production build, served the way GitHub Pages serves it.                                                                 |
+| `tests/fixtures`      | Synthetic model files.                                                                                                                          |
+| `scripts/`            | GSSK verify and update, bundle size, the Pages-like static server.                                                                              |
+| `docs/adr/`           | Architecture decisions.                                                                                                                         |
 
 ## Conventions
 

@@ -7,6 +7,7 @@ import { BaseComponent, define } from '../../core/base-component.ts';
 import { PALETTE } from '../../../model/catalogue.ts';
 import { History } from '../../../model/history.ts';
 import { fileNameFor, serialiseModel } from '../../../model/io.ts';
+import { toEnergese } from '../../../sdk/energese/codegen.ts';
 import {
   addBoundary,
   copyFragment,
@@ -282,7 +283,10 @@ export class StudioPage extends BaseComponent {
     this.results.setRun(null, { state: 'idle' });
   }
 
-  /** Export: the model file, or the diagram as SVG or PNG (FR-IO-001, FR-IO-004). */
+  /**
+   * Export: the model file, its Energese code, or the diagram as SVG or PNG
+   * (FR-IO-001, FR-SDK-002, FR-IO-004).
+   */
   private exportMenu(): HTMLElement {
     const base = () => fileNameFor(this.model ?? emptyModel()).replace(/\.gssk\.json$/, '');
     const item = (label: string, title: string, run: () => void | Promise<void>) => {
@@ -321,6 +325,14 @@ export class StudioPage extends BaseComponent {
           'The model file, loadable by GSSK Studio and by GSSK_Init',
           () => {
             if (this.model) downloadText(fileNameFor(this.model), serialiseModel(this.model));
+          }
+        ),
+        item(
+          'Energese code (.energese.ts)',
+          'The model as Energese TypeScript; running it gives back the same model file',
+          () => {
+            if (this.model)
+              downloadText(`${base()}.energese.ts`, toEnergese(this.model), 'text/plain');
           }
         ),
         item('Diagram (SVG)', 'The diagram as a vector picture', () =>

@@ -227,6 +227,29 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
 - **FR-IO-004** Export the diagram as SVG or PNG (2×): a standalone picture with the theme's
   colours written in, without editing chrome (ports, handles, selection).
 
+### 9.1 Code: the Energese SDK (FR-SDK, M8)
+
+The `.gssk.json` document is the model; the diagram and TypeScript are builders of it (ADR 0009).
+GSSK is a general kernel and Energese is one language over it (ADR 0010). See
+[docs/architecture.md](docs/architecture.md).
+
+- **FR-SDK-001** `src/sdk/gssk/` is a domain-neutral builder (`GsskModel`: `addNode`, `addEdge`,
+  `addBoundary`, `synth`). `src/sdk/energese/` offers one construct per symbol (§5.2) and one
+  helper per flow logic over it. `synth()` returns a studio model, field for field as
+  `normaliseModel` writes one.
+- **FR-SDK-002** `toEnergese` writes any model as declarative Energese TypeScript: one statement
+  per symbol, flow and boundary; ids only where the label would not give the same one. Export
+  offers it as `.energese.ts`.
+- **FR-SDK-003** Round trip: running the generated code synthesizes the same file byte for byte
+  (observations aside, FR-SDK-004) and the same kernel run (same model hash), for every example
+  and every symbol and logic.
+- **FR-SDK-004** `synth({ previous })` keeps, by id, the positions and flow curves a script leaves
+  unset and the previous model's observations; an observation whose target is gone is unmapped.
+- **FR-SDK-005** Nodes left unplaced are laid out left to right by flow distance from the nodes
+  nothing flows into, heat sinks below, never on top of another node.
+- **FR-SDK-006** (planned, ADR 0011) A code view: edit, type-check and run Energese scripts in the
+  studio with tsrs and Monaco; the result replaces the model as one undoable edit.
+
 ## 10. Validation (FR-VAL)
 
 - **FR-VAL-001** On every edit: errors (missing endpoints, duplicate or unusable ids, a logic
@@ -368,6 +391,11 @@ See [AGENTS.md](AGENTS.md#layout).
 | M5  | Forcing functions and ensembles (§12)                                                                    | planned     |
 | M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned     |
 | M7  | Hierarchy: archetypes and nested sub-models (kernel Schema v4 `archetypes`)                              | exploratory |
+| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0011)              | in progress |
+| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                | planned     |
+| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0012)                                           | planned     |
+| M11 | Article editing: LaTeX in the browser, figures bound to runs                                             | planned     |
+| M12 | Assistant: chat over the app's methods; it never produces a number (NFR-HON-002)                         | planned     |
 
 ## 20. Open questions
 
