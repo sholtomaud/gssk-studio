@@ -251,12 +251,30 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   p-value is shown (gssk-dia's `1 − R²` was not one).
 - The Reservoir example carries synthetic gauge readings (the run with a fixed ±4 % pattern).
 
-## 12. Calibration, sensitivity and ensembles (M4–M5, planned)
+## 12. Calibration, sensitivity and ensembles
 
-- **FR-CAL-001** Calibrate chosen edge rates to observations with the kernel's
-  `GSSK_CalibrateGradient` (Levenberg–Marquardt with forward sensitivity) in the worker, with
-  progress and a before/after fit.
-- **FR-SEN-001** Local sensitivity ∂Q/∂k from `GSSK_EnableForwardSensitivity`.
+### 12.1 Calibration (M4, FR-CAL-001)
+
+- **Calibrate rates…** (Results → Fit) fits chosen flow rates k to the compared observations. Rates
+  on flows into or out of an observed symbol are pre-selected.
+- Least squares over θ = ln k, so rates stay positive. Each series' residuals are divided by that
+  series' spread, so series in different units weigh alike. Solved by Levenberg–Marquardt, with a
+  forward-difference Jacobian where every evaluation is a real run on the pinned kernel
+  (ADR 0008). It runs in the worker with progress and Cancel.
+- The result shows each rate before and after, a linearised standard error (σ²(JᵀJ)⁻¹, stated as
+  indicative), rates the data do not inform (left unchanged), NSE and RMSE before and after, the
+  stopping reason and the number of kernel runs. Nothing changes until **Apply rates**, which is
+  one undoable edit; applied rates are rounded to six significant figures.
+
+### 12.2 Sensitivity (M4, FR-SEN-001)
+
+- **Sensitivity to rates** (Results) gives, for each charted series and each rate, the elasticity
+  ∂ln y / ∂ln k of the series' mean over the run (and of its final value, on hover). Central
+  differences at k × (1 ± 1 %) on real kernel runs; local to the current rates. Rates are sorted by
+  their strongest effect.
+
+### 12.3 Ensembles and forcing (M5, planned)
+
 - **FR-ENS-001** Ensembles from `GSSK_EnsembleForecast` with an explicit seed (NFR-DET-001),
   drawn as min–max envelopes around the mean.
 - **FR-FRC-001** Forcing functions (step, ramp, sine, table …) on sources and edges, previewed with
@@ -325,6 +343,14 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   drives a control from it (a flow-controlled switch or gate). Request: let `params.control_node`
   (or a new `params.control_edge`) name an edge whose current J is the control value.
   Until then a sensor displays and charts J only (FR-EDIT-010).
+- **K-6** `GSSK_CalibrateGradient` returns success but stops far from the optimum: on the
+  reservoir example, from rates 50 % off it halves the misfit and halts at the same wrong point
+  after 50 or 500 iterations, where the app's own Levenberg–Marquardt over kernel runs recovers
+  the true rates to three significant figures. Its forward sensitivity is Euler-integrated while
+  the run uses `rk4`, which may give a gradient that does not match the model as run. Its
+  observations also cross the boundary as C structs, which bakes wasm32 field offsets into the
+  caller. Request: a gradient consistent with the run's method, and flat setters for
+  observations. Until then calibration is in the app (ADR 0008).
 
 ## 18. Repository layout
 
@@ -338,7 +364,7 @@ See [AGENTS.md](AGENTS.md#layout).
 | M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback          | done        |
 | M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done        |
 | M3  | Observations and fitness (§11)                                                                           | done        |
-| M4  | Calibration and sensitivity (§12)                                                                        | planned     |
+| M4  | Calibration and sensitivity (§12)                                                                        | done        |
 | M5  | Forcing functions and ensembles (§12)                                                                    | planned     |
 | M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned     |
 | M7  | Hierarchy: archetypes and nested sub-models (kernel Schema v4 `archetypes`)                              | exploratory |

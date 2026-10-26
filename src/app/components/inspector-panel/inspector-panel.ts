@@ -84,6 +84,8 @@ export class InspectorPanel extends BaseComponent {
 
   set model(m: StudioModel) {
     const echo = m === this.emitted;
+    // An echo is the immediate round trip of our own edit; the same model coming back later (undo) is not.
+    this.emitted = null;
     this._model = m;
     if (this.form) this.renderForm(!echo);
   }

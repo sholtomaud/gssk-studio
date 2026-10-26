@@ -40,6 +40,8 @@ import type { ResultsPanel } from '../results-panel/results-panel.ts';
 import '../diagram-canvas/diagram-canvas.ts';
 import '../inspector-panel/inspector-panel.ts';
 import '../results-panel/results-panel.ts';
+import '../calibrate-dialog/calibrate-dialog.ts';
+import type { CalibrateDialog } from '../calibrate-dialog/calibrate-dialog.ts';
 import style from './studio-page.css?raw';
 
 const SAVE_DELAY_MS = 400;
@@ -255,6 +257,19 @@ export class StudioPage extends BaseComponent {
         this.select((e as CustomEvent<Selection>).detail)
       );
     }
+    this.addEventListener('calibrate-request', () => this.openCalibration());
+    this.results.addEventListener('sensitivity-request', (e) => {
+      const r = this.result;
+      const m = this.resultModel;
+      if (!r || !m) return;
+      const targets = (e as CustomEvent<string[]>).detail;
+      simWorker()
+        .sensitivity(m, targets)
+        .then((data) => this.results.setSensitivity(r, targets, data))
+        .catch((err: unknown) =>
+          this.results.setSensitivity(r, targets, err instanceof Error ? err.message : String(err))
+        );
+    });
     this.canvas.addEventListener('diagram-hint', (e) => toast((e as CustomEvent<string>).detail));
     this.canvas.addEventListener('diagram-rename', () => {
       this.inspector.querySelector<HTMLInputElement>('input[name="label"]')?.select();
@@ -321,6 +336,26 @@ export class StudioPage extends BaseComponent {
     };
     document.addEventListener('click', this.closeMenu);
     return menu;
+  }
+
+  /** Fit rates to the observations (FR-CAL-001); the result is one undoable edit. */
+  private openCalibration(): void {
+    const m = this.model;
+    if (!m) return;
+    if (hasErrors(this.issues)) {
+      toast('Fix the problems listed under Checks before calibrating.');
+      return;
+    }
+    let dlg = this.querySelector<CalibrateDialog>('calibrate-dialog');
+    if (!dlg) {
+      dlg = document.createElement('calibrate-dialog') as CalibrateDialog;
+      this.append(dlg);
+    }
+    dlg.onApply = (model) => {
+      this.commit({ model, label: 'Calibrate rates' });
+      toast('Calibrated rates applied. Run to see the new fit; undo to go back.');
+    };
+    dlg.open(m);
   }
 
   private setupSplitter(s: HTMLElement): void {

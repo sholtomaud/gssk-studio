@@ -7,6 +7,8 @@ import pinJson from '../../vendor/gssk/GSSK_PIN.json' with { type: 'json' };
 import { GsskKernel, type GsskPin, type KernelInfo } from '../sim/gssk.ts';
 import { RunSession, runModel, type RunResult } from '../sim/run.ts';
 import type { StudioModel } from '../model/types.ts';
+import { CalibrationSession, type CalibrationResult } from '../fit/calibrate.ts';
+import { elasticities, type Elasticity } from '../fit/sensitivity.ts';
 import { expose, type Endpoint } from './rpc.ts';
 
 const pin = pinJson as GsskPin;
@@ -33,6 +35,22 @@ let nextToken = 1;
 function current(token: number): RunSession {
   if (!session || session.token !== token) throw new Error('That run was cancelled or replaced.');
   return session.run;
+}
+
+/** The calibration in progress (FR-CAL-001); one at a time, like runs. */
+let calibration: { token: number; cal: CalibrationSession } | null = null;
+
+function currentCalibration(token: number): CalibrationSession {
+  if (!calibration || calibration.token !== token)
+    throw new Error('That calibration was cancelled or replaced.');
+  return calibration.cal;
+}
+
+export interface CalibrationProgress {
+  iteration: number;
+  maxIterations: number;
+  sse: number;
+  done: boolean;
 }
 
 export interface RunProgress {
@@ -65,6 +83,31 @@ const api = {
     const result = current(token).result();
     session = null;
     return result;
+  },
+  async calibrateBegin(
+    model: StudioModel,
+    edgeIds: string[],
+    maxIterations: number
+  ): Promise<number> {
+    const cal = new CalibrationSession(await getKernel(), model, edgeIds, maxIterations);
+    calibration = { token: nextToken++, cal };
+    return calibration.token;
+  },
+  calibrateAdvance(token: number, budgetMs: number): CalibrationProgress {
+    const cal = currentCalibration(token);
+    cal.advance(budgetMs);
+    return { ...cal.progress, done: cal.done };
+  },
+  calibrateFinish(token: number): CalibrationResult {
+    const result = currentCalibration(token).result();
+    calibration = null;
+    return result;
+  },
+  calibrateCancel(token: number): void {
+    if (calibration?.token === token) calibration = null;
+  },
+  async sensitivity(model: StudioModel, targets: string[]): Promise<Elasticity[]> {
+    return elasticities(await getKernel(), model, targets);
   },
   cancel(token: number): void {
     if (session?.token === token) {

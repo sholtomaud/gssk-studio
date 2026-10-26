@@ -1,0 +1,93 @@
+:host dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-2);
+  padding: 0;
+}
+:host dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+:host .wrap {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+}
+:host .wrap > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+:host .lede,
+:host .note {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+:host .note {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+:host .rates {
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+}
+:host .rates label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+:host .rates .k {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+:host .row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+:host .row .spacer {
+  flex: 1;
+}
+:host .row input[type='number'] {
+  width: 80px;
+}
+:host progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+:host table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+:host th,
+:host td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+}
+:host th:first-child,
+:host td:first-child {
+  text-align: left;
+}
+:host th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+:host td.flag {
+  color: var(--warning-text);
+  text-align: left;
+}

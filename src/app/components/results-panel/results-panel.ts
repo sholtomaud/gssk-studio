@@ -7,6 +7,7 @@
 import { BaseComponent, define } from '../../core/base-component.ts';
 import { sampleAt, type RunResult } from '../../../sim/run.ts';
 import { fitSeries } from '../../../fit/stats.ts';
+import type { Elasticity } from '../../../fit/sensitivity.ts';
 import type { ObservationSeries } from '../../../model/types.ts';
 import { resultCsv } from '../../../viz/csv.ts';
 import { seriesColor, SlotAssigner } from '../../../viz/colors.ts';
@@ -59,7 +60,11 @@ export class ResultsPanel extends BaseComponent {
   private readonly slots = new SlotAssigner();
   private sample = 0;
   /** What the plot area shows: the chart, its numbers, or fit to observations. */
-  private view: 'chart' | 'table' | 'fit' = 'chart';
+  private view: 'chart' | 'table' | 'fit' | 'sens' = 'chart';
+  /** Elasticities for the current run, once asked for (FR-SEN-001). */
+  private sens: { result: RunResult; key: string; data: Elasticity[] | string } | null = null;
+  /** The request in flight, so a redraw does not ask twice. */
+  private sensPending = '';
   private obs: ObservationSeries[] = [];
   private playing = 0;
   private fileName = 'results';
@@ -75,6 +80,7 @@ export class ResultsPanel extends BaseComponent {
   private csvBtn!: HTMLButtonElement;
   private baselineBtn!: HTMLButtonElement;
   private fitBtn!: HTMLButtonElement;
+  private sensBtn!: HTMLButtonElement;
   /** A kept run, drawn dashed under the current one (FR-RES-006). */
   private baseline: RunResult | null = null;
 
@@ -91,6 +97,9 @@ export class ResultsPanel extends BaseComponent {
     this.fitBtn = iconButton('target', 'Fit to observations');
     this.fitBtn.setAttribute('aria-pressed', 'false');
     this.fitBtn.onclick = () => this.setView(this.view === 'fit' ? 'chart' : 'fit');
+    this.sensBtn = iconButton('sliders', 'Sensitivity to rates');
+    this.sensBtn.setAttribute('aria-pressed', 'false');
+    this.sensBtn.onclick = () => this.setView(this.view === 'sens' ? 'chart' : 'sens');
     this.baselineBtn = iconButton('pin', 'Keep this run as a baseline to compare against');
     this.baselineBtn.setAttribute('aria-pressed', 'false');
     this.baselineBtn.onclick = () => {
@@ -110,6 +119,7 @@ export class ResultsPanel extends BaseComponent {
         el('span', { class: 'spacer' }),
         this.baselineBtn,
         this.fitBtn,
+        this.sensBtn,
         this.tableBtn,
         this.csvBtn
       )
@@ -169,8 +179,16 @@ export class ResultsPanel extends BaseComponent {
     if (this.plot) this.drawPlot();
   }
 
-  private setView(v: 'chart' | 'table' | 'fit'): void {
+  /** The studio answers a `sensitivity-request` with this. */
+  setSensitivity(result: RunResult, targets: readonly string[], data: Elasticity[] | string): void {
+    this.sens = { result, key: targets.join('|'), data };
+    this.sensPending = '';
+    if (this.view === 'sens') this.drawPlot();
+  }
+
+  private setView(v: 'chart' | 'table' | 'fit' | 'sens'): void {
     this.view = v;
+    this.sensBtn.setAttribute('aria-pressed', String(v === 'sens'));
     this.tableBtn.setAttribute('aria-pressed', String(v === 'table'));
     this.fitBtn.setAttribute('aria-pressed', String(v === 'fit'));
     this.drawPlot();
@@ -330,6 +348,7 @@ export class ResultsPanel extends BaseComponent {
     const series = this.visible();
     if (this.view === 'table') return this.drawTable(r, series);
     if (this.view === 'fit') return this.drawFit(r);
+    if (this.view === 'sens') return this.drawSensitivity(r, series);
     const W = this.plot.clientWidth;
     const H = this.plot.clientHeight;
     if (W < 50 || H < 50) return;
@@ -519,6 +538,79 @@ export class ResultsPanel extends BaseComponent {
     this.plot.append(root, tip);
   }
 
+  /** Elasticity of each charted series to each rate (FR-SEN-001). */
+  private drawSensitivity(r: RunResult, series: ReturnType<ResultsPanel['visible']>): void {
+    const targets = series.map((s) => s.id);
+    const key = targets.join('|');
+    const have = this.sens?.result === r && this.sens.key === key ? this.sens.data : null;
+    if (targets.length === 0) {
+      this.plot.append(
+        el('div', { class: 'empty', text: 'Chart at least one series to see its sensitivity.' })
+      );
+      return;
+    }
+    if (!have) {
+      this.plot.append(
+        el('div', {
+          class: 'empty',
+          role: 'status',
+          text: 'Measuring sensitivity: two kernel runs per rate…',
+        })
+      );
+      if (this.sensPending !== key) {
+        this.sensPending = key;
+        this.dispatchEvent(
+          new CustomEvent<string[]>('sensitivity-request', { detail: targets, bubbles: true })
+        );
+      }
+      return;
+    }
+    if (typeof have !== 'string' && have.length === 0) {
+      this.plot.append(el('div', { class: 'empty', text: 'No flow has a positive rate to vary.' }));
+      return;
+    }
+    if (typeof have === 'string') {
+      this.plot.append(el('div', { class: 'empty', role: 'alert', text: have }));
+      return;
+    }
+    const edges = [...new Set(have.map((e) => e.edgeId))];
+    const cell = (edge: string, t: string) => have.find((e) => e.edgeId === edge && e.target === t);
+    const strongest = (edge: string) =>
+      Math.max(...targets.map((t) => Math.abs(cell(edge, t)?.mean ?? 0)));
+    edges.sort((a, b) => strongest(b) - strongest(a));
+    const f = (v: number | undefined) =>
+      v === undefined || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}`;
+    const head = el(
+      'tr',
+      {},
+      el('th', { text: 'Rate' }),
+      ...series.map((s) => el('th', { text: s.label, title: s.id }))
+    );
+    const rows = edges.map((edge) =>
+      el(
+        'tr',
+        { 'data-rate': edge },
+        el('td', { text: edge }),
+        ...targets.map((t) => {
+          const c = cell(edge, t);
+          return el('td', { class: 'num', text: f(c?.mean), title: `final value: ${f(c?.final)}` });
+        })
+      )
+    );
+    const note = el('p', {
+      class: 'fit-note',
+      text: 'Elasticity of each series’ mean over the run to each rate k: +0.50 means a 1 % rise in k raises the mean by about 0.5 %. Central differences at k × (1 ± 1 %), on real kernel runs; local to the current rates. Hover a value for the elasticity of the final value. Rates are sorted by their strongest effect.',
+    });
+    this.plot.append(
+      el(
+        'div',
+        { class: 'table-wrap' },
+        el('table', { class: 'fit sens' }, el('thead', {}, head), el('tbody', {}, ...rows)),
+        note
+      )
+    );
+  }
+
   /** Fit of each compared observation series to this run (FR-FIT-001). */
   private drawFit(r: RunResult): void {
     const all = new Map(seriesOf(r).map((x) => [x.id, x]));
@@ -562,6 +654,15 @@ export class ResultsPanel extends BaseComponent {
       class: 'fit-note',
       text: 'The run is interpolated at each observation time. RMSE, MAE and bias (sim − obs) are in the series’ units. NSE: Nash–Sutcliffe efficiency, 1 is perfect, 0 is no better than the observed mean. KGE: Kling–Gupta efficiency (Gupta et al. 2009). r²: squared Pearson correlation. These describe fit; none is a significance test, so no p-value is given.',
     });
+    const calibrate = el(
+      'button',
+      { type: 'button', class: 'calibrate' },
+      icon('target'),
+      'Calibrate rates…'
+    );
+    calibrate.onclick = () =>
+      this.dispatchEvent(new CustomEvent('calibrate-request', { bubbles: true }));
+    this.plot.append(el('div', { class: 'fit-actions' }, calibrate));
     this.plot.append(
       el(
         'div',
