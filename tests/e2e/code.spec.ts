@@ -12,9 +12,12 @@ async function openCode(page: Page): Promise<void> {
 
 /** Replace the editor's text, as a paste does. */
 async function setScript(page: Page, text: string): Promise<void> {
-  await page.locator('code-view .monaco-editor .view-lines').click();
+  const editor = page.locator('code-view .monaco-editor');
+  await editor.locator('.view-lines').click();
+  await expect(editor).toHaveClass(/\bfocused\b/);
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(text);
+  await expect(editor.locator('.view-lines')).toContainText(text.split('\n')[1]!);
 }
 
 const nodes = (page: Page) => page.locator('diagram-canvas [data-node]');

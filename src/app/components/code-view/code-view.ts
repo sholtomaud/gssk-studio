@@ -48,6 +48,8 @@ export class CodeView extends BaseComponent {
   private checkTimer = 0;
   private syncToken = 0;
   private busy = false;
+  /** tsrs has loaded; until then the check status says so. */
+  private ready = false;
   /** Whether the model's script still describes it. */
   private scriptCurrent = false;
 
@@ -143,11 +145,16 @@ export class CodeView extends BaseComponent {
     this.editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void this.apply());
     this.textModel.onDidChangeContent(() => {
       this.renderState();
+      // A result for the previous text is not a result for this one.
+      if (this.ready) this.setCheck('busy', 'Checking…');
       window.clearTimeout(this.checkTimer);
       this.checkTimer = window.setTimeout(() => void this.check(), CHECK_DELAY_MS);
     });
     compilerReady().then(
-      () => void this.check(),
+      () => {
+        this.ready = true;
+        void this.check();
+      },
       (err: unknown) => this.setCheck('critical', `TypeScript did not load: ${String(err)}`)
     );
     void this.sync();
