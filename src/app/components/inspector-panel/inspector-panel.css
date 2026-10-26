@@ -133,3 +133,32 @@
   align-items: end;
   gap: 4px;
 }
+:host .forcing-preview svg.wave {
+  width: 100%;
+  height: 72px;
+  display: block;
+  background: var(--surface-sunken);
+  border-radius: 6px;
+}
+:host .forcing-preview .line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+:host .forcing-preview .ref {
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+:host .forcing-preview .band {
+  fill: var(--accent);
+  opacity: 0.18;
+}
+:host .forcing-preview .wave-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}

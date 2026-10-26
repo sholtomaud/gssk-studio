@@ -56,7 +56,7 @@ Studio makes it dependable.
 
 - **Modeller**: draws a system, sets rates, runs, compares runs, exports the model and its results.
 - **Educator**: opens an example, plays it back to a class, changes one rate and runs again.
-- **Analyst**: loads observed data and measures fit (M3); calibrates rates, runs ensembles (M4–M5).
+- **Analyst**: loads observed data and measures fit (M3); calibrates rates, forces inputs and runs ensembles (M4–M5).
 
 ## 4. Architecture
 
@@ -232,7 +232,11 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
 - **FR-VAL-001** On every edit: errors (missing endpoints, duplicate or unusable ids, a logic
   missing its control or threshold, non-numeric values, a non-positive step, an end before the
   start, more than 500,000 steps) and warnings (isolated symbols, flows into a source, flows out of
-  a heat sink, long composite ids). Each names and links to the node or flow at fault.
+  a heat sink, long composite ids, forcing errors and forcing under `auto`, §12.3). Each names and
+  links to the node or flow at fault.
+- **FR-VAL-002** On the canvas, a symbol or flow with an error is drawn red and one with only
+  warnings orange, and each carries a "!" badge whose tooltip lists its problems, so colour is
+  never the only signal. Clicking the badge selects it. Badges are left out of diagram exports.
 
 ## 11. Observations and fitness (M3)
 
@@ -273,12 +277,37 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   differences at k × (1 ± 1 %) on real kernel runs; local to the current rates. Rates are sorted by
   their strongest effect.
 
-### 12.3 Ensembles and forcing (M5, planned)
+### 12.3 Forcing functions (M5, FR-FRC-001)
 
-- **FR-ENS-001** Ensembles from `GSSK_EnsembleForecast` with an explicit seed (NFR-DET-001),
-  drawn as min–max envelopes around the mean.
-- **FR-FRC-001** Forcing functions (step, ramp, sine, table …) on sources and edges, previewed with
-  `GSSK_EvaluateNodeForcing` so the drawn curve is the simulated one.
+- A source, a constant or a flow can carry a **forcing**: the kernel's own `forcing` block
+  (`$defs/Forcing`), stored as the kernel reads it. On a source or constant it drives the held
+  value; on a flow it drives the rate k in place of `params.k`. Waveforms: step, impulse, ramp,
+  exponential, sine, square, sawtooth, jitter (random, from the seeded kernel RNG) and table
+  (points in model time, linear or step between them, held or repeated past the ends), each with
+  optional clamps. A storage cannot be forced: its level is the integral of its flows, and the
+  kernel refuses it.
+- The inspector edits the waveform in the kernel's terms and draws it over the run. The preview
+  uses the kernel's formulas in TypeScript; a kernel test holds it equal to
+  `GSSK_EvaluateNodeForcing`/`GSSK_EvaluateEdgeForcing` for every waveform (ADR 0009).
+- Forced symbols and flows carry a small wave mark (∿) on the canvas, and their tooltip says how
+  they are forced. Checks (FR-VAL-001) name what the kernel would refuse: a forced storage, a
+  periodic wave with no positive period, a table whose times do not increase, clamps the wrong way
+  round. They warn that `auto` disagrees with its own solver check on forced models (K-7).
+- The **Seasonal river** example forces its rain with a sine and its evaporation rate with a
+  square wave.
+
+### 12.4 Ensembles (M5, FR-ENS-001)
+
+- **Ensemble** (Results) runs `GSSK_EnsembleForecast` on the current run's model: 2–500 runs, each
+  scaling every flow's k by its own uniform draw from [1 − p, 1 + p], with an explicit uint64
+  seed (NFR-DET-001). The same seed, model and kernel give the same band.
+- Each charted series gets a shaded band from the lowest to the highest value any run reached at
+  each time, and a dotted line for their mean. The status names the runs, p and the seed, and the
+  tooltip gives the band at the hovered time. It says plainly that every run is perturbed (the
+  mean is not the run) and that only rates are varied.
+- The kernel holds three doubles per step per kernel node, so an ensemble over 4 million cells is
+  refused in words. It is one kernel call in the worker, without progress (ADR 0009).
+- Every run manifest now records the kernel RNG seed, since jitter forcing draws from it.
 
 ## 13. External services (M6, opt-in, planned)
 
@@ -351,6 +380,15 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   observations also cross the boundary as C structs, which bakes wasm32 field offsets into the
   caller. Request: a gradient consistent with the run's method, and flat setters for
   observations. Until then calibration is in the app (ADR 0008).
+- **K-7** In `auto` mode, any forcing (on a source or a flow) makes nearly every step return
+  `GSSK_WARN_SOLVER_DIVERGENCE` (household example with a sine on its income: 1,180 of 1,200
+  steps), while `rk4`, `expm` and `euler` run clean. The matrix-exponential side appears to hold
+  the forcing constant across a step. Request: evaluate forcing within the expm step, or have
+  auto choose RK4 for forced models, and say which it did. Until then the checks warn and
+  recommend `rk4`.
+- **K-8** `GSSK_EnsembleForecast` has no progress callback or cancel, and perturbs every run,
+  so no member is the unperturbed run. Request: a chunked or cancellable ensemble, and an option
+  to include the base run.
 
 ## 18. Repository layout
 
@@ -365,7 +403,7 @@ See [AGENTS.md](AGENTS.md#layout).
 | M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done        |
 | M3  | Observations and fitness (§11)                                                                           | done        |
 | M4  | Calibration and sensitivity (§12)                                                                        | done        |
-| M5  | Forcing functions and ensembles (§12)                                                                    | planned     |
+| M5  | Forcing functions and ensembles (§12)                                                                    | done        |
 | M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned     |
 | M7  | Hierarchy: archetypes and nested sub-models (kernel Schema v4 `archetypes`)                              | exploratory |
 

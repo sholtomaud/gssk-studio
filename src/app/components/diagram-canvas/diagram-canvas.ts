@@ -7,6 +7,7 @@
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
 import { isNodeType, symbolFor } from '../../../model/catalogue.ts';
+import { describeForcing } from '../../../model/forcing.ts';
 import {
   addNode,
   connect,
@@ -61,6 +62,12 @@ function storedFlowWidths(): boolean {
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
 
+/** What the validator found on one node or flow (FR-VAL-002). */
+export interface Marked {
+  severity: 'error' | 'warning';
+  messages: string[];
+}
+
 export interface EditDetail {
   model: StudioModel;
   /** What the edit was, for the undo tooltip. */
@@ -91,7 +98,7 @@ export class DiagramCanvas extends BaseComponent {
   private _model: StudioModel | null = null;
   private _selection: Selection = null;
   private _playback: Playback | null = null;
-  private _invalid = new Set<string>();
+  private _issues = new Map<string, Marked>();
   private view = { x: 0, y: 0, s: 1 };
   /** Draw flows as wide as their rate during playback (FR-RES-003); off by default. */
   private flowWidths = storedFlowWidths();
@@ -100,6 +107,8 @@ export class DiagramCanvas extends BaseComponent {
   private gestureSeq = 0;
   private readonly nodeEls = new Map<string, SVGGElement>();
   private readonly edgeEls = new Map<string, SVGGElement>();
+  /** Flow badges, appended to the overlay once every flow is drawn. */
+  private edgeBadges: SVGGElement[] = [];
 
   private root!: SVGSVGElement;
   private world!: SVGGElement;
@@ -239,10 +248,39 @@ export class DiagramCanvas extends BaseComponent {
     if (this.root) this.applyPlayback();
   }
 
-  /** Ids of nodes and flows with an error, drawn in the critical colour. */
-  set invalid(ids: ReadonlySet<string>) {
-    this._invalid = new Set(ids);
+  /**
+   * Problems per node or flow id (FR-VAL-002): an error draws it red, a
+   * warning orange, and either gets a "!" badge carrying the messages, so the
+   * colour is never the only signal.
+   */
+  set issues(issues: ReadonlyMap<string, Marked>) {
+    this._issues = new Map(issues);
     if (this.root) this.render();
+  }
+
+  private mark(id: string): string {
+    const m = this._issues.get(id);
+    return m ? (m.severity === 'error' ? ' invalid' : ' warned') : '';
+  }
+
+  /** A "!" badge at (x, y) whose tooltip lists the problems. */
+  /** The forcing mark (FR-FRC-001): a small wave beside a forced symbol or on a forced flow. */
+  private forcedMark(x: number, y: number): SVGTextElement {
+    const t = svg('text', { class: 'forced', x, y });
+    t.textContent = '∿';
+    return t;
+  }
+
+  private badge(id: string, x: number, y: number): SVGGElement | null {
+    const m = this._issues.get(id);
+    if (!m) return null;
+    const g = svg('g', { class: `badge ${m.severity}`, transform: `translate(${x} ${y})` });
+    const t = svg('text', { y: 4 });
+    t.textContent = '!';
+    const title = svg('title');
+    title.textContent = `${m.severity === 'error' ? 'Error' : 'Warning'}: ${m.messages.join(' · ')}`;
+    g.append(svg('circle', { r: 8 }), t, title);
+    return g;
   }
 
   // ---- view ---------------------------------------------------------------
@@ -337,7 +375,9 @@ export class DiagramCanvas extends BaseComponent {
       );
       this.layers.boundaries.append(g);
     }
+    this.edgeBadges = [];
     for (const e of m.edges) this.renderEdge(m, e);
+    this.layers.overlay.append(...this.edgeBadges);
     for (const n of m.nodes) this.renderNode(n);
     this.applyPlayback();
     this.applyView();
@@ -349,7 +389,7 @@ export class DiagramCanvas extends BaseComponent {
     const selected = selectedNodeIds(this._selection).includes(n.id);
     const label = n.visual.label ?? n.id;
     const g = svg('g', {
-      class: `node${selected ? ' selected' : ''}${this._invalid.has(n.id) ? ' invalid' : ''}`,
+      class: `node${selected ? ' selected' : ''}${this.mark(n.id)}`,
       'data-node': n.id,
       transform: `translate(${n.visual.x} ${n.visual.y})`,
       tabindex: 0,
@@ -389,9 +429,12 @@ export class DiagramCanvas extends BaseComponent {
         r: 6,
       })
     );
+    if (n.forcing) g.append(this.forcedMark(w + 2, -h + 4));
     const title = svg('title');
-    title.textContent = `${spec.label} “${label}” (${n.id})`;
+    title.textContent = `${spec.label} “${label}” (${n.id})${n.forcing ? `, forced: ${describeForcing(n.forcing)}` : ''}`;
     g.append(title);
+    const nb = this.badge(n.id, -w - 2, -h - 2);
+    if (nb) g.append(nb);
     this.nodeEls.set(n.id, g);
     this.layers.nodes.append(g);
   }
@@ -403,7 +446,7 @@ export class DiagramCanvas extends BaseComponent {
     const curve = edgeCurve(e, o, t);
     const selected = this._selection?.kind === 'edge' && this._selection.id === e.id;
     const g = svg('g', {
-      class: `edge ${e.logic}${selected ? ' selected' : ''}${this._invalid.has(e.id) ? ' invalid' : ''}`,
+      class: `edge ${e.logic}${selected ? ' selected' : ''}${this.mark(e.id)}`,
       'data-edge': e.id,
     });
     const d = pathData(curve);
@@ -445,9 +488,22 @@ export class DiagramCanvas extends BaseComponent {
         reading
       );
     }
+    if (e.forcing) {
+      // Clear of the labels at the origin end, the gate or sensor mid-flow and the badge at 0.78.
+      const at = pointAt(curve, 0.38);
+      g.append(this.forcedMark(at.x + 10, at.y - 6));
+    }
     const title = svg('title');
-    title.textContent = `${e.id}: ${e.logic}, k = ${e.params.k}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}`;
+    title.textContent = `${e.id}: ${e.logic}, k = ${e.forcing ? describeForcing(e.forcing) : e.params.k}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}`;
     g.append(title);
+    // On the curve, clear of a gate or sensor at the middle; in the overlay so it
+    // draws above the selection handles, and still selects the flow when clicked.
+    const at = pointAt(curve, control || e.visual?.sensor ? 0.78 : 0.5);
+    const eb = this.badge(e.id, at.x, at.y);
+    if (eb) {
+      eb.setAttribute('data-edge', e.id);
+      this.edgeBadges.push(eb);
+    }
     this.edgeEls.set(e.id, g);
     this.layers.edges.append(g);
     if (selected) {

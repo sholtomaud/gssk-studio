@@ -46,3 +46,12 @@ exports[`running models (FR-SIM-001) > runs the reservoir example cleanly and re
   "town": 33.811103,
 }
 `;
+
+exports[`running models (FR-SIM-001) > runs the seasonal example cleanly and reproducibly 1`] = `
+{
+  "air": 69.11277,
+  "rain": 10,
+  "river": 173.16342,
+  "wetland": 37.723807,
+}
+`;

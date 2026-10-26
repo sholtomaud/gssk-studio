@@ -8,6 +8,7 @@ import { BaseComponent, define } from '../../core/base-component.ts';
 import { sampleAt, type RunResult } from '../../../sim/run.ts';
 import { fitSeries } from '../../../fit/stats.ts';
 import type { Elasticity } from '../../../fit/sensitivity.ts';
+import type { EnsembleOptions, EnsembleResult, EnsembleSeries } from '../../../sim/ensemble.ts';
 import type { ObservationSeries } from '../../../model/types.ts';
 import { resultCsv } from '../../../viz/csv.ts';
 import { seriesColor, SlotAssigner } from '../../../viz/colors.ts';
@@ -65,6 +66,11 @@ export class ResultsPanel extends BaseComponent {
   private sens: { result: RunResult; key: string; data: Elasticity[] | string } | null = null;
   /** The request in flight, so a redraw does not ask twice. */
   private sensPending = '';
+  /** The ensemble band for the current run, once asked for (FR-ENS-001). */
+  private ens: { result: RunResult; data: EnsembleResult | string | null } | null = null;
+  private ensOpts: EnsembleOptions = { runs: 50, perturbation: 0.1, seed: '1' };
+  private ensBtn!: HTMLButtonElement;
+  private ensForm!: HTMLElement;
   private obs: ObservationSeries[] = [];
   private playing = 0;
   private fileName = 'results';
@@ -106,6 +112,16 @@ export class ResultsPanel extends BaseComponent {
       this.baseline = this.baseline ? null : this.result;
       this.renderAll();
     };
+    this.ensBtn = iconButton(
+      'spread',
+      'Ensemble: how far the run spreads when its rates are uncertain'
+    );
+    this.ensBtn.setAttribute('aria-pressed', 'false');
+    this.ensBtn.onclick = () => {
+      this.ensForm.hidden = !this.ensForm.hidden;
+      this.ensBtn.setAttribute('aria-pressed', String(!this.ensForm.hidden));
+    };
+    this.ensForm = this.ensembleForm();
     this.csvBtn = iconButton('download', 'Download results as CSV');
     this.csvBtn.onclick = () => {
       if (this.result) downloadText(`${this.fileName}.csv`, resultCsv(this.result), 'text/csv');
@@ -118,12 +134,14 @@ export class ResultsPanel extends BaseComponent {
         this.statusEl,
         el('span', { class: 'spacer' }),
         this.baselineBtn,
+        this.ensBtn,
         this.fitBtn,
         this.sensBtn,
         this.tableBtn,
         this.csvBtn
       )
     );
+    this.append(this.ensForm);
     this.seriesEl = el('div', { class: 'series', role: 'group', 'aria-label': 'Series to chart' });
     this.plot = el('div', { class: 'plot' });
     this.append(el('div', { class: 'body' }, this.seriesEl, this.plot));
@@ -154,6 +172,7 @@ export class ResultsPanel extends BaseComponent {
     if (status.state === 'running' && this.status.state !== 'running') this.lastFraction = 0;
     this.status = status;
     this.fileName = fileName;
+    if (fresh) this.ens = null;
     if (fresh && result) {
       const all = seriesOf(result);
       this.slots.retain(new Set(all.map((x) => x.id)));
@@ -184,6 +203,107 @@ export class ResultsPanel extends BaseComponent {
     this.sens = { result, key: targets.join('|'), data };
     this.sensPending = '';
     if (this.view === 'sens') this.drawPlot();
+  }
+
+  /** The studio answers an `ensemble-request` with this; null while it runs. */
+  setEnsemble(result: RunResult, data: EnsembleResult | string | null): void {
+    if (result !== this.result) return;
+    this.ens = { result, data };
+    this.renderStatus();
+    this.renderEnsembleForm();
+    this.drawPlot();
+  }
+
+  /** The envelope to draw for a series, if the ensemble covers it. */
+  private bandFor(id: string): EnsembleSeries | undefined {
+    const d = this.ens?.result === this.result ? this.ens?.data : null;
+    return d && typeof d !== 'string' ? d.nodes.find((n) => n.id === id) : undefined;
+  }
+
+  private ensembleForm(): HTMLElement {
+    const field = (label: string, input: HTMLInputElement, title: string) => {
+      const l = el('label', { class: 'field', title }, label, input);
+      return l;
+    };
+    const runs = el('input', { type: 'number', name: 'ens_runs', min: '2', max: '500', step: '1' });
+    const pct = el('input', {
+      type: 'number',
+      name: 'ens_pct',
+      min: '0.1',
+      max: '99',
+      step: 'any',
+    });
+    const seed = el('input', {
+      type: 'text',
+      name: 'ens_seed',
+      inputmode: 'numeric',
+      spellcheck: 'false',
+    });
+    runs.value = String(this.ensOpts.runs);
+    pct.value = String(this.ensOpts.perturbation * 100);
+    seed.value = this.ensOpts.seed;
+    const go = el(
+      'button',
+      { type: 'button', class: 'primary go' },
+      icon('spread'),
+      'Run ensemble'
+    );
+    const clear = el('button', { type: 'button', class: 'clear', text: 'Clear band' });
+    const msg = el('p', { class: 'ens-note', role: 'status' });
+    go.onclick = () => {
+      const opts: EnsembleOptions = {
+        runs: Number(runs.value),
+        perturbation: Number(pct.value) / 100,
+        seed: seed.value.trim(),
+      };
+      this.ensOpts = opts;
+      this.dispatchEvent(
+        new CustomEvent<EnsembleOptions>('ensemble-request', { detail: opts, bubbles: true })
+      );
+    };
+    clear.onclick = () => {
+      this.ens = null;
+      this.renderStatus();
+      this.renderEnsembleForm();
+      this.drawPlot();
+    };
+    const form = el(
+      'div',
+      { class: 'ens-form', hidden: '', role: 'group', 'aria-label': 'Ensemble' },
+      field('Runs', runs, 'How many perturbed runs, 2–500. Each is a whole kernel run.'),
+      field(
+        'Rates ± %',
+        pct,
+        'Each run multiplies every flow’s k by its own uniform draw from [1 − p, 1 + p].'
+      ),
+      field(
+        'Seed',
+        seed,
+        'The kernel RNG seed. The same seed, model and kernel give the same band.'
+      ),
+      go,
+      clear,
+      msg
+    );
+    return form;
+  }
+
+  private renderEnsembleForm(): void {
+    const go = this.ensForm.querySelector<HTMLButtonElement>('.go');
+    const clear = this.ensForm.querySelector<HTMLButtonElement>('.clear');
+    const msg = this.ensForm.querySelector('.ens-note');
+    const d = this.ens?.result === this.result ? this.ens?.data : undefined;
+    const running = this.ens !== null && d === null;
+    if (go) go.disabled = !this.result || running;
+    if (clear) clear.disabled = !this.ens || running;
+    if (msg)
+      msg.textContent = !this.result
+        ? 'Run the model first: the band is drawn around that run.'
+        : running
+          ? 'Running the ensemble on the kernel…'
+          : typeof d === 'string'
+            ? d
+            : 'Every run is perturbed, so the band’s mean is not the run itself. Only flows’ rates k are varied, not initial or fixed values.';
   }
 
   private setView(v: 'chart' | 'table' | 'fit' | 'sens'): void {
@@ -283,7 +403,21 @@ export class ResultsPanel extends BaseComponent {
         })
       );
     }
+    const ens = this.ens?.result === r ? this.ens?.data : undefined;
+    if (ens && typeof ens !== 'string') {
+      const em = ens.manifest;
+      this.statusEl.append(
+        ' ',
+        el('span', {
+          class: 'badge ens',
+          text: `Band: ${em.runs} runs, k ± ${+(em.perturbation * 100).toPrecision(3)} %, seed ${em.seed}`,
+          title: `Shaded: the lowest to highest value any of ${em.runs} runs reached at each time; dotted: their mean. Each run scales every flow’s k by a uniform draw from [1 − p, 1 + p] (GSSK_EnsembleForecast). ${ens.elapsedMs.toFixed(0)} ms. Model ${em.modelHash.slice(0, 8)}.`,
+        })
+      );
+    }
     this.tableBtn.disabled = !r;
+    this.ensBtn.disabled = !r;
+    this.renderEnsembleForm();
   }
 
   private renderSeries(): void {
@@ -366,6 +500,10 @@ export class ResultsPanel extends BaseComponent {
       ...series.map((s) => s.values),
       ...series.flatMap((s) => obsFor(s.id).map((o) => o.values)),
       ...series.flatMap((s) => (baseOf(s.id) ? [baseOf(s.id)!.values] : [])),
+      ...series.flatMap((s) => {
+        const b = this.bandFor(s.id);
+        return b ? [b.min, b.max] : [];
+      }),
     ]);
     const yt = niceTicks(Math.min(0, lo), hi, Math.max(2, Math.floor((H - M.t - M.b) / 40)));
     const y = linear(yt.domain, [H - M.b, M.t]);
@@ -395,6 +533,30 @@ export class ResultsPanel extends BaseComponent {
     );
 
     const budget = Math.max(50, Math.floor((W - M.l - right) * 1.5));
+    const ens = this.ens?.data && typeof this.ens.data !== 'string' ? this.ens.data : null;
+    for (const s of series) {
+      const b = this.bandFor(s.id);
+      if (!ens || !b) continue;
+      const idx = decimate(b.max, budget);
+      const pt = (i: number, v: Float64Array) =>
+        `${x(ens.times[i] ?? 0).toFixed(1)},${y(v[i] ?? 0).toFixed(1)}`;
+      const ok = idx.filter((i) => Number.isFinite(b.min[i]) && Number.isFinite(b.max[i]));
+      if (ok.length < 2) continue;
+      const d = `M${ok.map((i) => pt(i, b.max)).join('L')}L${[...ok]
+        .reverse()
+        .map((i) => pt(i, b.min))
+        .join('L')}Z`;
+      root.append(
+        svg('path', { class: 'band', 'data-series': s.id, d, fill: seriesColor(s.slot) })
+      );
+      root.append(
+        svg('path', {
+          class: 'series-line mean',
+          d: `M${ok.map((i) => pt(i, b.mean)).join('L')}`,
+          stroke: seriesColor(s.slot),
+        })
+      );
+    }
     const ends: { y: number; label: string; slot: number }[] = [];
     for (const s of series) {
       const idx = decimate(s.values, budget);
@@ -510,6 +672,21 @@ export class ResultsPanel extends BaseComponent {
             el('b', { text: formatNumber(v) })
           )
         );
+        const band = this.bandFor(s.id);
+        if (ens && band) {
+          const j = sampleAt(ens.times, r.times[i] ?? 0);
+          tip.append(
+            el(
+              'div',
+              { class: 'r base' },
+              el('span', { class: 'sw' }),
+              el('span', { text: 'band' }),
+              el('b', {
+                text: `${formatNumber(band.min[j] ?? NaN)} – ${formatNumber(band.max[j] ?? NaN)}`,
+              })
+            )
+          );
+        }
         const b = base ? baseOf(s.id) : undefined;
         if (base && b) {
           const bv = b.values[sampleAt(base.times, r.times[i] ?? 0)] ?? NaN;
