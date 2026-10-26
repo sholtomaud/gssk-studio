@@ -1,10 +1,10 @@
 /**
- * The domain-neutral GSSK model builder (ADR 0010): kernel node types and
+ * The domain-neutral GSSK model builder (ADR 0012): kernel node types and
  * flow logics, nothing Odum-specific. Domain libraries — Energese, and any
  * other — are constructs over this API: they take a `GsskModel` and add nodes
  * and flows through `addNode` and `addEdge`.
  *
- * `synth()` returns the model document (ADR 0009). The JSON is canonical;
+ * `synth()` returns the model document (ADR 0011). The JSON is canonical;
  * the builder only produces it, field for field in the order `normaliseModel`
  * writes, so a synthesized model serialises exactly as a loaded one does.
  */
@@ -193,7 +193,7 @@ export class GsskModel {
     return { id };
   }
 
-  /** The model document (ADR 0009). Each call returns a fresh copy. */
+  /** The model document (ADR 0011). Each call returns a fresh copy. */
   synth(options: SynthOptions = {}): StudioModel {
     const prev = options.previous;
     const prevNodes = new Map(prev?.nodes.map((n) => [n.id, n]));

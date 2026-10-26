@@ -140,7 +140,7 @@ export interface StudioModel {
   _diagram: { boundaries: Boundary[] };
   /** Editor-only: observed data to fit runs against (M3). */
   _observations?: ObservationSeries[];
-  /** Editor-only: the last Energese script applied, as provenance (ADR 0009). */
+  /** Editor-only: the last Energese script applied, as provenance (ADR 0011). */
   _energese?: ScriptProvenance;
 }
 

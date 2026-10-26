@@ -3,7 +3,7 @@
  * Performance budgets. NFR-PERF-001: first-load JS ≤ 400 kB gzipped,
  * excluding wasm. Counts every emitted .js file outside assets/code/
  * (workers and lazy screens included), so it over-counts first load and is
- * conservative. NFR-PERF-003: the code view (ADR 0011), loaded on demand
+ * conservative. NFR-PERF-003: the code view (ADR 0013), loaded on demand
  * from assets/code/, ≤ 1,100 kB of JS gzipped, excluding tsrs.wasm.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';

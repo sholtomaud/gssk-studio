@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * The SDK's declaration files for the code view's compiler (ADR 0011):
+ * The SDK's declaration files for the code view's compiler (ADR 0013):
  * `tsc --emitDeclarationOnly` over `src/sdk/`, laid out as the packages a
  * script imports, `@gssk/builder` and `energese`, and written to
  * `src/code/sdk-types.json`. Run after changing the SDK; `--check` (in the

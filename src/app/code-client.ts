@@ -1,5 +1,5 @@
 /**
- * The UI's handles on the code view's workers (ADR 0011): one long-lived
+ * The UI's handles on the code view's workers (ADR 0013): one long-lived
  * compiler, restarted if tsrs takes it down, and a fresh script worker per
  * run, ended after it or when it runs too long.
  */
@@ -51,7 +51,7 @@ export function compile(script: string): Promise<CompileResult> {
 
 /**
  * The worker for one run. Built, it starts from a Blob URL so it inherits the
- * page's CSP (ADR 0011); in development it starts from its module URL.
+ * page's CSP (ADR 0013); in development it starts from its module URL.
  */
 async function scriptWorker(): Promise<{ worker: Worker; url?: string }> {
   if (import.meta.env.DEV) {

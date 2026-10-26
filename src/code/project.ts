@@ -1,5 +1,5 @@
 /**
- * The virtual project the code view compiles (ADR 0011): one script, the
+ * The virtual project the code view compiles (ADR 0013): one script, the
  * SDK's declaration files as `node_modules/energese` and
  * `node_modules/@gssk/builder`, and a fixed tsconfig. The project's `lib` is
  * the language alone plus `console`: a script has no DOM and no network, and
@@ -37,7 +37,7 @@ export const TSCONFIG = `${JSON.stringify(
   2
 )}\n`;
 
-const GLOBALS = `/** The script sandbox: console only (ADR 0011). */
+const GLOBALS = `/** The script sandbox: console only (ADR 0013). */
 declare const console: {
   log(...data: unknown[]): void;
   info(...data: unknown[]): void;

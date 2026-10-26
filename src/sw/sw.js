@@ -44,7 +44,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (target.href.startsWith(CODE)) {
-    // The code view (ADR 0011) is not precached: cached on first use instead,
+    // The code view (ADR 0013) is not precached: cached on first use instead,
     // so a first visit does not download Monaco and tsrs.wasm unasked.
     event.respondWith(
       caches.open(CACHE).then((cache) =>

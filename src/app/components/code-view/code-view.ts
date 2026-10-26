@@ -1,5 +1,5 @@
 /**
- * <code-view>: the model as Energese TypeScript (FR-SDK-006, ADR 0011).
+ * <code-view>: the model as Energese TypeScript (FR-SDK-006, ADR 0013).
  * It shows the model's generated code, or the script that built it while
  * that script still describes the model (FR-SDK-007). tsrs checks every edit;
  * Apply runs the script in a sandboxed worker and proposes what it builds as

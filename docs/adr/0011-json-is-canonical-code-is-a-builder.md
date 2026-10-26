@@ -1,11 +1,11 @@
-# ADR 0009 — The JSON is canonical; code and the diagram are builders
+# ADR 0011 — The JSON is canonical; code and the diagram are builders
 
 **Status**: accepted (M8)
 
 ## Context
 
 Authors will build models three ways: by drawing (the studio's diagram), by writing TypeScript
-against an SDK (Energese, ADR 0010), and by editing or generating GSSK JSON with other tools. If
+against an SDK (Energese, ADR 0012), and by editing or generating GSSK JSON with other tools. If
 any of these became a second source of truth, a model would have to be kept in step in two forms,
 and a model written as a program could only be moved, cited or archived together with the code
 and the toolchain that runs it.

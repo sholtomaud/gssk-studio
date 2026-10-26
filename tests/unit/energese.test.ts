@@ -231,7 +231,7 @@ describe('Energese round trip (FR-SDK-002, FR-SDK-003)', () => {
   });
 });
 
-describe('scripts as generators (ADR 0009, FR-SDK-004, FR-SDK-005)', () => {
+describe('scripts as generators (ADR 0011, FR-SDK-004, FR-SDK-005)', () => {
   it('builds a valid model from a hand-written script with a loop', async () => {
     const mod = (await import('../fixtures/energese/food-chain.energese.ts')) as {
       default: GsskModel;
@@ -306,7 +306,7 @@ describe('scripts as generators (ADR 0009, FR-SDK-004, FR-SDK-005)', () => {
   });
 });
 
-describe('domain libraries over the neutral builder (ADR 0010)', () => {
+describe('domain libraries over the neutral builder (ADR 0012)', () => {
   /** A third-party construct: a logistic population, written without Energese. */
   function logisticPopulation(
     model: GsskModel,

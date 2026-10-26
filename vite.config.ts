@@ -4,7 +4,7 @@ import { join, relative, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vitest/config';
 
 /**
- * The code view (ADR 0011) — Monaco, tsrs and their workers — loads on demand.
+ * The code view (ADR 0013) — Monaco, tsrs and their workers — loads on demand.
  * Its files go under assets/code/, so the first-load budget and the precache
  * leave them out; the service worker caches them when first used.
  */
@@ -33,7 +33,7 @@ const output = {
 const CSP = [
   "default-src 'self'",
   // blob: lets the script worker start from a Blob URL, so that it inherits
-  // this policy, and import the script's own modules (ADR 0011).
+  // this policy, and import the script's own modules (ADR 0013).
   "script-src 'self' 'wasm-unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",

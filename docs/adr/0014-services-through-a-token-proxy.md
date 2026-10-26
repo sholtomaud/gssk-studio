@@ -1,4 +1,4 @@
-# ADR 0012 — Publishing services through a stateless token proxy
+# ADR 0014 — Publishing services through a stateless token proxy
 
 **Status**: proposed (M10). Amends ADR 0005 and the SPEC §1.2 non-goal "a server".
 

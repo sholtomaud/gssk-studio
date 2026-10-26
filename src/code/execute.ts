@@ -1,5 +1,5 @@
 /**
- * Running a compiled script (ADR 0009, ADR 0011): link its modules, import
+ * Running a compiled script (ADR 0011, ADR 0013): link its modules, import
  * the entry, and synthesize the model it default-exports. The SDK a script
  * imports is this module's own copy, handed over through a global registry,
  * so the script's `Model` is the class `instanceof` checks here. The script

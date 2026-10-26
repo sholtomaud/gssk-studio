@@ -10,7 +10,7 @@
 | [0006](0006-importing-gssk-dia.md)                     | Import gssk-dia models, listing every change                         |
 | [0007](0007-svg-editor-and-chart-in-house.md)          | The diagram editor and the chart are in-house SVG                    |
 | [0008](0008-calibration-in-the-app.md)                 | Calibration and sensitivity in the app, over kernel runs             |
-| [0009](0009-json-is-canonical-code-is-a-builder.md)    | The JSON is canonical; code and the diagram are builders             |
-| [0010](0010-gssk-is-general-energese-is-a-language.md) | GSSK is general; Energese is one language on it                      |
-| [0011](0011-code-view-tsrs-and-monaco.md)              | The code view: tsrs and Monaco, self-hosted, loaded on demand        |
-| [0012](0012-services-through-a-token-proxy.md)         | Proposed: publishing services through a stateless token proxy        |
+| [0011](0011-json-is-canonical-code-is-a-builder.md)    | The JSON is canonical; code and the diagram are builders             |
+| [0012](0012-gssk-is-general-energese-is-a-language.md) | GSSK is general; Energese is one language on it                      |
+| [0013](0013-code-view-tsrs-and-monaco.md)              | The code view: tsrs and Monaco, self-hosted, loaded on demand        |
+| [0014](0014-services-through-a-token-proxy.md)         | Proposed: publishing services through a stateless token proxy        |

@@ -1,10 +1,10 @@
-# ADR 0011 — The code view: tsrs and Monaco, self-hosted and loaded on demand
+# ADR 0013 — The code view: tsrs and Monaco, self-hosted and loaded on demand
 
 **Status**: accepted (M8). Deviates from ADR 0001 (no third-party runtime code).
 
 ## Context
 
-ADR 0009 makes TypeScript a builder of the model. Writing it well needs an editor that checks
+ADR 0011 makes TypeScript a builder of the model. Writing it well needs an editor that checks
 types, and running it needs a TypeScript compiler in the browser. Writing either in-house is out
 of proportion. tsrs-monaco already does both: Monaco Editor, and `@tsrs/wasm` (a Rust port of the
 TypeScript 7 compiler) type-checking and emitting in a worker, with the emitted modules run in a
@@ -29,7 +29,7 @@ Allow exactly two runtime dependencies, for the code view only:
 - **Ported, not shared yet**: the compiler worker, the module linker, diagnostics mapping and
   Monaco set-up are ported from tsrs-monaco (MIT, same author) into `src/code/`,
   `src/workers/` and `src/app/monaco.ts`. They move to a shared package when tsrs-monaco adopts
-  it (ADR 0010).
+  it (ADR 0012).
 - **Only Monaco's core editor and TypeScript highlighting** are loaded, not Monaco's TypeScript
   service. Every diagnostic comes from tsrs. tsrs has no language service, so there is no
   type-aware completion or hover yet.

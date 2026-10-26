@@ -1,4 +1,4 @@
-# ADR 0010 — GSSK is general; Energese is one language on it
+# ADR 0012 — GSSK is general; Energese is one language on it
 
 **Status**: accepted (M8)
 

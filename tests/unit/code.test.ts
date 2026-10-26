@@ -33,7 +33,7 @@ async function compile(script: string) {
 
 const SLOW = 60_000;
 
-describe('compiling and running scripts (FR-SDK-006, ADR 0011)', () => {
+describe('compiling and running scripts (FR-SDK-006, ADR 0013)', () => {
   for (const ex of EXAMPLES) {
     it(
       `${ex.id}: its generated code type-checks under tsrs and runs to the same model`,
@@ -110,7 +110,7 @@ describe('compiling and running scripts (FR-SDK-006, ADR 0011)', () => {
   );
 });
 
-describe('linking (ADR 0011)', () => {
+describe('linking (ADR 0013)', () => {
   const urls: Record<string, string> = {};
   const toUrl = (path: string, code: string) => {
     urls[path] = code;

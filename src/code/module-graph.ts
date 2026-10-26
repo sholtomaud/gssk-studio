@@ -3,7 +3,7 @@
  * tsrs-monaco (MIT). Blob and data URLs have no path, so every module becomes
  * a URL in dependency order, with its relative imports rewritten to its
  * dependencies' URLs and its SDK imports to the SDK's. Any other import is
- * refused: a script reaches nothing but the SDK and its own files (ADR 0011).
+ * refused: a script reaches nothing but the SDK and its own files (ADR 0013).
  */
 
 const SPECIFIER =

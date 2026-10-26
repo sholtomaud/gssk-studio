@@ -1,5 +1,5 @@
 /**
- * The `script` worker (ADR 0011): runs one compiled Energese script and
+ * The `script` worker (ADR 0013): runs one compiled Energese script and
  * returns the model it synthesizes. A fresh worker per run, terminated after,
  * so a runaway script ends with it.
  *
@@ -14,10 +14,10 @@ import type { StudioModel } from '../model/types.ts';
 import { expose, type Endpoint } from './rpc.ts';
 
 const offline = (what: string) => () => {
-  throw new Error(`${what}: a script has no network (ADR 0011).`);
+  throw new Error(`${what}: a script has no network (ADR 0013).`);
 };
 const scope = globalThis as Record<string, unknown>;
-scope.fetch = () => Promise.reject(new Error('fetch: a script has no network (ADR 0011).'));
+scope.fetch = () => Promise.reject(new Error('fetch: a script has no network (ADR 0013).'));
 for (const name of ['XMLHttpRequest', 'WebSocket', 'EventSource']) scope[name] = offline(name);
 
 export interface ScriptLog {

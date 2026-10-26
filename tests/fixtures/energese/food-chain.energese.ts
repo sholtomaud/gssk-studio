@@ -1,5 +1,5 @@
 /**
- * A hand-written Energese script (ADR 0009): a generator, not the model. It
+ * A hand-written Energese script (ADR 0011): a generator, not the model. It
  * builds a four-level food chain in a loop; its synthesized `.gssk.json` is
  * the model. Positions are left to the layout (FR-SDK-005).
  */

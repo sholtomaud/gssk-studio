@@ -1,8 +1,8 @@
 /**
  * Energese: Odum's Energy Systems Language as TypeScript constructs over the
- * domain-neutral GSSK builder (ADR 0010). One class per symbol (SPEC §5.2),
+ * domain-neutral GSSK builder (ADR 0012). One class per symbol (SPEC §5.2),
  * one helper per flow logic. A script builds a `Model` and default-exports
- * it; `model.synth()` is the `.gssk.json` document (ADR 0009).
+ * it; `model.synth()` is the `.gssk.json` document (ADR 0011).
  *
  *   import * as ener from 'energese';
  *   const m = new ener.Model('Grassland', { tEnd: 200, dt: 0.1, method: 'rk4' });

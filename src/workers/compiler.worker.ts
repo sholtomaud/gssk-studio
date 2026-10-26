@@ -1,5 +1,5 @@
 /**
- * The `compiler` worker (ADR 0011): tsrs, a Rust port of the TypeScript 7
+ * The `compiler` worker (ADR 0013): tsrs, a Rust port of the TypeScript 7
  * compiler, type-checks and emits a script off the UI thread. After
  * tsrs-monaco (MIT). Its checker recurses deeply, and a worker's stack is
  * larger than the page's.

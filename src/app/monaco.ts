@@ -1,5 +1,5 @@
 /**
- * Monaco without its bundled TypeScript service (ADR 0011), after
+ * Monaco without its bundled TypeScript service (ADR 0013), after
  * tsrs-monaco (MIT): the core editor, everyday editing features and
  * TypeScript highlighting. Every diagnostic comes from tsrs. Loaded only with
  * the code view.

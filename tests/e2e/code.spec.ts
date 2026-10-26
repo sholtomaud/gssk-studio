@@ -125,7 +125,7 @@ test('a hand-written script builds the model and travels with it (FR-SDK-007)', 
 test.describe('the sandbox', () => {
   test.use({ allowErrors: [/Content Security Policy|Refused to|dynamically imported module/] });
 
-  test('a script cannot reach the network, even by a computed import (ADR 0011)', async ({
+  test('a script cannot reach the network, even by a computed import (ADR 0013)', async ({
     page,
     baseURL,
   }) => {

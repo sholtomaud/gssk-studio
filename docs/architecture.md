@@ -1,7 +1,7 @@
 # Energese Studio — architecture
 
 This document describes where GSSK Studio is going: a studio for writing, simulating and
-publishing systems models, with the model document as its centre. It explains the ADRs from 0009
+publishing systems models, with the model document as its centre. It explains the ADRs from 0011
 on and the milestones from M8 on (SPEC §19). Requirements stay in [SPEC.md](../SPEC.md);
 decisions stay in [docs/adr/](adr/).
 
@@ -21,14 +21,14 @@ adopts, because they cost a publisher one embed and no change to how authors wri
 
 ## 2. Principles
 
-1. **The JSON is canonical** (ADR 0009). One document is the model everywhere. The diagram, the
+1. **The JSON is canonical** (ADR 0011). One document is the model everywhere. The diagram, the
    code and any other tool only build it.
-2. **GSSK is general; Energese is one language** (ADR 0010). Nothing below the Energese layer
+2. **GSSK is general; Energese is one language** (ADR 0012). Nothing below the Energese layer
    knows about Odum. Other vocabularies (bond graphs, compartments, system dynamics) target the
    same builder and kernel.
 3. **Repeatability is the product** (§6). Every number can be traced to a model hash, a kernel
    hash and a method, and can be re-run by anyone.
-4. **Local first; services opt-in** (ADR 0005, ADR 0012). Nothing leaves the browser until the
+4. **Local first; services opt-in** (ADR 0005, ADR 0014). Nothing leaves the browser until the
    author connects a service, for that action.
 5. **An LLM never produces a number** (NFR-HON-002).
 
@@ -51,7 +51,7 @@ adopts, because they cost a publisher one embed and no change to how authors wri
   @gssk/kernel   pinned gssk.wasm in a worker: verify, run, sample, manifest
 ```
 
-Today all of these are folders in this repository (ADR 0010 maps each one). They become packages
+Today all of these are folders in this repository (ADR 0012 maps each one). They become packages
 when a second consumer needs them: the viewer, tsrs-monaco, or budget-app, which pins the same
 kernel (ADR 0002).
 
@@ -92,7 +92,7 @@ new ener.Flow(m, grazers, heat, ener.linear(0.02));
 export default m;
 ```
 
-**A domain library** is a function or class over `GsskModel` (ADR 0010):
+**A domain library** is a function or class over `GsskModel` (ADR 0012):
 
 ```ts
 import type { GsskModel } from '@gssk/builder';
@@ -105,7 +105,7 @@ export function logisticPopulation(m: GsskModel, name: string, o: { r: number; K
 }
 ```
 
-## 5. The code view (ADR 0011, M8)
+## 5. The code view (ADR 0013, M8)
 
 ```
  Monaco: src/model.energese.ts                    (src/app/components/code-view/)
@@ -202,7 +202,7 @@ through the same checks as anyone's: tsrs type-checks it, `validate` checks it, 
 and the author accepts it as one undoable edit. It may describe a run; it never writes a number
 into a model or a paper (NFR-HON-002).
 
-## 9. Publishing (M10, ADR 0012)
+## 9. Publishing (M10, ADR 0014)
 
 - **GitHub**: one repository per paper holding `paper/*.tex`, `models/*.gssk.json`,
   `models/*.energese.ts` (provenance), `runs/*.json` (manifests) and `data/` (inputs). OAuth goes
@@ -218,7 +218,7 @@ into a model or a paper (NFR-HON-002).
 
 - **boba**: the template the app shell and components follow (ADR 0001).
 - **tsrs-monaco**: its editor, compiler worker and run worker become the code view's component
-  (ADR 0011). The playground stays as a demo of that component.
+  (ADR 0013). The playground stays as a demo of that component.
 - **budget-app**: shares the kernel pin (ADR 0002). Its LLM layer becomes the assistant's (§8).
   Later it can use `@gssk/builder` for its own models.
 
