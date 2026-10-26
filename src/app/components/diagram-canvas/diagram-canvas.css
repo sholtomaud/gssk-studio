@@ -49,9 +49,6 @@
 :host .node:focus-visible .halo {
   stroke: var(--select);
 }
-:host .node.invalid {
-  color: var(--critical);
-}
 :host .node .label {
   fill: var(--text-primary);
   font: 500 12px var(--font-sans);
@@ -114,9 +111,6 @@
 }
 :host .edge.selected .line {
   stroke: var(--select);
-}
-:host .edge.invalid .line {
-  stroke: var(--critical);
 }
 :host .edge.drop-target .line {
   stroke: var(--good);
@@ -247,12 +241,6 @@
   stroke-dasharray: 4 3;
   pointer-events: none;
 }
-:host .node.warned {
-  color: var(--serious);
-}
-:host .edge.warned .line {
-  stroke: var(--serious);
-}
 :host .badge circle {
   stroke: var(--canvas-bg);
   stroke-width: 2;
@@ -339,4 +327,49 @@
   font: 600 11px var(--font-sans);
   text-anchor: middle;
   pointer-events: none;
+}
+
+/* Problems (FR-VAL-002): a fuzzy light behind, never a change of outline colour. */
+:host .glow {
+  filter: url(#fuzz);
+  pointer-events: none;
+}
+:host .node .glow {
+  stroke: none;
+}
+:host .edge .glow {
+  fill: none;
+  stroke-width: 16;
+  stroke-linecap: round;
+}
+:host .invalid > .glow {
+  fill: var(--critical);
+  opacity: 0.4;
+  animation: problem-pulse 2.4s ease-in-out infinite;
+}
+:host .edge.invalid > .glow {
+  fill: none;
+  stroke: var(--critical);
+}
+:host .warned > .glow {
+  fill: var(--serious);
+  opacity: 0.3;
+}
+:host .edge.warned > .glow {
+  fill: none;
+  stroke: var(--serious);
+}
+@keyframes problem-pulse {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :host .invalid > .glow {
+    animation: none;
+  }
 }

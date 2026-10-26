@@ -272,9 +272,12 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   start, more than 500,000 steps) and warnings (isolated symbols, flows into a source, flows out of
   a heat sink, long composite ids, forcing errors and forcing under `auto`, §12.3). Each names and
   links to the node or flow at fault.
-- **FR-VAL-002** On the canvas, a symbol or flow with an error is drawn red and one with only
-  warnings orange, and each carries a "!" badge whose tooltip lists its problems, so colour is
-  never the only signal. Clicking the badge selects it. Badges are left out of diagram exports.
+- **FR-VAL-002** On the canvas, a symbol or flow with an error has a soft, slowly pulsing red
+  light behind it, and one with only warnings a steady amber one. The symbol's own outline and
+  line colour never change, so they stay free to carry other meaning (an energetic type, say).
+  The pulse stops under reduced motion. Each also carries a "!" badge whose tooltip lists its
+  problems, so colour is never the only signal. Clicking the badge selects it. Lights and badges
+  are left out of diagram exports.
 
 ## 11. Observations and fitness (M3)
 
