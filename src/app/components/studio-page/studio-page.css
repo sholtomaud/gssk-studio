@@ -179,3 +179,26 @@
 :host .menu-items button:hover {
   background: var(--surface-sunken);
 }
+:host .views {
+  display: inline-flex;
+}
+:host .views button {
+  border-radius: 0;
+}
+:host .views button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+:host .views button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-left: -1px;
+}
+:host .views button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+:host .work:not(.code-mode) code-view,
+:host .work.code-mode diagram-canvas,
+:host .work.code-mode .palette {
+  display: none;
+}

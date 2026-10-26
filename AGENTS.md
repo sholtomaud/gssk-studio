@@ -25,6 +25,7 @@ the requirements document. Cite its IDs (`FR-…`, `NFR-…`, `K-…`) in commit
 | `src/app/core/`       | Boba-style `BaseComponent` and `Router` (shared with budget-app).                                                                               |
 | `src/app/components/` | One folder per custom element: `.ts`, `.css`, and `.html` where the markup is static.                                                           |
 | `src/model/`          | The model document: types, symbol catalogue, edit operations, checks, history, import/export, kernel JSON, examples.                            |
+| `src/code/`           | The code view's DOM-free parts: the virtual project, the SDK's declaration files, diagnostics, module linking, running a script (ADR 0011).     |
 | `src/sdk/`            | `gssk/`, the domain-neutral model builder; `energese/`, Odum's symbols as constructs, and code generation (ADR 0010). Never imports `src/app/`. |
 | `src/diagram/`        | Odum symbols as SVG and the geometry of anchors and Bézier flows.                                                                               |
 | `src/sim/`            | `gssk.ts`, the only code that touches WASM memory; `run.ts`, a whole run with sampling, manifest and diagnostics.                               |
@@ -53,8 +54,11 @@ the requirements document. Cite its IDs (`FR-…`, `NFR-…`, `K-…`) in commit
 - Colours are role tokens in `src/styles/global.css`, with dark mode as its own steps. Chart
   series use the eight validated slots, assigned by entity, never cycled.
 - Prettier formats everything; `tsc` is the linter.
-- **No third-party runtime dependencies** (ADR 0001). `dependencies` in `package.json` stays
-  absent. Write it in-house, or propose an ADR.
+- **No third-party runtime dependencies** (ADR 0001), except `monaco-editor` and `@tsrs/wasm`
+  for the code view (ADR 0011): exact versions, loaded on demand from `assets/code/`. Anything
+  else: write it in-house, or propose an ADR.
+- After changing `src/sdk/`, run `npm run sdk:types` (the compiler's copy of the SDK's types)
+  and, if the generated code changed, `UPDATE_ENERGESE=1 npx vitest run tests/unit/energese.test.ts`.
 - Scripts are TypeScript (`scripts/*.ts`) run directly by Node.
 
 ## Before every push

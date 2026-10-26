@@ -240,6 +240,10 @@ export function normaliseModel(raw: unknown): ParseResult {
     });
   }
 
+  const rs = isObj(raw._energese) ? raw._energese : {};
+  const script = str(rs.source);
+  const scriptHash = str(rs.modelHash);
+
   return {
     model: {
       metadata: { schema_version: 4, name, ...(description ? { description } : {}) },
@@ -248,6 +252,7 @@ export function normaliseModel(raw: unknown): ParseResult {
       edges,
       _diagram: { boundaries },
       ...(observations.length ? { _observations: observations } : {}),
+      ...(script && scriptHash ? { _energese: { source: script, modelHash: scriptHash } } : {}),
     },
     notes,
   };

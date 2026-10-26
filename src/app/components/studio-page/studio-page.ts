@@ -43,6 +43,7 @@ import '../inspector-panel/inspector-panel.ts';
 import '../results-panel/results-panel.ts';
 import '../calibrate-dialog/calibrate-dialog.ts';
 import type { CalibrateDialog } from '../calibrate-dialog/calibrate-dialog.ts';
+import type { CodeView } from '../code-view/code-view.ts';
 import style from './studio-page.css?raw';
 
 const SAVE_DELAY_MS = 400;
@@ -66,6 +67,13 @@ export class StudioPage extends BaseComponent {
   private resultModel: StudioModel | null = null;
   /** The run in progress: its worker token (0 while starting) and whether Cancel was pressed. */
   private running: { token: number; cancelled: boolean } | null = null;
+
+  /** Which builder the centre shows: the diagram, or the model as code (FR-SDK-006). */
+  private view: 'diagram' | 'code' = 'diagram';
+  private codeView: CodeView | null = null;
+  private work!: HTMLElement;
+  private centre!: HTMLElement;
+  private viewBtns!: { diagram: HTMLButtonElement; code: HTMLButtonElement };
 
   private canvas!: DiagramCanvas;
   private inspector!: InspectorPanel;
@@ -97,6 +105,8 @@ export class StudioPage extends BaseComponent {
     window.removeEventListener('pagehide', this.onUnload);
     if (this.closeMenu) document.removeEventListener('click', this.closeMenu);
     if (this.running) this.running.cancelled = true;
+    this.codeView?.dispose();
+    this.codeView = null;
     void this.flush();
   }
 
@@ -140,6 +150,16 @@ export class StudioPage extends BaseComponent {
     this.undoBtn.onclick = () => this.undo();
     this.redoBtn.onclick = () => this.redo();
     this.checksBadge = el('span', { class: 'badge hide-narrow' });
+    const viewBtn = (view: 'diagram' | 'code', label: string, title: string) => {
+      const b = el('button', { type: 'button', text: label, title, 'aria-pressed': 'false' });
+      b.onclick = () => void this.setView(view);
+      return b;
+    };
+    this.viewBtns = {
+      diagram: viewBtn('diagram', 'Diagram', 'Draw the model'),
+      code: viewBtn('code', 'Code', 'The model as Energese TypeScript'),
+    };
+    this.viewBtns.diagram.setAttribute('aria-pressed', 'true');
     const exportBtn = this.exportMenu();
     this.runBtn = el(
       'button',
@@ -160,6 +180,13 @@ export class StudioPage extends BaseComponent {
       el('span', { class: 'sep' }),
       this.undoBtn,
       this.redoBtn,
+      el('span', { class: 'sep' }),
+      el(
+        'span',
+        { class: 'views', role: 'group', 'aria-label': 'View' },
+        this.viewBtns.diagram,
+        this.viewBtns.code
+      ),
       el('span', { class: 'spacer' }),
       this.checksBadge,
       exportBtn,
@@ -247,8 +274,9 @@ export class StudioPage extends BaseComponent {
       'aria-label': 'Resize results',
     });
     this.setupSplitter(splitter);
-    const centre = el('div', { class: 'centre' }, this.canvas, splitter, this.results);
-    this.setContent(toolbar, el('div', { class: 'work' }, palette, centre, this.inspector));
+    this.centre = el('div', { class: 'centre' }, this.canvas, splitter, this.results);
+    this.work = el('div', { class: 'work' }, palette, this.centre, this.inspector);
+    this.setContent(toolbar, this.work);
 
     for (const target of [this.canvas, this.inspector]) {
       target.addEventListener('diagram-edit', (e) =>
@@ -403,6 +431,30 @@ export class StudioPage extends BaseComponent {
     });
   }
 
+  /** Diagram or code (FR-SDK-006). The code view, Monaco and tsrs load on first use. */
+  private async setView(view: 'diagram' | 'code'): Promise<void> {
+    if (view === this.view) return;
+    if (view === 'code' && !this.codeView) {
+      try {
+        await import('../code-view/code-view.ts');
+      } catch (err) {
+        toast(`The code view did not load: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      const cv = document.createElement('code-view') as CodeView;
+      cv.addEventListener('diagram-edit', (e) =>
+        this.commit((e as CustomEvent<EditDetail>).detail)
+      );
+      this.centre.prepend(cv);
+      cv.model = this.model;
+      this.codeView = cv;
+    }
+    this.view = view;
+    this.viewBtns.diagram.setAttribute('aria-pressed', String(view === 'diagram'));
+    this.viewBtns.code.setAttribute('aria-pressed', String(view === 'code'));
+    this.work.classList.toggle('code-mode', view === 'code');
+  }
+
   // ---- state --------------------------------------------------------------
 
   private commit(d: EditDetail): void {
@@ -446,6 +498,7 @@ export class StudioPage extends BaseComponent {
     );
     this.canvas.selection = this.selection;
     this.canvas.model = m;
+    if (this.codeView) this.codeView.model = m;
     this.inspector.model = m;
     this.inspector.selection = this.selection;
     this.inspector.issues = this.issues;
@@ -554,7 +607,7 @@ export class StudioPage extends BaseComponent {
     const mod = e.ctrlKey || e.metaKey;
     if (!mod) return;
     const t = e.target as HTMLElement;
-    const typing = t.closest('input, textarea, select') !== null;
+    const typing = t.closest('input, textarea, select, .monaco-editor') !== null;
     if (e.key === 'Enter') {
       e.preventDefault();
       void this.run();

@@ -105,25 +105,28 @@ export function logisticPopulation(m: GsskModel, name: string, o: { r: number; K
 }
 ```
 
-## 5. The code view (ADR 0011, proposed)
+## 5. The code view (ADR 0011, M8)
 
 ```
- Monaco (one model per file: model.energese.ts, lib/*.ts)
-   │ debounced
+ Monaco: src/model.energese.ts                    (src/app/components/code-view/)
+   │ every edit, debounced 400 ms
    ▼
- compiler worker: tsrs tsc over an in-memory project
-   │  + node_modules/energese/*.d.ts, @gssk/builder/*.d.ts
-   │  ──► diagnostics as Monaco markers
-   ▼ emitted JS
- script worker (no DOM, no network)
-   │  bare 'energese' → the bundled SDK; relative imports → Blob URLs
-   │  import(entry); default export must be a GsskModel
-   ▼  synth({ previous }) → JSON
- studio-page: one undoable edit, then checks, then Run as usual
+ compiler worker: tsrs tsc over an in-memory project      (src/workers/compiler.worker.ts)
+   │  + node_modules/energese, @gssk/builder: the SDK's .d.ts (src/code/sdk-types.json)
+   │  ──► diagnostics as Monaco markers and a Problems list
+   ▼ Apply: emitted JS
+ script worker, from a Blob URL, under the page's CSP     (src/workers/script.worker.ts)
+   │  'energese', '@gssk/builder' → the worker's own SDK; relative imports → Blob URLs;
+   │  anything else refused; stopped after 10 s
+   ▼  default export (a GsskModel) .synth({ previous }) → JSON
+ studio-page: normalised, one undoable edit, then checks, then Run as usual
 ```
 
-- The code view shows either the **generated** form of the current model, or a **script** the
-  author is writing, and says which.
+- The code view shows the model's **generated** code, or the **script** that built it while
+  the model still has the hash the script produced (FR-SDK-007), or the author's unapplied edit,
+  and says which. A script travels in the model file as `_energese`, as provenance.
+- Type checking comes from tsrs; there is no type-aware completion or hover yet, because tsrs has
+  no language service.
 - Scripts run once to produce a document. **They never run inside the integration loop.** A
   per-step callback into JavaScript would cross from wasm into JS at every step, and would make
   the results depend on the browser's JavaScript engine (§6). Rate laws the kernel lacks are kernel

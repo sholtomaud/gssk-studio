@@ -27,7 +27,7 @@ Studio makes it dependable.
 | Symbols      | 12 drawn, folded onto 4 kernel primitives before running, so a producer ran as a plain storage | Each of the 12 symbols is a native kernel type (§5.2); producers and consumers run as the kernel's composites                        |
 | Code         | One 2,100-line inline module plus a 1,400-line JS component                                    | TypeScript (strict), one folder per component, DOM-free logic in plain modules with unit tests                                       |
 | Kernel       | `github:sholtomaud/GSSK#dist`, unpinned, on the UI thread                                      | Vendored, SHA-256 pinned, verified before instantiation, run in a worker (§15)                                                       |
-| Dependencies | `@google/genai`, `ajv`, `zod`, `jspdf`                                                         | None at runtime (ADR 0001)                                                                                                           |
+| Dependencies | `@google/genai`, `ajv`, `zod`, `jspdf`                                                         | None at runtime, except Monaco and tsrs for the code view, loaded on demand (ADR 0001, ADR 0011)                                     |
 | Network      | API key in `localStorage`, Gemini calls, live data polling                                     | No egress at all in v1; any future service is opt-in, per call, behind a CSP allow-list (§13)                                        |
 | Undo         | None                                                                                           | Full undo/redo history (FR-EDIT-007)                                                                                                 |
 | Validation   | A boolean "invalid" banner                                                                     | Named, located problems with fixes, and the kernel's own refusal shown verbatim (§10)                                                |
@@ -247,8 +247,14 @@ GSSK is a general kernel and Energese is one language over it (ADR 0010). See
   unset and the previous model's observations; an observation whose target is gone is unmapped.
 - **FR-SDK-005** Nodes left unplaced are laid out left to right by flow distance from the nodes
   nothing flows into, heat sinks below, never on top of another node.
-- **FR-SDK-006** (planned, ADR 0011) A code view: edit, type-check and run Energese scripts in the
-  studio with tsrs and Monaco; the result replaces the model as one undoable edit.
+- **FR-SDK-006** A code view beside the diagram (ADR 0011): Monaco shows the model as Energese
+  code; tsrs type-checks every edit against the SDK's types and lists problems at their line;
+  Apply runs the script in a sandboxed worker (no network, 10 s limit) and its model replaces the
+  current one as one undoable edit, keeping layout and observations (FR-SDK-004).
+- **FR-SDK-007** A hand-written script travels with the model it built as `_energese`: its source
+  and the model hash (FR-SIM-003) of what it built. The code view shows that script while the
+  model still has that hash, and otherwise shows the generated code and says the script is out of
+  date. Applying code that is exactly the model's generated form keeps no script.
 
 ## 10. Validation (FR-VAL)
 
@@ -324,6 +330,8 @@ GSSK is a general kernel and Energese is one language over it (ADR 0010). See
 ## 15. Technology and kernel
 
 - TypeScript 7 strict, erasable syntax only, explicit `.ts` imports; Vite 8; Vitest; Playwright.
+- Runtime dependencies: `monaco-editor` and `@tsrs/wasm`, for the code view only, at exact
+  versions and loaded on demand (ADR 0011). Nothing else at runtime (ADR 0001).
 - **NFR-KER-001** GSSK is vendored in `vendor/gssk/` from
   `energese-project/GSSK-Giannantoni@dist`, pinned by commit and SHA-256 in `GSSK_PIN.json` (the
   same pin as budget-app, ADR 0002). The worker hashes the wasm before instantiating it and refuses
@@ -337,6 +345,8 @@ GSSK is a general kernel and Energese is one language over it (ADR 0010). See
   final states, pin refusal, K-1 status); e2e against the production build (shell, studio
   workflows, files, privacy, kernel self-test).
 - **NFR-PERF-001** First-load JS ≤ 400 kB gzipped, excluding wasm (`npm run bundle-size`).
+- **NFR-PERF-003** The code view's JS ≤ 1,100 kB gzipped, excluding `tsrs.wasm`; loaded on
+  demand from `assets/code/`, never precached (ADR 0011).
 - **NFR-PERF-002** The studio adds at most 10 % to the kernel's own stepping time for a run
   (sampling, manifest, diagnostics). Measured at M1: a 20-node chain, 100,000 Euler steps, 6.2 s
   in `runModel` against 6.4 s for the bare `GSSK_Step` loop — the cost is the kernel's (K-4).
@@ -391,7 +401,7 @@ See [AGENTS.md](AGENTS.md#layout).
 | M5  | Forcing functions and ensembles (§12)                                                                    | planned     |
 | M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned     |
 | M7  | Hierarchy: archetypes and nested sub-models (kernel Schema v4 `archetypes`)                              | exploratory |
-| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0011)              | in progress |
+| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0011)              | done        |
 | M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                | planned     |
 | M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0012)                                           | planned     |
 | M11 | Article editing: LaTeX in the browser, figures bound to runs                                             | planned     |

@@ -7,6 +7,7 @@ const CACHE = `gssk-studio-${VERSION}`;
 const scope = new URL(self.registration.scope);
 const url = (path) => new URL(path, scope).href;
 const SHELL = url('index.html');
+const CODE = url('assets/code/');
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -40,6 +41,23 @@ self.addEventListener('fetch', (event) => {
   if (req.mode === 'navigate') {
     // Every screen is the same shell; the client router picks the screen.
     event.respondWith(fetch(req).catch(() => caches.match(SHELL, { cacheName: CACHE })));
+    return;
+  }
+  if (target.href.startsWith(CODE)) {
+    // The code view (ADR 0011) is not precached: cached on first use instead,
+    // so a first visit does not download Monaco and tsrs.wasm unasked.
+    event.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match(req).then(
+          (hit) =>
+            hit ??
+            fetch(req).then((res) => {
+              if (res.ok) void cache.put(req, res.clone());
+              return res;
+            })
+        )
+      )
+    );
     return;
   }
   event.respondWith(caches.match(req, { cacheName: CACHE }).then((hit) => hit ?? fetch(req)));

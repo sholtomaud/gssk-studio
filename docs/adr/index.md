@@ -12,5 +12,5 @@
 | [0008](0008-calibration-in-the-app.md)                 | Calibration and sensitivity in the app, over kernel runs             |
 | [0009](0009-json-is-canonical-code-is-a-builder.md)    | The JSON is canonical; code and the diagram are builders             |
 | [0010](0010-gssk-is-general-energese-is-a-language.md) | GSSK is general; Energese is one language on it                      |
-| [0011](0011-code-view-tsrs-and-monaco.md)              | Proposed: the code view with tsrs and Monaco, self-hosted, on demand |
+| [0011](0011-code-view-tsrs-and-monaco.md)              | The code view: tsrs and Monaco, self-hosted, loaded on demand        |
 | [0012](0012-services-through-a-token-proxy.md)         | Proposed: publishing services through a stateless token proxy        |

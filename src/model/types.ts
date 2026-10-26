@@ -140,6 +140,19 @@ export interface StudioModel {
   _diagram: { boundaries: Boundary[] };
   /** Editor-only: observed data to fit runs against (M3). */
   _observations?: ObservationSeries[];
+  /** Editor-only: the last Energese script applied, as provenance (ADR 0009). */
+  _energese?: ScriptProvenance;
+}
+
+/**
+ * A hand-written script that built the model (FR-SDK-007). It travels with the
+ * model, never instead of it: `modelHash` is the run manifest's model hash of
+ * what the script produced, so the studio can tell when the model has since
+ * been edited and the script no longer describes it.
+ */
+export interface ScriptProvenance {
+  source: string;
+  modelHash: string;
 }
 
 export const DEFAULT_CONFIG: ModelConfig = { t_start: 0, t_end: 100, dt: 0.1, method: 'auto' };
