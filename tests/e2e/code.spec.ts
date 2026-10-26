@@ -115,7 +115,11 @@ test('a hand-written script builds the model and travels with it (FR-SDK-007)', 
 
   // Edit the diagram: the script no longer describes the model, so the view says so.
   await page.getByRole('button', { name: 'Diagram', exact: true }).click();
-  await page.getByRole('button', { name: 'Storage: Tank 5' }).click();
+  const tank5 = page.getByRole('button', { name: 'Storage: Tank 5' });
+  await tank5.click();
+  await expect(tank5).toHaveAttribute('aria-pressed', 'true');
+  // Keys go to the canvas, as in multi.spec.ts: focus was last in the (now hidden) editor.
+  await page.locator('diagram-canvas svg.canvas').focus();
   await page.keyboard.press('Delete');
   await expect(nodes(page)).toHaveCount(5);
   await page.getByRole('button', { name: 'Code', exact: true }).click();
