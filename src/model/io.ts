@@ -5,6 +5,7 @@
  * dropped — an import never silently rewrites a model (ADR 0006).
  */
 import { isNodeType } from './catalogue.ts';
+import { parseForcing } from './forcing.ts';
 import { uniqueId } from './ids.ts';
 import {
   DEFAULT_CONFIG,
@@ -123,6 +124,10 @@ export function normaliseModel(raw: unknown): ParseResult {
       if (pn) p.price_node = pn;
       if (Object.keys(p).length) node.params = p;
     }
+    const nf = parseForcing(rn.forcing);
+    if (nf) node.forcing = nf;
+    else if (rn.forcing !== undefined)
+      notes.push(`“${id}”: its forcing was not understood and was left out.`);
     if (rn.dataType !== undefined) {
       notes.push(
         `“${id}”: its data-stream mapping (dataType ${String(rn.dataType)}) is not kept; import observations as CSV with a column named “${id}” to compare them.`
@@ -170,6 +175,10 @@ export function normaliseModel(raw: unknown): ParseResult {
     if (numerator) edge.params.numerator_node = numerator;
     const carrier = str(re.carrier);
     if (carrier) edge.carrier = carrier;
+    const ef = parseForcing(re.forcing);
+    if (ef) edge.forcing = ef;
+    else if (re.forcing !== undefined)
+      notes.push(`Flow “${id}”: its forcing was not understood and was left out.`);
     const v = isObj(re.visual) ? re.visual : {};
     const pt = (p: unknown) =>
       isObj(p) && num(p.x) !== undefined && num(p.y) !== undefined

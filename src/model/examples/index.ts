@@ -175,6 +175,35 @@ const economy: StudioModel = {
   },
 };
 
+const seasonal: StudioModel = {
+  metadata: {
+    schema_version: 4,
+    name: 'Seasonal river',
+    description:
+      'Rain is forced by a seasonal sine wave; a wetland stores the flood and drains to the river.',
+  },
+  config: { t_start: 0, t_end: 48, dt: 0.05, method: 'rk4' },
+  nodes: [
+    {
+      ...n('rain', 'source', 10, 100, 220, 'Seasonal rain'),
+      forcing: { waveform: 'sine', mean: 10, amplitude: 8, period: 12 },
+    },
+    n('wetland', 'storage', 40, 360, 220, 'Wetland', 150),
+    n('river', 'sink', 0, 620, 220, 'River'),
+    n('air', 'sink', 0, 360, 420, 'Evaporation'),
+  ],
+  edges: [
+    f('inflow', 'rain', 'wetland', 0.5),
+    f('drainage', 'wetland', 'river', 0.08),
+    // Evaporation peaks in summer: its rate is a square wave, high half the year.
+    {
+      ...f('evaporation', 'wetland', 'air', 0.01),
+      forcing: { waveform: 'square', mean: 0.03, amplitude: 0.02, period: 12, phase: 3 },
+    },
+  ],
+  _diagram: { boundaries: [] },
+};
+
 export const EXAMPLES: readonly Example[] = [
   {
     id: 'grassland',
@@ -205,6 +234,12 @@ export const EXAMPLES: readonly Example[] = [
     title: economy.metadata.name,
     summary: economy.metadata.description ?? '',
     model: economy,
+  },
+  {
+    id: 'seasonal',
+    title: seasonal.metadata.name,
+    summary: seasonal.metadata.description ?? '',
+    model: seasonal,
   },
 ];
 

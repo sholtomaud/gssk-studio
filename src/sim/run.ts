@@ -42,6 +42,8 @@ export interface RunManifest {
   dt: number;
   steps: number;
   samples: number;
+  /** The kernel RNG seed: jitter forcing draws from it, so it is part of the run's identity. */
+  seed: string;
 }
 
 export interface RunDiagnostics {
@@ -101,6 +103,7 @@ export class RunSession {
   private readonly kernel: GsskKernel;
   private readonly model: StudioModel;
   private readonly modelHash: string;
+  private readonly seed: string;
   private inst: GsskInstance | null;
   private readonly t0: number;
   private readonly dt: number;
@@ -124,6 +127,7 @@ export class RunSession {
     this.modelHash = modelHash;
     const inst = kernel.init(json);
     this.inst = inst;
+    this.seed = inst.seed;
     this.t0 = inst.tStart;
     this.tEnd = inst.tEnd;
     this.dt = inst.dt;
@@ -232,6 +236,7 @@ export class RunSession {
         dt: this.dt,
         steps: this.steps,
         samples: n,
+        seed: this.seed,
       },
       times: this.times.subarray(0, n),
       nodes: this.nodes.map((x) => ({ ...x, values: x.values.subarray(0, n) })),

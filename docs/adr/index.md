@@ -10,3 +10,4 @@
 | [0006](0006-importing-gssk-dia.md)            | Import gssk-dia models, listing every change                         |
 | [0007](0007-svg-editor-and-chart-in-house.md) | The diagram editor and the chart are in-house SVG                    |
 | [0008](0008-calibration-in-the-app.md)        | Calibration and sensitivity in the app, over kernel runs             |
+| [0009](0009-forcing-and-ensembles.md)         | Forcing in the kernel's schema; ensembles in one kernel call         |

@@ -269,3 +269,9 @@
   text-anchor: middle;
   pointer-events: none;
 }
+:host .forced {
+  fill: var(--accent);
+  font: 600 14px var(--font-sans, sans-serif);
+  text-anchor: middle;
+  pointer-events: none;
+}

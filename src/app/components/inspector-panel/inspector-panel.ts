@@ -22,20 +22,30 @@ import {
   type Selection,
 } from '../../../model/ops.ts';
 import {
+  canForceNode,
+  defaultForcing,
+  describeForcing,
+  evaluateForcing,
+  WAVEFORM_INFO,
+} from '../../../model/forcing.ts';
+import {
   cloneModel,
   EDGE_LOGICS,
+  WAVEFORMS,
   METHODS,
   NODE_TYPES,
   type EdgeLogic,
+  type Forcing,
   type Method,
   type ModelEdge,
   type ModelNode,
   type NodeType,
   type StudioModel,
+  type Waveform,
 } from '../../../model/types.ts';
 import type { Issue } from '../../../model/validate.ts';
 import { symbolIcon } from '../../symbol-icon.ts';
-import { el, icon, iconButton, toast } from '../../ui.ts';
+import { el, formatNumber, icon, iconButton, svg, toast } from '../../ui.ts';
 import { observationsFromCsv, observationTargets } from '../../../fit/observations.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import style from './inspector-panel.css?raw';
@@ -626,6 +636,18 @@ export class InspectorPanel extends BaseComponent {
             })
           : null
       ),
+      ...(canForceNode(n.type) || n.forcing
+        ? [
+            this.forcingSection(
+              m,
+              n.forcing,
+              n.value,
+              'Drives this symbol’s value over time, in place of the fixed value above.',
+              (label, field, f) => patch(label, field, (x) => f(x)),
+              () => findNode(cur(), id)?.forcing
+            ),
+          ]
+        : []),
       el(
         'section',
         {},
@@ -774,8 +796,212 @@ export class InspectorPanel extends BaseComponent {
               text: 'Or drag from a symbol’s port onto this flow to make it the control.',
             })
           : null,
-        sensorField,
-        el('div', { class: 'actions' }, reset, del)
+        sensorField
+      ),
+      this.forcingSection(
+        m,
+        e.forcing,
+        e.params.k,
+        'Drives this flow’s rate k over time, in place of the fixed k above.',
+        (label, field, f) => patch(label, field, (x) => f(x)),
+        () => findEdge(cur(), id)?.forcing
+      ),
+      el('section', {}, el('div', { class: 'actions' }, reset, del))
+    );
+  }
+
+  /**
+   * The forcing editor (FR-FRC-001), shared by sources, constants and flows:
+   * a waveform, its parameters in the kernel's own terms, and a preview of the
+   * waveform over the run, drawn from the same formulas the kernel uses.
+   */
+  private forcingSection(
+    m: StudioModel,
+    forcing: Forcing | undefined,
+    base: number,
+    summary: string,
+    patch: (label: string, field: string, f: (x: { forcing?: Forcing }) => void) => void,
+    current: () => Forcing | undefined
+  ): HTMLElement {
+    const cfg = m.config;
+    const preview = el('div', { class: 'forcing-preview' });
+    const redraw = () => this.drawForcing(preview, current(), base, this._model?.config ?? cfg);
+    const set = (label: string, field: string, f: (x: Forcing) => void) => {
+      patch(label, field, (x) => {
+        if (x.forcing) f(x.forcing);
+      });
+      redraw();
+    };
+    const waveform = this.selectField<Waveform>(
+      'Waveform',
+      forcing?.waveform ?? '',
+      [
+        { value: '', label: '— none: hold the fixed value —' },
+        ...WAVEFORMS.map((w) => ({ value: w, label: WAVEFORM_INFO[w].label })),
+      ],
+      (v) => {
+        patch(v ? `Force with ${v}` : 'Remove forcing', 'forcing', (x) => {
+          if (v) x.forcing = defaultForcing(v, base, cfg);
+          else delete x.forcing;
+        });
+        this.renderForm(true);
+      },
+      'waveform'
+    );
+    const section = el(
+      'section',
+      { class: 'forcing' },
+      el('h3', { text: 'Forcing' }),
+      el('p', { class: 'hint', text: summary }),
+      waveform
+    );
+    if (!forcing) return section;
+    const info = WAVEFORM_INFO[forcing.waveform];
+    const num = (key: keyof Forcing & string, label: string, hint?: string) => {
+      const f = this.numberField(
+        label,
+        forcing[key] as number | undefined,
+        (v) =>
+          set(label, `forcing.${key}`, (x) => {
+            if (v === undefined) delete x[key];
+            else (x as unknown as Record<string, number>)[key] = v;
+          }),
+        { optional: true, name: `forcing_${key}` }
+      );
+      if (hint) f.title = hint;
+      return f;
+    };
+    section.append(el('p', { class: 'formula', text: info.formula }));
+    const fields = info.fields.map((x) => num(x.key, x.label, x.hint));
+    for (let i = 0; i < fields.length; i += 2)
+      section.append(el('div', { class: 'row2' }, fields[i] ?? null, fields[i + 1] ?? null));
+    if (forcing.waveform === 'table') section.append(...this.tableFields(forcing, set));
+    section.append(
+      el(
+        'div',
+        { class: 'row2' },
+        num('min', 'Clamp below', 'Lower bound, applied after the formula. Blank for none.'),
+        num('max', 'Clamp above', 'Upper bound, applied after the formula. Blank for none.')
+      ),
+      preview
+    );
+    redraw();
+    return section;
+  }
+
+  private tableFields(
+    f: Forcing,
+    set: (label: string, field: string, fn: (x: Forcing) => void) => void
+  ): HTMLElement[] {
+    const area = el('textarea', { rows: '5', name: 'forcing_table', spellcheck: 'false' });
+    area.value = (f.times ?? []).map((t, i) => `${t}, ${f.values?.[i] ?? ''}`).join('\n');
+    area.addEventListener('input', () => {
+      const rows = area.value
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => l.split(/[\s,;]+/).map(Number));
+      if (rows.some((r) => r.length !== 2 || !r.every(Number.isFinite))) {
+        area.setAttribute('aria-invalid', 'true');
+        return;
+      }
+      area.removeAttribute('aria-invalid');
+      set('Table', 'forcing.table', (x) => {
+        x.times = rows.map((r) => r[0] ?? 0);
+        x.values = rows.map((r) => r[1] ?? 0);
+      });
+    });
+    return [
+      el('label', { class: 'field' }, 'Points: one “t, value” per line, in model time', area),
+      el(
+        'div',
+        { class: 'row2' },
+        this.selectField(
+          'Between points',
+          f.interpolation ?? 'linear',
+          [
+            { value: 'linear', label: 'Linear' },
+            { value: 'step', label: 'Step (hold)' },
+          ],
+          (v) => v && set('Interpolation', 'forcing.interpolation', (x) => (x.interpolation = v)),
+          'forcing_interpolation'
+        ),
+        this.selectField(
+          'Past the ends',
+          f.extrapolation ?? 'hold',
+          [
+            { value: 'hold', label: 'Hold the end value' },
+            { value: 'cycle', label: 'Repeat the table' },
+          ],
+          (v) => v && set('Extrapolation', 'forcing.extrapolation', (x) => (x.extrapolation = v)),
+          'forcing_extrapolation'
+        )
+      ),
+    ];
+  }
+
+  /** A small chart of the waveform over the run. */
+  private drawForcing(
+    host: HTMLElement,
+    f: Forcing | undefined,
+    base: number,
+    cfg: StudioModel['config']
+  ): void {
+    host.replaceChildren();
+    if (!f) return;
+    const W = 248;
+    const H = 72;
+    const pad = 4;
+    const N = 240;
+    const t0 = cfg.t_start;
+    const t1 = cfg.t_end > t0 ? cfg.t_end : t0 + 1;
+    const ts = Array.from({ length: N + 1 }, (_, i) => t0 + ((t1 - t0) * i) / N);
+    // An impulse lasts one step: sample its onset so the spike is drawn at any width.
+    if (f.waveform === 'impulse') ts.push(f.t_on ?? t0, (f.t_on ?? t0) + cfg.dt * 0.5);
+    ts.sort((a, b) => a - b);
+    const vs = ts.map((t) => evaluateForcing(f, t, cfg));
+    const jitter = f.waveform === 'jitter';
+    const band = jitter ? Math.abs(f.amplitude ?? 0) : 0;
+    const finite = vs.filter(Number.isFinite);
+    let lo = Math.min(...finite, base) - band;
+    let hi = Math.max(...finite, base) + band;
+    if (!(hi > lo)) {
+      lo -= 1;
+      hi += 1;
+    }
+    const x = (t: number) => pad + ((t - t0) / (t1 - t0)) * (W - 2 * pad);
+    const y = (v: number) => H - pad - ((v - lo) / (hi - lo)) * (H - 2 * pad);
+    const root = svg('svg', {
+      class: 'wave',
+      viewBox: `0 0 ${W} ${H}`,
+      role: 'img',
+      'aria-label': `Preview: ${describeForcing(f)}, from t ${formatNumber(t0)} to ${formatNumber(t1)}`,
+    });
+    root.append(svg('line', { class: 'ref', x1: pad, x2: W - pad, y1: y(base), y2: y(base) }));
+    if (jitter) {
+      root.append(
+        svg('rect', {
+          class: 'band',
+          x: pad,
+          width: W - 2 * pad,
+          y: y((f.mean ?? 0) + band),
+          height: Math.max(1, y((f.mean ?? 0) - band) - y((f.mean ?? 0) + band)),
+        })
+      );
+    }
+    let d = '';
+    ts.forEach((t, i) => {
+      const v = vs[i] ?? NaN;
+      if (Number.isFinite(v)) d += `${d ? 'L' : 'M'}${x(t).toFixed(1)},${y(v).toFixed(1)}`;
+    });
+    root.append(svg('path', { class: 'line', d }));
+    host.append(
+      root,
+      el(
+        'div',
+        { class: 'wave-scale' },
+        el('span', { text: `${formatNumber(lo)} – ${formatNumber(hi)}` }),
+        el('span', { text: 'dashed: fixed value' })
       )
     );
   }

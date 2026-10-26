@@ -7,6 +7,7 @@
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
 import { isNodeType, symbolFor } from '../../../model/catalogue.ts';
+import { describeForcing } from '../../../model/forcing.ts';
 import {
   addNode,
   connect,
@@ -263,6 +264,13 @@ export class DiagramCanvas extends BaseComponent {
   }
 
   /** A "!" badge at (x, y) whose tooltip lists the problems. */
+  /** The forcing mark (FR-FRC-001): a small wave beside a forced symbol or on a forced flow. */
+  private forcedMark(x: number, y: number): SVGTextElement {
+    const t = svg('text', { class: 'forced', x, y });
+    t.textContent = '∿';
+    return t;
+  }
+
   private badge(id: string, x: number, y: number): SVGGElement | null {
     const m = this._issues.get(id);
     if (!m) return null;
@@ -421,8 +429,9 @@ export class DiagramCanvas extends BaseComponent {
         r: 6,
       })
     );
+    if (n.forcing) g.append(this.forcedMark(w + 2, -h + 4));
     const title = svg('title');
-    title.textContent = `${spec.label} “${label}” (${n.id})`;
+    title.textContent = `${spec.label} “${label}” (${n.id})${n.forcing ? `, forced: ${describeForcing(n.forcing)}` : ''}`;
     g.append(title);
     const nb = this.badge(n.id, -w - 2, -h - 2);
     if (nb) g.append(nb);
@@ -479,8 +488,13 @@ export class DiagramCanvas extends BaseComponent {
         reading
       );
     }
+    if (e.forcing) {
+      // Clear of the labels at the origin end, the gate or sensor mid-flow and the badge at 0.78.
+      const at = pointAt(curve, 0.38);
+      g.append(this.forcedMark(at.x + 10, at.y - 6));
+    }
     const title = svg('title');
-    title.textContent = `${e.id}: ${e.logic}, k = ${e.params.k}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}`;
+    title.textContent = `${e.id}: ${e.logic}, k = ${e.forcing ? describeForcing(e.forcing) : e.params.k}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}`;
     g.append(title);
     // On the curve, clear of a gate or sensor at the middle; in the overlay so it
     // draws above the selection handles, and still selects the flow when clicked.

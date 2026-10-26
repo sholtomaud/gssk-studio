@@ -56,6 +56,7 @@ export function toKernelModel(m: StudioModel): KernelModel {
           n.params && Object.keys(n.params).length
             ? defined({ ...n.params, price_node: level(n.params.price_node) })
             : undefined,
+        forcing: n.forcing,
       })
     ),
     edges: m.edges.map((e) =>
@@ -70,6 +71,7 @@ export function toKernelModel(m: StudioModel): KernelModel {
           control_node: level(e.params.control_node),
           numerator_node: level(e.params.numerator_node),
         }),
+        forcing: e.forcing,
       })
     ),
   };

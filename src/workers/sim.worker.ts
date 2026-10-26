@@ -9,6 +9,7 @@ import { RunSession, runModel, type RunResult } from '../sim/run.ts';
 import type { StudioModel } from '../model/types.ts';
 import { CalibrationSession, type CalibrationResult } from '../fit/calibrate.ts';
 import { elasticities, type Elasticity } from '../fit/sensitivity.ts';
+import { ensembleModel, type EnsembleOptions, type EnsembleResult } from '../sim/ensemble.ts';
 import { expose, type Endpoint } from './rpc.ts';
 
 const pin = pinJson as GsskPin;
@@ -108,6 +109,10 @@ const api = {
   },
   async sensitivity(model: StudioModel, targets: string[]): Promise<Elasticity[]> {
     return elasticities(await getKernel(), model, targets);
+  },
+  /** One kernel call: every run, then the envelope (FR-ENS-001). */
+  async ensemble(model: StudioModel, opts: EnsembleOptions): Promise<EnsembleResult> {
+    return ensembleModel(await getKernel(), model, opts);
   },
   cancel(token: number): void {
     if (session?.token === token) {

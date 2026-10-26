@@ -22,6 +22,7 @@ import {
 import { emptyModel, type StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
 import type { RunResult } from '../../../sim/run.ts';
+import type { EnsembleOptions } from '../../../sim/ensemble.ts';
 import { getModel, saveModel } from '../../../store/models.ts';
 import { importNotes } from '../../import-notes.ts';
 import { simWorker } from '../../sim-client.ts';
@@ -269,6 +270,18 @@ export class StudioPage extends BaseComponent {
         .then((data) => this.results.setSensitivity(r, targets, data))
         .catch((err: unknown) =>
           this.results.setSensitivity(r, targets, err instanceof Error ? err.message : String(err))
+        );
+    });
+    this.results.addEventListener('ensemble-request', (e) => {
+      const r = this.result;
+      const m = this.resultModel;
+      if (!r || !m) return;
+      this.results.setEnsemble(r, null);
+      simWorker()
+        .ensemble(m, (e as CustomEvent<EnsembleOptions>).detail)
+        .then((data) => this.results.setEnsemble(r, data))
+        .catch((err: unknown) =>
+          this.results.setEnsemble(r, err instanceof Error ? err.message : String(err))
         );
     });
     this.canvas.addEventListener('diagram-hint', (e) => toast((e as CustomEvent<string>).detail));
