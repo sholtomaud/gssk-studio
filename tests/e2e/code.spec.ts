@@ -13,7 +13,9 @@ async function openCode(page: Page): Promise<void> {
 /** Replace the editor's text, as a paste does. */
 async function setScript(page: Page, text: string): Promise<void> {
   const editor = page.locator('code-view .monaco-editor');
-  await editor.locator('.view-lines').click();
+  // Focus Monaco's input itself: a click on .view-lines aims at the middle of
+  // the whole document, which can fall outside the visible editor.
+  await editor.locator('.native-edit-context, textarea.inputarea').first().focus();
   await expect(editor).toHaveClass(/\bfocused\b/);
   await page.keyboard.press('ControlOrMeta+A');
   await page.keyboard.insertText(text);
