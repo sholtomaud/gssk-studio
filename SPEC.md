@@ -233,6 +233,9 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
   missing its control or threshold, non-numeric values, a non-positive step, an end before the
   start, more than 500,000 steps) and warnings (isolated symbols, flows into a source, flows out of
   a heat sink, long composite ids). Each names and links to the node or flow at fault.
+- **FR-VAL-002** On the canvas, a symbol or flow with an error is drawn red and one with only
+  warnings orange, and each carries a "!" badge whose tooltip lists its problems, so colour is
+  never the only signal. Clicking the badge selects it. Badges are left out of diagram exports.
 
 ## 11. Observations and fitness (M3)
 

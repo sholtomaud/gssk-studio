@@ -33,6 +33,7 @@ import {
   SENSOR_DRAG_TYPE,
   type DiagramCanvas,
   type EditDetail,
+  type Marked,
   type Playback,
 } from '../diagram-canvas/diagram-canvas.ts';
 import type { InspectorPanel } from '../inspector-panel/inspector-panel.ts';
@@ -427,11 +428,15 @@ export class StudioPage extends BaseComponent {
           ? `${warnings} warning${warnings > 1 ? 's' : ''}`
           : 'Checks pass'
     );
-    this.canvas.invalid = new Set(
-      this.issues
-        .filter((i) => i.severity === 'error' && i.ref && i.ref.kind !== 'config')
-        .map((i) => i.ref?.id ?? '')
-    );
+    const marks = new Map<string, Marked>();
+    for (const i of this.issues) {
+      if (!i.ref || i.ref.kind === 'config') continue;
+      const m = marks.get(i.ref.id) ?? { severity: 'warning', messages: [] };
+      if (i.severity === 'error') m.severity = 'error';
+      m.messages.push(i.message);
+      marks.set(i.ref.id, m);
+    }
+    this.canvas.issues = marks;
     this.canvas.selection = this.selection;
     this.canvas.model = m;
     this.inspector.model = m;

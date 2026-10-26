@@ -247,3 +247,25 @@
   stroke-dasharray: 4 3;
   pointer-events: none;
 }
+:host .node.warned {
+  color: var(--serious);
+}
+:host .edge.warned .line {
+  stroke: var(--serious);
+}
+:host .badge circle {
+  stroke: var(--canvas-bg);
+  stroke-width: 2;
+}
+:host .badge.error circle {
+  fill: var(--critical);
+}
+:host .badge.warning circle {
+  fill: var(--serious);
+}
+:host .badge text {
+  fill: #fff;
+  font: 700 12px var(--font-sans);
+  text-anchor: middle;
+  pointer-events: none;
+}
