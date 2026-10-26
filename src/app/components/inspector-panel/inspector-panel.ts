@@ -17,25 +17,49 @@ import {
   alignNodes,
   distributeNodes,
   selectionKey,
+  selectNodes,
   toggleSensor,
   type Alignment,
   type Selection,
 } from '../../../model/ops.ts';
 import {
+  childGroups,
+  diagramView,
+  findGroup,
+  groupNodes,
+  groupOfNode,
+  nodesIn,
+  renameGroup,
+  revealNode,
+  setCollapsed,
+  ungroup,
+  type End,
+} from '../../../model/groups.ts';
+import {
+  canForceNode,
+  defaultForcing,
+  describeForcing,
+  evaluateForcing,
+  WAVEFORM_INFO,
+} from '../../../model/forcing.ts';
+import {
   cloneModel,
   EDGE_LOGICS,
+  WAVEFORMS,
   METHODS,
   NODE_TYPES,
   type EdgeLogic,
+  type Forcing,
   type Method,
   type ModelEdge,
   type ModelNode,
   type NodeType,
   type StudioModel,
+  type Waveform,
 } from '../../../model/types.ts';
 import type { Issue } from '../../../model/validate.ts';
 import { symbolIcon } from '../../symbol-icon.ts';
-import { el, icon, iconButton, toast } from '../../ui.ts';
+import { el, formatNumber, icon, iconButton, svg, toast } from '../../ui.ts';
 import { observationsFromCsv, observationTargets } from '../../../fit/observations.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import style from './inspector-panel.css?raw';
@@ -205,6 +229,11 @@ export class InspectorPanel extends BaseComponent {
     } else if (s?.kind === 'edge') {
       const e = findEdge(m, s.id);
       if (e) return this.edgeForm(m, e);
+    } else if (s?.kind === 'group') {
+      if (findGroup(m, s.id)) return this.groupForm(m, s.id);
+    } else if (s?.kind === 'bundle') {
+      const b = diagramView(m).bundles.find((x) => x.id === s.id);
+      if (b) return this.bundleForm(m, b.id);
     } else if (s?.kind === 'boundary') {
       const b = m._diagram.boundaries.find((x) => x.id === s.id);
       if (b) {
@@ -249,6 +278,180 @@ export class InspectorPanel extends BaseComponent {
     this.modelForm(m);
   }
 
+  /** A zoom group (FR-GRP-001): its name, packing, what it holds and what crosses its edge. */
+  private groupForm(m: StudioModel, id: string): void {
+    const g = findGroup(m, id);
+    if (!g) return;
+    const cur = () => this._model ?? m;
+    const inside = new Set(nodesIn(m, id));
+    const flowsIn = m.edges.filter((e) => inside.has(e.target) && !inside.has(e.origin));
+    const flowsOut = m.edges.filter((e) => inside.has(e.origin) && !inside.has(e.target));
+    const internal = m.edges.filter((e) => inside.has(e.origin) && inside.has(e.target));
+    const subgroups = childGroups(m, id);
+    const toggle = el(
+      'button',
+      { type: 'button', class: 'primary', name: 'pack' },
+      g.collapsed ? 'Unpack' : 'Pack'
+    );
+    toggle.onclick = () =>
+      this.emit(
+        setCollapsed(cur(), id, !g.collapsed),
+        `${g.collapsed ? 'Unpack' : 'Pack'} ${g.label}`
+      );
+    const ung = el('button', { type: 'button', text: 'Ungroup' });
+    ung.title = 'Remove the group and keep everything in it';
+    ung.onclick = () =>
+      this.emit(ungroup(cur(), id), `Ungroup ${g.label}`, undefined, selectNodes(g.nodes));
+    const del = el(
+      'button',
+      { type: 'button', class: 'danger' },
+      icon('trash'),
+      `Delete group and ${inside.size} symbols`
+    );
+    del.onclick = () =>
+      this.emit(
+        removeSelection(cur(), { kind: 'group', id }),
+        `Delete ${g.label}`,
+        undefined,
+        null
+      );
+    const nodeLink = (nodeId: string) => {
+      const n = findNode(m, nodeId);
+      const b = el('button', { type: 'button', text: n?.visual.label ?? nodeId });
+      b.onclick = () =>
+        this.emit(revealNode(cur(), nodeId), `Show ${nodeId}`, undefined, {
+          kind: 'node',
+          id: nodeId,
+        });
+      return b;
+    };
+    const groupLink = (gid: string) => {
+      const b = el('button', { type: 'button', text: findGroup(m, gid)?.label ?? gid });
+      b.onclick = () => this.selectRef({ kind: 'group', id: gid });
+      return b;
+    };
+    const parent = g.parent ? findGroup(m, g.parent) : undefined;
+    this.form.append(
+      el(
+        'section',
+        {},
+        el(
+          'div',
+          { class: 'kind' },
+          el(
+            'div',
+            {},
+            el('div', { class: 't', text: 'Group' }),
+            el('div', {
+              class: 's',
+              text: `${inside.size} symbols${subgroups.length ? `, ${subgroups.length} groups inside` : ''} · ${g.collapsed ? 'packed' : 'unpacked'}`,
+            })
+          )
+        ),
+        el('p', {
+          class: 'summary',
+          text: 'Packed, the group draws as one symbol and its flows across the edge as one combined flow. The kernel always runs every symbol inside, so packing never changes a result.',
+        }),
+        this.textField(
+          'Label',
+          g.label,
+          (v) => this.emit(renameGroup(cur(), id, v), 'Rename group', 'label'),
+          'label'
+        ),
+        parent
+          ? el(
+              'div',
+              { class: 'links' },
+              el('span', { class: 'hint', text: 'Inside' }),
+              groupLink(parent.id)
+            )
+          : null,
+        el('div', { class: 'actions' }, toggle, ung)
+      ),
+      el(
+        'section',
+        {},
+        el('h3', { text: 'Holds' }),
+        subgroups.length
+          ? el('div', { class: 'links' }, ...subgroups.map((c) => groupLink(c.id)))
+          : null,
+        g.nodes.length ? el('div', { class: 'links' }, ...g.nodes.map(nodeLink)) : null,
+        el('p', {
+          class: 'hint',
+          text: `${internal.length} flows inside; ${flowsIn.length} in and ${flowsOut.length} out across its edge.`,
+        }),
+        el('div', { class: 'actions' }, del)
+      )
+    );
+  }
+
+  /** A combined flow: the flows it stands for, each a link that unpacks to it. */
+  private bundleForm(m: StudioModel, bundleId: string): void {
+    const b = diagramView(m).bundles.find((x) => x.id === bundleId);
+    if (!b) return;
+    const cur = () => this._model ?? m;
+    const name = (e: End) =>
+      e.kind === 'group'
+        ? (findGroup(m, e.id)?.label ?? e.id)
+        : (findNode(m, e.id)?.visual.label ?? e.id);
+    const rows = b.edges.flatMap((id) => {
+      const e = findEdge(m, id);
+      if (!e) return [];
+      const show = el('button', { type: 'button', text: id, title: 'Unpack to this flow' });
+      show.onclick = () => {
+        const next = revealNode(revealNode(cur(), e.origin), e.target);
+        this.emit(next, `Show ${id}`, undefined, { kind: 'edge', id });
+      };
+      return [
+        el(
+          'tr',
+          { 'data-flow': id },
+          el('td', {}, show),
+          el('td', {
+            text: `${findNode(m, e.origin)?.visual.label ?? e.origin} → ${findNode(m, e.target)?.visual.label ?? e.target}`,
+          }),
+          el('td', { class: 'num', text: e.forcing ? '∿' : String(e.params.k) })
+        ),
+      ];
+    });
+    this.form.append(
+      el(
+        'section',
+        {},
+        el(
+          'div',
+          { class: 'kind' },
+          el(
+            'div',
+            {},
+            el('div', { class: 't', text: 'Combined flow' }),
+            el('div', { class: 's', text: `${name(b.origin)} → ${name(b.target)}` })
+          )
+        ),
+        el('p', {
+          class: 'summary',
+          text: `${b.edges.length} flow${b.edges.length === 1 ? '' : 's'} across a packed group’s edge, drawn as one. During playback its reading ΣJ is the sum of their rates.`,
+        }),
+        el(
+          'table',
+          { class: 'bundle-flows' },
+          el(
+            'thead',
+            {},
+            el(
+              'tr',
+              {},
+              el('th', { text: 'Flow' }),
+              el('th', { text: 'From → to' }),
+              el('th', { text: 'k' })
+            )
+          ),
+          el('tbody', {}, ...rows)
+        )
+      )
+    );
+  }
+
   /** Several symbols: align, distribute, delete (FR-EDIT-011, FR-EDIT-012). */
   private multiForm(m: StudioModel, ids: string[]): void {
     const cur = () => this._model ?? m;
@@ -285,6 +488,24 @@ export class InspectorPanel extends BaseComponent {
             el('div', { class: 't', text: `${ids.length} symbols selected` }),
             el('div', { class: 's', text: 'Shift-click to add or remove one' })
           )
+        ),
+        el(
+          'div',
+          { class: 'actions' },
+          (() => {
+            const b = el(
+              'button',
+              { type: 'button', class: 'primary', name: 'group' },
+              `Group ${ids.length} (Ctrl+G)`
+            );
+            b.title = 'Pack these symbols into one group symbol';
+            b.onclick = () => {
+              const { model, id } = groupNodes(cur(), ids);
+              if (id)
+                this.emit(model, `Group ${ids.length} symbols`, undefined, { kind: 'group', id });
+            };
+            return b;
+          })()
         ),
         el('h3', { text: 'Align' }),
         el(
@@ -556,6 +777,15 @@ export class InspectorPanel extends BaseComponent {
           )
         ),
         el('p', { class: 'summary', text: spec.summary }),
+        ...(() => {
+          const g = groupOfNode(m, id);
+          if (!g) return [];
+          const b = el('button', { type: 'button', text: g.label });
+          b.onclick = () => this.selectRef({ kind: 'group', id: g.id });
+          return [
+            el('div', { class: 'links' }, el('span', { class: 'hint', text: 'In group' }), b),
+          ];
+        })(),
         this.textField(
           'Label',
           n.visual.label ?? '',
@@ -626,6 +856,18 @@ export class InspectorPanel extends BaseComponent {
             })
           : null
       ),
+      ...(canForceNode(n.type) || n.forcing
+        ? [
+            this.forcingSection(
+              m,
+              n.forcing,
+              n.value,
+              'Drives this symbol’s value over time, in place of the fixed value above.',
+              (label, field, f) => patch(label, field, (x) => f(x)),
+              () => findNode(cur(), id)?.forcing
+            ),
+          ]
+        : []),
       el(
         'section',
         {},
@@ -774,8 +1016,212 @@ export class InspectorPanel extends BaseComponent {
               text: 'Or drag from a symbol’s port onto this flow to make it the control.',
             })
           : null,
-        sensorField,
-        el('div', { class: 'actions' }, reset, del)
+        sensorField
+      ),
+      this.forcingSection(
+        m,
+        e.forcing,
+        e.params.k,
+        'Drives this flow’s rate k over time, in place of the fixed k above.',
+        (label, field, f) => patch(label, field, (x) => f(x)),
+        () => findEdge(cur(), id)?.forcing
+      ),
+      el('section', {}, el('div', { class: 'actions' }, reset, del))
+    );
+  }
+
+  /**
+   * The forcing editor (FR-FRC-001), shared by sources, constants and flows:
+   * a waveform, its parameters in the kernel's own terms, and a preview of the
+   * waveform over the run, drawn from the same formulas the kernel uses.
+   */
+  private forcingSection(
+    m: StudioModel,
+    forcing: Forcing | undefined,
+    base: number,
+    summary: string,
+    patch: (label: string, field: string, f: (x: { forcing?: Forcing }) => void) => void,
+    current: () => Forcing | undefined
+  ): HTMLElement {
+    const cfg = m.config;
+    const preview = el('div', { class: 'forcing-preview' });
+    const redraw = () => this.drawForcing(preview, current(), base, this._model?.config ?? cfg);
+    const set = (label: string, field: string, f: (x: Forcing) => void) => {
+      patch(label, field, (x) => {
+        if (x.forcing) f(x.forcing);
+      });
+      redraw();
+    };
+    const waveform = this.selectField<Waveform>(
+      'Waveform',
+      forcing?.waveform ?? '',
+      [
+        { value: '', label: '— none: hold the fixed value —' },
+        ...WAVEFORMS.map((w) => ({ value: w, label: WAVEFORM_INFO[w].label })),
+      ],
+      (v) => {
+        patch(v ? `Force with ${v}` : 'Remove forcing', 'forcing', (x) => {
+          if (v) x.forcing = defaultForcing(v, base, cfg);
+          else delete x.forcing;
+        });
+        this.renderForm(true);
+      },
+      'waveform'
+    );
+    const section = el(
+      'section',
+      { class: 'forcing' },
+      el('h3', { text: 'Forcing' }),
+      el('p', { class: 'hint', text: summary }),
+      waveform
+    );
+    if (!forcing) return section;
+    const info = WAVEFORM_INFO[forcing.waveform];
+    const num = (key: keyof Forcing & string, label: string, hint?: string) => {
+      const f = this.numberField(
+        label,
+        forcing[key] as number | undefined,
+        (v) =>
+          set(label, `forcing.${key}`, (x) => {
+            if (v === undefined) delete x[key];
+            else (x as unknown as Record<string, number>)[key] = v;
+          }),
+        { optional: true, name: `forcing_${key}` }
+      );
+      if (hint) f.title = hint;
+      return f;
+    };
+    section.append(el('p', { class: 'formula', text: info.formula }));
+    const fields = info.fields.map((x) => num(x.key, x.label, x.hint));
+    for (let i = 0; i < fields.length; i += 2)
+      section.append(el('div', { class: 'row2' }, fields[i] ?? null, fields[i + 1] ?? null));
+    if (forcing.waveform === 'table') section.append(...this.tableFields(forcing, set));
+    section.append(
+      el(
+        'div',
+        { class: 'row2' },
+        num('min', 'Clamp below', 'Lower bound, applied after the formula. Blank for none.'),
+        num('max', 'Clamp above', 'Upper bound, applied after the formula. Blank for none.')
+      ),
+      preview
+    );
+    redraw();
+    return section;
+  }
+
+  private tableFields(
+    f: Forcing,
+    set: (label: string, field: string, fn: (x: Forcing) => void) => void
+  ): HTMLElement[] {
+    const area = el('textarea', { rows: '5', name: 'forcing_table', spellcheck: 'false' });
+    area.value = (f.times ?? []).map((t, i) => `${t}, ${f.values?.[i] ?? ''}`).join('\n');
+    area.addEventListener('input', () => {
+      const rows = area.value
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => l.split(/[\s,;]+/).map(Number));
+      if (rows.some((r) => r.length !== 2 || !r.every(Number.isFinite))) {
+        area.setAttribute('aria-invalid', 'true');
+        return;
+      }
+      area.removeAttribute('aria-invalid');
+      set('Table', 'forcing.table', (x) => {
+        x.times = rows.map((r) => r[0] ?? 0);
+        x.values = rows.map((r) => r[1] ?? 0);
+      });
+    });
+    return [
+      el('label', { class: 'field' }, 'Points: one “t, value” per line, in model time', area),
+      el(
+        'div',
+        { class: 'row2' },
+        this.selectField(
+          'Between points',
+          f.interpolation ?? 'linear',
+          [
+            { value: 'linear', label: 'Linear' },
+            { value: 'step', label: 'Step (hold)' },
+          ],
+          (v) => v && set('Interpolation', 'forcing.interpolation', (x) => (x.interpolation = v)),
+          'forcing_interpolation'
+        ),
+        this.selectField(
+          'Past the ends',
+          f.extrapolation ?? 'hold',
+          [
+            { value: 'hold', label: 'Hold the end value' },
+            { value: 'cycle', label: 'Repeat the table' },
+          ],
+          (v) => v && set('Extrapolation', 'forcing.extrapolation', (x) => (x.extrapolation = v)),
+          'forcing_extrapolation'
+        )
+      ),
+    ];
+  }
+
+  /** A small chart of the waveform over the run. */
+  private drawForcing(
+    host: HTMLElement,
+    f: Forcing | undefined,
+    base: number,
+    cfg: StudioModel['config']
+  ): void {
+    host.replaceChildren();
+    if (!f) return;
+    const W = 248;
+    const H = 72;
+    const pad = 4;
+    const N = 240;
+    const t0 = cfg.t_start;
+    const t1 = cfg.t_end > t0 ? cfg.t_end : t0 + 1;
+    const ts = Array.from({ length: N + 1 }, (_, i) => t0 + ((t1 - t0) * i) / N);
+    // An impulse lasts one step: sample its onset so the spike is drawn at any width.
+    if (f.waveform === 'impulse') ts.push(f.t_on ?? t0, (f.t_on ?? t0) + cfg.dt * 0.5);
+    ts.sort((a, b) => a - b);
+    const vs = ts.map((t) => evaluateForcing(f, t, cfg));
+    const jitter = f.waveform === 'jitter';
+    const band = jitter ? Math.abs(f.amplitude ?? 0) : 0;
+    const finite = vs.filter(Number.isFinite);
+    let lo = Math.min(...finite, base) - band;
+    let hi = Math.max(...finite, base) + band;
+    if (!(hi > lo)) {
+      lo -= 1;
+      hi += 1;
+    }
+    const x = (t: number) => pad + ((t - t0) / (t1 - t0)) * (W - 2 * pad);
+    const y = (v: number) => H - pad - ((v - lo) / (hi - lo)) * (H - 2 * pad);
+    const root = svg('svg', {
+      class: 'wave',
+      viewBox: `0 0 ${W} ${H}`,
+      role: 'img',
+      'aria-label': `Preview: ${describeForcing(f)}, from t ${formatNumber(t0)} to ${formatNumber(t1)}`,
+    });
+    root.append(svg('line', { class: 'ref', x1: pad, x2: W - pad, y1: y(base), y2: y(base) }));
+    if (jitter) {
+      root.append(
+        svg('rect', {
+          class: 'band',
+          x: pad,
+          width: W - 2 * pad,
+          y: y((f.mean ?? 0) + band),
+          height: Math.max(1, y((f.mean ?? 0) - band) - y((f.mean ?? 0) + band)),
+        })
+      );
+    }
+    let d = '';
+    ts.forEach((t, i) => {
+      const v = vs[i] ?? NaN;
+      if (Number.isFinite(v)) d += `${d ? 'L' : 'M'}${x(t).toFixed(1)},${y(v).toFixed(1)}`;
+    });
+    root.append(svg('path', { class: 'line', d }));
+    host.append(
+      root,
+      el(
+        'div',
+        { class: 'wave-scale' },
+        el('span', { text: `${formatNumber(lo)} – ${formatNumber(hi)}` }),
+        el('span', { text: 'dashed: fixed value' })
       )
     );
   }

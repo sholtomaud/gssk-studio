@@ -6,7 +6,7 @@
  * same one from the label, so the code stays readable.
  */
 import { uniqueId } from '../../model/ids.ts';
-import type { ModelEdge, ModelNode, StudioModel } from '../../model/types.ts';
+import type { Forcing, ModelEdge, ModelNode, StudioModel } from '../../model/types.ts';
 import { CONSTRUCTS } from './index.ts';
 
 export interface CodegenOptions {
@@ -46,18 +46,51 @@ function num(n: number): string {
   return Object.is(n, -0) ? '-0' : String(n);
 }
 
-/** `{ a: 1, b: 2 }` on one line, or one entry per line when that is too long. */
-function obj(entries: [string, string][], indent: string, room: number): string {
-  if (!entries.length) return '{}';
-  const flat = `{ ${entries.map(([k, v]) => `${k}: ${v}`).join(', ')} }`;
-  if (flat.length <= room) return flat;
+/** A value to print: code as it stands, or an object or array laid out to fit. */
+type Lit = string | { obj: [string, Lit][] } | { arr: Lit[] };
+
+function flat(l: Lit): string {
+  if (typeof l === 'string') return l;
+  if ('arr' in l) return `[${l.arr.map(flat).join(', ')}]`;
+  return l.obj.length ? `{ ${l.obj.map(([k, v]) => `${k}: ${flat(v)}`).join(', ')} }` : '{}';
+}
+
+/** On one line if it fits in `room`, else broken as Prettier breaks it. */
+function format(l: Lit, indent: string, room: number): string {
+  const one = flat(l);
+  if (typeof l === 'string' || one.length <= room) return one;
   const inner = `${indent}  `;
-  const line = ([k, v]: [string, string]) => {
-    const one = `${inner}${k}: ${v},`;
-    // As Prettier does: a value too long for the line moves under its key.
-    return one.length > LINE && !v.includes('\n') ? `${inner}${k}:\n${inner}  ${v},` : one;
+  if ('arr' in l) {
+    return `[\n${l.arr.map((v) => `${inner}${format(v, inner, LINE - inner.length - 1)},`).join('\n')}\n${indent}]`;
+  }
+  const line = ([k, v]: [string, Lit]) => {
+    const head = `${inner}${k}: `;
+    const value = format(v, inner, LINE - head.length - 1);
+    // A string too long for the line moves under its key.
+    return typeof v === 'string' && head.length + value.length + 1 > LINE
+      ? `${inner}${k}:\n${inner}  ${value},`
+      : `${head}${value},`;
   };
-  return `{\n${entries.map(line).join('\n')}\n${indent}}`;
+  return `{\n${l.obj.map(line).join('\n')}\n${indent}}`;
+}
+
+const obj = (entries: [string, Lit][], indent: string, room: number) =>
+  format({ obj: entries }, indent, room);
+
+/** A forcing as an object literal, in the document's key order. */
+function forcingLit(f: Forcing): Lit {
+  return {
+    obj: Object.entries(f)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]): [string, Lit] => [
+        k,
+        typeof v === 'string'
+          ? str(v)
+          : Array.isArray(v)
+            ? { arr: v.map((x) => num(x as number)) }
+            : num(v as number),
+      ]),
+  };
 }
 
 const KEY_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
@@ -104,7 +137,7 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
   if (m.nodes.length) out.push('', '// Symbols');
   for (const n of m.nodes) {
     const label = n.visual.label ?? n.id;
-    const entries: [string, string][] = [];
+    const entries: [string, Lit][] = [];
     if (uniqueId(label, taken) !== n.id) entries.push(['id', str(n.id)]);
     taken.add(n.id);
     entries.push(['value', num(n.value)]);
@@ -120,7 +153,8 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
     if (n.carrier) entries.push(['carrier', str(n.carrier)]);
     entries.push(['at', `[${num(n.visual.x)}, ${num(n.visual.y)}]`]);
     if (n.visual.capacity !== undefined) entries.push(['capacity', num(n.visual.capacity)]);
-    if (raw.length) entries.push(['params', obj(raw, '', LINE)]);
+    if (n.forcing) entries.push(['forcing', forcingLit(n.forcing)]);
+    if (raw.length) entries.push(['params', { obj: raw }]);
     const v = vars.get(n.id)!;
     const lead = `const ${v} = new ener.${CONSTRUCTS[n.type]}(m, ${str(label)}, `;
     out.push(`${lead}${obj(entries, '', LINE - lead.length - 2)});`);
@@ -131,9 +165,10 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
   for (const e of m.edges) {
     const def = uniqueId(`${e.origin}_to_${e.target}`, taken);
     taken.add(e.id);
-    const props: [string, string][] = [];
+    const props: [string, Lit][] = [];
     if (def !== e.id) props.push(['id', str(e.id)]);
     if (e.carrier) props.push(['carrier', str(e.carrier)]);
+    if (e.forcing) props.push(['forcing', forcingLit(e.forcing)]);
     if (e.visual?.sensor) props.push(['sensor', 'true']);
     if (e.visual?.ctrl1)
       props.push(['ctrl1', `[${num(e.visual.ctrl1.x)}, ${num(e.visual.ctrl1.y)}]`]);
@@ -151,6 +186,31 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
     entries.push(['x', num(b.x)], ['y', num(b.y)], ['w', num(b.w)], ['h', num(b.h)]);
     const lead = `new ener.Boundary(m, ${str(b.label)}, `;
     out.push(`${lead}${obj(entries, '', LINE - lead.length - 2)});`);
+  }
+
+  const groups = m._diagram.groups ?? [];
+  if (groups.length) out.push('', '// Groups');
+  /** A group another group names as its parent, later in the list, gets a variable. */
+  const groupVars = new Map<string, string>();
+  groups.forEach((g, i) => {
+    if (groups.slice(i + 1).some((c) => c.parent === g.id))
+      groupVars.set(g.id, identifier(g.id, used));
+  });
+  const declaredGroups = new Set<string>();
+  for (const g of groups) {
+    const props: [string, Lit][] = [];
+    if (uniqueId('group', taken) !== g.id) props.push(['id', str(g.id)]);
+    taken.add(g.id);
+    if (g.parent !== undefined) {
+      const pv = groupVars.get(g.parent);
+      props.push(['parent', pv && declaredGroups.has(g.parent) ? pv : str(g.parent)]);
+    }
+    if (g.collapsed) props.push(['collapsed', 'true']);
+    const v = groupVars.get(g.id);
+    const members = flat({ arr: g.nodes.map(ref) });
+    const lead = `${v ? `const ${v} = ` : ''}new ener.Group(m, ${str(g.label)}, ${members}`;
+    out.push(props.length ? `${lead}, ${obj(props, '', LINE - lead.length - 4)});` : `${lead});`);
+    declaredGroups.add(g.id);
   }
 
   out.push('', 'export default m;', '');

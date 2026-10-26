@@ -10,6 +10,8 @@
 | [0006](0006-importing-gssk-dia.md)                     | Import gssk-dia models, listing every change                         |
 | [0007](0007-svg-editor-and-chart-in-house.md)          | The diagram editor and the chart are in-house SVG                    |
 | [0008](0008-calibration-in-the-app.md)                 | Calibration and sensitivity in the app, over kernel runs             |
+| [0009](0009-forcing-and-ensembles.md)                  | Forcing in the kernel's schema; ensembles in one kernel call         |
+| [0010](0010-zoom-groups-are-a-view.md)                 | Zoom groups are a view; the kernel runs every symbol                 |
 | [0011](0011-json-is-canonical-code-is-a-builder.md)    | The JSON is canonical; code and the diagram are builders             |
 | [0012](0012-gssk-is-general-energese-is-a-language.md) | GSSK is general; Energese is one language on it                      |
 | [0013](0013-code-view-tsrs-and-monaco.md)              | The code view: tsrs and Monaco, self-hosted, loaded on demand        |

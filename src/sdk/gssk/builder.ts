@@ -8,11 +8,15 @@
  * the builder only produces it, field for field in the order `normaliseModel`
  * writes, so a synthesized model serialises exactly as a loaded one does.
  */
+import { parseForcing } from '../../model/forcing.ts';
+import { tidyGroups } from '../../model/groups.ts';
 import { uniqueId } from '../../model/ids.ts';
 import {
   DEFAULT_CONFIG,
   type Boundary,
   type EdgeLogic,
+  type Forcing,
+  type Group,
   type Method,
   type ModelEdge,
   type ModelNode,
@@ -37,6 +41,17 @@ export interface EdgeRef {
 /** A node named by handle, or by id (for a node declared later). */
 export type NodeLike = NodeRef | string;
 
+/** A zoom group named by handle, or by id. */
+export type GroupLike = { readonly id: string } | string;
+
+export interface GroupInput {
+  id?: string;
+  /** The group this one is nested in. */
+  parent?: GroupLike;
+  /** Packed: drawn as one symbol. Omitted: kept from the previous model, else unpacked. */
+  collapsed?: boolean;
+}
+
 /** Kernel node parameters, by their kernel names; `price_node` takes a node. */
 export interface NodeParamsInput {
   k?: number;
@@ -59,6 +74,8 @@ export interface NodeInput {
   at?: readonly [number, number];
   /** Reference level for the storage gauge. */
   capacity?: number;
+  /** Drives the held value over time (sources and constants, FR-FRC-001). */
+  forcing?: Forcing;
 }
 
 export interface EdgeInput {
@@ -73,6 +90,8 @@ export interface EdgeInput {
   /** Bézier control offsets from the origin and target anchors. */
   ctrl1?: readonly [number, number];
   ctrl2?: readonly [number, number];
+  /** Drives the rate k over time, overriding k (FR-FRC-001). */
+  forcing?: Forcing;
 }
 
 export interface ModelInput {
@@ -86,8 +105,8 @@ export interface ModelInput {
 export interface SynthOptions {
   /**
    * The model this one replaces (FR-SDK-004): nodes and flows the script
-   * leaves unplaced keep their position and curve by id, and observations
-   * are kept.
+   * leaves unplaced keep their position and curve by id, groups whose
+   * packing it leaves unset keep it, and observations are kept.
    */
   previous?: StudioModel;
 }
@@ -105,12 +124,20 @@ const NODE_PARAM_ORDER = [
 const pt = (p: readonly [number, number] | undefined): Point | undefined =>
   p ? { x: p[0], y: p[1] } : undefined;
 
+/** A forcing in the document's own key order; one the kernel schema would not take is refused. */
+function forcing(f: Forcing, where: string): Forcing {
+  const parsed = parseForcing(f);
+  if (!parsed) throw new Error(`${where}: “${String(f.waveform)}” is not a forcing waveform.`);
+  return parsed;
+}
+
 export class GsskModel {
   readonly name: string;
   private readonly input: ModelInput;
   private readonly nodes: { node: ModelNode; placed: boolean }[] = [];
   private readonly edges: ModelEdge[] = [];
   private readonly boundaries: Boundary[] = [];
+  private readonly groups: { group: Group; collapsed?: boolean }[] = [];
   private readonly taken = new Set<string>();
 
   constructor(name: string, input: ModelInput = {}) {
@@ -157,6 +184,7 @@ export class GsskModel {
       if (p.price_node !== undefined) params.price_node = this.ref(p.price_node);
       if (Object.keys(params).length) node.params = params;
     }
+    if (input.forcing) node.forcing = forcing(input.forcing, `Node “${id}”`);
     this.nodes.push({ node, placed: at !== undefined });
     return { id, model: this };
   }
@@ -170,6 +198,7 @@ export class GsskModel {
     if (input.threshold !== undefined) edge.params.threshold = input.threshold;
     if (input.numerator !== undefined) edge.params.numerator_node = this.ref(input.numerator);
     if (input.carrier) edge.carrier = input.carrier;
+    if (input.forcing) edge.forcing = forcing(input.forcing, `Flow “${id}”`);
     const c1 = pt(input.ctrl1);
     const c2 = pt(input.ctrl2);
     if (c1 || c2 || input.sensor) {
@@ -190,6 +219,34 @@ export class GsskModel {
   ): { readonly id: string } {
     const id = this.claim(input.id, 'boundary', 'Boundary');
     this.boundaries.push({ id, x: rect.x, y: rect.y, w: rect.w, h: rect.h, label });
+    return { id };
+  }
+
+  /** A zoom group (FR-GRP-001): editor-only, it never changes what the kernel runs. */
+  addGroup(
+    label: string,
+    members: readonly NodeLike[],
+    input: GroupInput = {}
+  ): {
+    readonly id: string;
+  } {
+    const id = this.claim(input.id, 'group', 'Group');
+    const parent =
+      input.parent === undefined
+        ? undefined
+        : typeof input.parent === 'string'
+          ? input.parent
+          : input.parent.id;
+    this.groups.push({
+      group: {
+        id,
+        label,
+        nodes: members.map((n) => this.ref(n)),
+        collapsed: input.collapsed ?? false,
+        ...(parent !== undefined ? { parent } : {}),
+      },
+      ...(input.collapsed !== undefined ? { collapsed: input.collapsed } : {}),
+    });
     return { id };
   }
 
@@ -244,8 +301,15 @@ export class GsskModel {
       }
     }
 
+    const prevGroups = new Map(prev?._diagram.groups?.map((g) => [g.id, g]));
+    const groups = this.groups.map(({ group, collapsed }) => {
+      const g = structuredClone(group);
+      if (collapsed === undefined) g.collapsed = prevGroups.get(g.id)?.collapsed ?? false;
+      return g;
+    });
+
     const c = this.input;
-    return {
+    const model: StudioModel = {
       metadata: {
         schema_version: 4,
         name: this.name,
@@ -259,8 +323,14 @@ export class GsskModel {
       },
       nodes,
       edges,
-      _diagram: { boundaries: structuredClone(this.boundaries) },
+      _diagram: {
+        boundaries: structuredClone(this.boundaries),
+        ...(groups.length ? { groups } : {}),
+      },
       ...(observations.length ? { _observations: observations } : {}),
     };
+    // As loading a file does: drop members that are not nodes, and empty groups.
+    tidyGroups(model);
+    return model;
   }
 }

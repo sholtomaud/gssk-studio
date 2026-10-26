@@ -4,6 +4,7 @@
  * list of snapshots and every operation is unit-testable without a DOM.
  */
 import { symbolFor } from './catalogue.ts';
+import { diagramView, findGroup, nodesIn, tidyGroups } from './groups.ts';
 import { uniqueId } from './ids.ts';
 import {
   cloneModel,
@@ -23,6 +24,10 @@ export type Selection =
   | { kind: 'nodes'; ids: string[] }
   | { kind: 'edge'; id: string }
   | { kind: 'boundary'; id: string }
+  /** A zoom group, packed or as a frame (FR-GRP-001). */
+  | { kind: 'group'; id: string }
+  /** A combined flow across a packed group's edge. */
+  | { kind: 'bundle'; id: string }
   | null;
 
 function allIds(m: StudioModel): Set<string> {
@@ -30,6 +35,7 @@ function allIds(m: StudioModel): Set<string> {
     ...m.nodes.map((n) => n.id),
     ...m.edges.map((e) => e.id),
     ...m._diagram.boundaries.map((b) => b.id),
+    ...(m._diagram.groups ?? []).map((g) => g.id),
   ]);
 }
 
@@ -147,6 +153,7 @@ export function removeNode(m: StudioModel, id: string): StudioModel {
     if (e.params.numerator_node === id) delete e.params.numerator_node;
   }
   for (const n of next.nodes) if (n.params?.price_node === id) delete n.params.price_node;
+  tidyGroups(next);
   return next;
 }
 
@@ -162,6 +169,9 @@ export function removeSelection(m: StudioModel, sel: Selection): StudioModel {
   if (sel.kind === 'node') return removeNode(m, sel.id);
   if (sel.kind === 'nodes') return sel.ids.reduce(removeNode, m);
   if (sel.kind === 'edge') return removeEdge(m, sel.id);
+  // Deleting a group deletes what it holds; to keep the contents, ungroup instead.
+  if (sel.kind === 'group') return nodesIn(m, sel.id).reduce(removeNode, m);
+  if (sel.kind === 'bundle') return m;
   const next = cloneModel(m);
   next._diagram.boundaries = next._diagram.boundaries.filter((b) => b.id !== sel.id);
   return next;
@@ -182,6 +192,7 @@ export function renameNode(m: StudioModel, from: string, to: string): StudioMode
     if (e.params.control_node === from) e.params.control_node = to;
     if (e.params.numerator_node === from) e.params.numerator_node = to;
   }
+  tidyGroups(next, { from, to });
   return next;
 }
 
@@ -256,6 +267,9 @@ export function pruneSelection(m: StudioModel, sel: Selection): Selection {
     return selectNodes(selectedNodeIds(sel).filter((id) => m.nodes.some((n) => n.id === id)));
   }
   if (sel.kind === 'edge') return m.edges.some((e) => e.id === sel.id) ? sel : null;
+  if (sel.kind === 'group') return findGroup(m, sel.id) ? sel : null;
+  if (sel.kind === 'bundle')
+    return diagramView(m).bundles.some((b) => b.id === sel.id) ? sel : null;
   return m._diagram.boundaries.some((b) => b.id === sel.id) ? sel : null;
 }
 

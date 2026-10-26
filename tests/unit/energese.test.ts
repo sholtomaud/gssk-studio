@@ -32,7 +32,13 @@ function kitchenSink(): StudioModel {
     },
     config: { t_start: 5, t_end: 50, dt: 0.25, method: 'euler' },
     nodes: [
-      { id: 'sun', type: 'source', value: 100, visual: { x: 10, y: 20, label: 'Sun' } },
+      {
+        id: 'sun',
+        type: 'source',
+        value: 100,
+        forcing: { waveform: 'sine', mean: 100, amplitude: 20, period: 365, phase: 0.25 },
+        visual: { x: 10, y: 20, label: 'Sun' },
+      },
       {
         id: 'tank',
         type: 'storage',
@@ -170,6 +176,11 @@ function kitchenSink(): StudioModel {
         { id: 'boundary', x: 0, y: 0, w: 100, h: 80, label: 'Farm' },
         { id: 'region-2', x: 5, y: 5, w: 10, h: 10, label: '' },
       ],
+      groups: [
+        // A child listed before its parent: the parent is named by id.
+        { id: 'group', label: 'Plants', nodes: ['grass'], parent: 'g-outer', collapsed: false },
+        { id: 'g-outer', label: 'Life', nodes: ['cow'], collapsed: true },
+      ],
     },
   });
 }
@@ -293,6 +304,26 @@ describe('scripts as generators (ADR 0011, FR-SDK-004, FR-SDK-005)', () => {
     expect(s.nodes[2]!.visual).toMatchObject({ x: 999, y: 999 });
     expect(s.edges[0]!.visual).toEqual({ ctrl1: { x: 4, y: 5 } });
     expect(s._observations?.map((o) => o.target)).toEqual(['grass', null]);
+  });
+
+  it('keeps a group packed or unpacked as drawn when the script does not say (FR-SDK-004)', () => {
+    const script = (collapsed?: boolean) => {
+      const m = new ener.Model('Groups');
+      const a = new ener.Storage(m, 'A');
+      new ener.Group(m, 'G', [a], collapsed === undefined ? {} : { collapsed });
+      return m;
+    };
+    const packed = script(true).synth();
+    expect(script().synth({ previous: packed })._diagram.groups?.[0]?.collapsed).toBe(true);
+    expect(script().synth()._diagram.groups?.[0]?.collapsed).toBe(false);
+    expect(script(false).synth({ previous: packed })._diagram.groups?.[0]?.collapsed).toBe(false);
+  });
+
+  it('refuses a forcing with an unknown waveform', () => {
+    const m = new ener.Model('F');
+    expect(() => new ener.Source(m, 'S', { forcing: { waveform: 'wobble' as 'sine' } })).toThrow(
+      /not a forcing waveform/
+    );
   });
 
   it('refuses a duplicate explicit id and a node from another model', () => {

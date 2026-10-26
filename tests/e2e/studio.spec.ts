@@ -32,6 +32,9 @@ test('build a model from the palette, wire it, run it, undo it', async ({ page }
   await page.getByRole('button', { name: 'Add Storage' }).click();
   await page.getByRole('button', { name: 'Add Heat sink' }).click();
   await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(3);
+  // Unconnected symbols are warnings: orange, with a "!" badge (FR-VAL-002).
+  await expect(page.locator('diagram-canvas .node.warned')).toHaveCount(3);
+  await expect(page.locator('diagram-canvas .node .badge.warning')).toHaveCount(3);
 
   await wire(page, 'source', 'node:storage');
   await wire(page, 'storage', 'node:heat_sink');
@@ -114,6 +117,11 @@ test('a model with a problem lists it and will not run', async ({ page }) => {
   await clickEdge(page, 'predation');
   await page.locator('inspector-panel select[name="control_node"]').selectOption('');
   await expect(page.locator('inspector-panel .issues li.error')).toContainText(
+    'needs a control node'
+  );
+  const flow = page.locator('g.edge[data-edge="predation"]');
+  await expect(flow).toHaveClass(/invalid/);
+  await expect(page.locator('.badge.error[data-edge="predation"] title')).toContainText(
     'needs a control node'
   );
   await page.getByRole('button', { name: 'Run', exact: true }).click();

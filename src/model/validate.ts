@@ -6,6 +6,7 @@
  * refused by GSSK_Init, and the run reports that verbatim.
  */
 import { logicFor, symbolFor } from './catalogue.ts';
+import { canForceNode, forcingProblems } from './forcing.ts';
 import type { StudioModel } from './types.ts';
 
 export type Severity = 'error' | 'warning';
@@ -43,6 +44,18 @@ export function validate(m: StudioModel): Issue[] {
       warn('composite-id', `“${n.id}” is long for a ${n.type}: member ids truncate at 29.`, ref);
     }
     if (!Number.isFinite(n.value)) err('node-value', `“${n.id}” has no numeric value.`, ref);
+    if (n.forcing) {
+      if (!canForceNode(n.type)) {
+        err(
+          'forcing-node',
+          n.type === 'storage'
+            ? `Storage “${n.id}” cannot be forced: its level is the integral of its flows. Force a source or a flow into it.`
+            : `A ${symbolFor(n.type).label.toLowerCase()} cannot be forced; only sources and constants can.`,
+          ref
+        );
+      }
+      for (const p of forcingProblems(n.forcing)) err('forcing', `“${n.id}”: ${p}.`, ref);
+    }
   }
 
   const edgeIds = new Set<string>();
@@ -61,6 +74,8 @@ export function validate(m: StudioModel): Issue[] {
       touched.add(end);
     }
     if (!Number.isFinite(e.params.k)) err('edge-k', `Flow “${e.id}” needs a numeric rate k.`, ref);
+    if (e.forcing)
+      for (const p of forcingProblems(e.forcing)) err('forcing', `Flow “${e.id}”: ${p}.`, ref);
 
     const spec = logicFor(e.logic);
     const control = e.params.control_node;
@@ -122,6 +137,14 @@ export function validate(m: StudioModel): Issue[] {
     err(
       'steps',
       `That is more than ${MAX_STEPS.toLocaleString('en')} steps: lengthen the step or shorten the run.`,
+      cref
+    );
+  }
+  if (c.method === 'auto' && (m.nodes.some((n) => n.forcing) || m.edges.some((e) => e.forcing))) {
+    // Kernel request K-7 (SPEC §17): auto's dual-solver check fails on forced models.
+    warn(
+      'forcing-auto',
+      'Forced models disagree with the auto method’s solver check on nearly every step: choose rk4.',
       cref
     );
   }

@@ -7,6 +7,21 @@
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
 import { isNodeType, symbolFor } from '../../../model/catalogue.ts';
+import { describeForcing } from '../../../model/forcing.ts';
+import {
+  childGroups,
+  diagramView,
+  findGroup,
+  groupCentre,
+  groupNodes,
+  groupTotal,
+  nodesIn,
+  ownerOf,
+  setCollapsed,
+  type Bundle,
+  type DiagramView,
+  type End,
+} from '../../../model/groups.ts';
 import {
   addNode,
   connect,
@@ -23,14 +38,16 @@ import {
   toggleSensor,
   type Selection,
 } from '../../../model/ops.ts';
-import type { ModelEdge, ModelNode, Point, StudioModel } from '../../../model/types.ts';
+import type { Group, ModelEdge, ModelNode, Point, StudioModel } from '../../../model/types.ts';
 import {
   bounds,
   edgeCurve,
+  GROUP_HALF,
   halfExtent,
   pathData,
   pointAt,
   SIZE,
+  type Shape,
 } from '../../../diagram/geometry.ts';
 import { SYMBOL_DEFS } from '../../../diagram/symbols.ts';
 import { el, formatNumber, iconButton, svg } from '../../ui.ts';
@@ -60,6 +77,12 @@ function storedFlowWidths(): boolean {
 }
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
+
+/** What the validator found on one node or flow (FR-VAL-002). */
+export interface Marked {
+  severity: 'error' | 'warning';
+  messages: string[];
+}
 
 export interface EditDetail {
   model: StudioModel;
@@ -91,7 +114,7 @@ export class DiagramCanvas extends BaseComponent {
   private _model: StudioModel | null = null;
   private _selection: Selection = null;
   private _playback: Playback | null = null;
-  private _invalid = new Set<string>();
+  private _issues = new Map<string, Marked>();
   private view = { x: 0, y: 0, s: 1 };
   /** Draw flows as wide as their rate during playback (FR-RES-003); off by default. */
   private flowWidths = storedFlowWidths();
@@ -100,6 +123,13 @@ export class DiagramCanvas extends BaseComponent {
   private gestureSeq = 0;
   private readonly nodeEls = new Map<string, SVGGElement>();
   private readonly edgeEls = new Map<string, SVGGElement>();
+  private readonly groupEls = new Map<string, SVGGElement>();
+  private readonly bundleEls = new Map<string, SVGGElement>();
+  /** What is drawn at the current packing (FR-GRP-001). */
+  private view_: DiagramView | null = null;
+  private lastGroupClick: { id: string; at: number } | null = null;
+  /** Flow badges, appended to the overlay once every flow is drawn. */
+  private edgeBadges: SVGGElement[] = [];
 
   private root!: SVGSVGElement;
   private world!: SVGGElement;
@@ -239,10 +269,42 @@ export class DiagramCanvas extends BaseComponent {
     if (this.root) this.applyPlayback();
   }
 
-  /** Ids of nodes and flows with an error, drawn in the critical colour. */
-  set invalid(ids: ReadonlySet<string>) {
-    this._invalid = new Set(ids);
+  /**
+   * Problems per node or flow id (FR-VAL-002): an error draws it red, a
+   * warning orange, and either gets a "!" badge carrying the messages, so the
+   * colour is never the only signal.
+   */
+  set issues(issues: ReadonlyMap<string, Marked>) {
+    this._issues = new Map(issues);
     if (this.root) this.render();
+  }
+
+  private mark(id: string): string {
+    const m = this._issues.get(id);
+    return m ? (m.severity === 'error' ? ' invalid' : ' warned') : '';
+  }
+
+  /** A "!" badge at (x, y) whose tooltip lists the problems. */
+  /** The forcing mark (FR-FRC-001): a small wave beside a forced symbol or on a forced flow. */
+  private forcedMark(x: number, y: number): SVGTextElement {
+    const t = svg('text', { class: 'forced', x, y });
+    t.textContent = '∿';
+    return t;
+  }
+
+  private badge(id: string, x: number, y: number): SVGGElement | null {
+    return this.badgeFor(this._issues.get(id), x, y);
+  }
+
+  private badgeFor(m: Marked | undefined, x: number, y: number): SVGGElement | null {
+    if (!m) return null;
+    const g = svg('g', { class: `badge ${m.severity}`, transform: `translate(${x} ${y})` });
+    const t = svg('text', { y: 4 });
+    t.textContent = '!';
+    const title = svg('title');
+    title.textContent = `${m.severity === 'error' ? 'Error' : 'Warning'}: ${m.messages.join(' · ')}`;
+    g.append(svg('circle', { r: 8 }), t, title);
+    return g;
   }
 
   // ---- view ---------------------------------------------------------------
@@ -290,7 +352,8 @@ export class DiagramCanvas extends BaseComponent {
     if (pts.length === 0) {
       this.view = { x: 0, y: 0, s: 1 };
     } else {
-      const b = bounds(pts, SIZE);
+      // Room for group frames, which reach past the symbols they hold.
+      const b = bounds(pts, m._diagram.groups?.length ? SIZE * 2 : SIZE);
       const s = Math.min(1.5, Math.max(MIN_SCALE, Math.min(w / b.w, h / b.h)));
       this.view = { s, x: (w - b.w * s) / 2 - b.x * s, y: (h - b.h * s) / 2 - b.y * s };
     }
@@ -312,6 +375,8 @@ export class DiagramCanvas extends BaseComponent {
     const m = this._model;
     this.nodeEls.clear();
     this.edgeEls.clear();
+    this.groupEls.clear();
+    this.bundleEls.clear();
     for (const layer of Object.values(this.layers)) layer.replaceChildren();
     this.hint.hidden = !m || m.nodes.length > 0;
     if (!m) return;
@@ -337,8 +402,15 @@ export class DiagramCanvas extends BaseComponent {
       );
       this.layers.boundaries.append(g);
     }
-    for (const e of m.edges) this.renderEdge(m, e);
-    for (const n of m.nodes) this.renderNode(n);
+    const view = diagramView(m);
+    this.view_ = view;
+    for (const g of view.frames) this.renderFrame(m, g);
+    this.edgeBadges = [];
+    for (const e of view.edges) this.renderEdge(m, e);
+    for (const b of view.bundles) this.renderBundle(m, b);
+    this.layers.overlay.append(...this.edgeBadges);
+    for (const n of m.nodes) if (view.nodes.has(n.id)) this.renderNode(n);
+    for (const g of view.packed) this.renderGroup(m, g);
     this.applyPlayback();
     this.applyView();
   }
@@ -349,7 +421,7 @@ export class DiagramCanvas extends BaseComponent {
     const selected = selectedNodeIds(this._selection).includes(n.id);
     const label = n.visual.label ?? n.id;
     const g = svg('g', {
-      class: `node${selected ? ' selected' : ''}${this._invalid.has(n.id) ? ' invalid' : ''}`,
+      class: `node${selected ? ' selected' : ''}${this.mark(n.id)}`,
       'data-node': n.id,
       transform: `translate(${n.visual.x} ${n.visual.y})`,
       tabindex: 0,
@@ -389,9 +461,12 @@ export class DiagramCanvas extends BaseComponent {
         r: 6,
       })
     );
+    if (n.forcing) g.append(this.forcedMark(w + 2, -h + 4));
     const title = svg('title');
-    title.textContent = `${spec.label} “${label}” (${n.id})`;
+    title.textContent = `${spec.label} “${label}” (${n.id})${n.forcing ? `, forced: ${describeForcing(n.forcing)}` : ''}`;
     g.append(title);
+    const nb = this.badge(n.id, -w - 2, -h - 2);
+    if (nb) g.append(nb);
     this.nodeEls.set(n.id, g);
     this.layers.nodes.append(g);
   }
@@ -403,7 +478,7 @@ export class DiagramCanvas extends BaseComponent {
     const curve = edgeCurve(e, o, t);
     const selected = this._selection?.kind === 'edge' && this._selection.id === e.id;
     const g = svg('g', {
-      class: `edge ${e.logic}${selected ? ' selected' : ''}${this._invalid.has(e.id) ? ' invalid' : ''}`,
+      class: `edge ${e.logic}${selected ? ' selected' : ''}${this.mark(e.id)}`,
       'data-edge': e.id,
     });
     const d = pathData(curve);
@@ -418,11 +493,13 @@ export class DiagramCanvas extends BaseComponent {
     const control = e.params.control_node ? findNode(m, e.params.control_node) : undefined;
     if (control) {
       const mid = pointAt(curve, 0.5);
+      // A control packed in a group is drawn from the group's symbol.
+      const from = this.shapeOf(m, ownerOf(m, control.id)).visual;
       g.append(
         svg('line', {
           class: 'control',
-          x1: control.visual.x,
-          y1: control.visual.y,
+          x1: from.x,
+          y1: from.y,
           x2: mid.x,
           y2: mid.y,
         }),
@@ -445,9 +522,22 @@ export class DiagramCanvas extends BaseComponent {
         reading
       );
     }
+    if (e.forcing) {
+      // Clear of the labels at the origin end, the gate or sensor mid-flow and the badge at 0.78.
+      const at = pointAt(curve, 0.38);
+      g.append(this.forcedMark(at.x + 10, at.y - 6));
+    }
     const title = svg('title');
-    title.textContent = `${e.id}: ${e.logic}, k = ${e.params.k}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}`;
+    title.textContent = `${e.id}: ${e.logic}, k = ${e.forcing ? describeForcing(e.forcing) : e.params.k}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}`;
     g.append(title);
+    // On the curve, clear of a gate or sensor at the middle; in the overlay so it
+    // draws above the selection handles, and still selects the flow when clicked.
+    const at = pointAt(curve, control || e.visual?.sensor ? 0.78 : 0.5);
+    const eb = this.badge(e.id, at.x, at.y);
+    if (eb) {
+      eb.setAttribute('data-edge', e.id);
+      this.edgeBadges.push(eb);
+    }
     this.edgeEls.set(e.id, g);
     this.layers.edges.append(g);
     if (selected) {
@@ -486,6 +576,177 @@ export class DiagramCanvas extends BaseComponent {
     }
   }
 
+  /** Where a flow end is drawn, and its outline: a symbol, or a packed group's box. */
+  private shapeOf(m: StudioModel, end: End): Shape {
+    if (end.kind === 'group') return { type: 'group', visual: groupCentre(m, end.id) };
+    const n = findNode(m, end.id);
+    return n ? { type: n.type, visual: n.visual } : { type: 'group', visual: { x: 0, y: 0 } };
+  }
+
+  /** The worst problem among a group's contents and the flows touching them. */
+  private groupMark(m: StudioModel, id: string): Marked | undefined {
+    const inside = new Set(nodesIn(m, id));
+    const marks = [
+      ...[...inside].map((n) => this._issues.get(n)),
+      ...m.edges
+        .filter((e) => inside.has(e.origin) || inside.has(e.target))
+        .map((e) => this._issues.get(e.id)),
+    ].filter((x): x is Marked => x !== undefined);
+    if (marks.length === 0) return undefined;
+    return {
+      severity: marks.some((x) => x.severity === 'error') ? 'error' : 'warning',
+      messages: marks.flatMap((x) => x.messages),
+    };
+  }
+
+  private markFor(mark: Marked | undefined): string {
+    return mark ? (mark.severity === 'error' ? ' invalid' : ' warned') : '';
+  }
+
+  /** An unpacked group: a frame around what it holds, with its name and a pack button. */
+  private renderFrame(m: StudioModel, grp: Group): void {
+    const depth = (id: string): number =>
+      Math.max(0, ...childGroups(m, id).map((c) => (c.collapsed ? 0 : 1 + depth(c.id))));
+    const ids = new Set(nodesIn(m, grp.id));
+    const pts = m.nodes.filter((n) => ids.has(n.id)).map((n) => n.visual);
+    if (pts.length === 0) return;
+    const pad = SIZE * 0.75 + 30 * depth(grp.id);
+    const b = bounds(pts, pad);
+    const top = b.y - 14;
+    const selected = this._selection?.kind === 'group' && this._selection.id === grp.id;
+    const g = svg('g', {
+      class: `group-frame${selected ? ' selected' : ''}`,
+      'data-group': grp.id,
+    });
+    const tab = svg('text', { class: 'group-label', x: b.x + 30, y: top + 20 });
+    tab.textContent = grp.label;
+    const pack = svg('g', {
+      class: 'group-toggle',
+      'data-group-toggle': grp.id,
+      transform: `translate(${b.x + 14} ${top + 15})`,
+      role: 'button',
+      'aria-label': `Pack ${grp.label}`,
+    });
+    const pt = svg('title');
+    pt.textContent = `Pack “${grp.label}” into one symbol`;
+    pack.append(
+      svg('rect', { x: -8, y: -8, width: 16, height: 16, rx: 3 }),
+      svg('path', { d: 'M-4 0H4' }),
+      pt
+    );
+    g.append(
+      svg('rect', { class: 'grab', x: b.x, y: top, width: b.w, height: b.h + 14, rx: 12 }),
+      svg('rect', { class: 'frame', x: b.x, y: top, width: b.w, height: b.h + 14, rx: 12 }),
+      tab,
+      pack
+    );
+    this.groupEls.set(grp.id, g);
+    this.layers.boundaries.append(g);
+  }
+
+  /** A packed group: one symbol at the centre of what it holds. */
+  private renderGroup(m: StudioModel, grp: Group): void {
+    const c = groupCentre(m, grp.id);
+    const { w, h } = GROUP_HALF;
+    const count = nodesIn(m, grp.id).length;
+    const ids = new Set(nodesIn(m, grp.id));
+    const sel = this._selection;
+    const selected =
+      (sel?.kind === 'group' && sel.id === grp.id) ||
+      (count > 0 && [...ids].every((id) => selectedNodeIds(sel).includes(id)));
+    const mark = this.groupMark(m, grp.id);
+    const g = svg('g', {
+      class: `node group${selected ? ' selected' : ''}${this.markFor(mark)}`,
+      'data-group': grp.id,
+      transform: `translate(${c.x} ${c.y})`,
+      tabindex: 0,
+      role: 'button',
+      'aria-label': `Group: ${grp.label}`,
+      'aria-pressed': selected ? 'true' : 'false',
+    });
+    const label = svg('text', { class: 'label', y: h + 18 });
+    label.textContent = grp.label;
+    const n = svg('text', { class: 'group-count', y: 4 });
+    n.textContent = `${count} symbol${count === 1 ? '' : 's'}`;
+    const unpack = svg('g', {
+      class: 'group-toggle',
+      'data-group-toggle': grp.id,
+      transform: `translate(${w - 10} ${-h + 10})`,
+      role: 'button',
+      'aria-label': `Unpack ${grp.label}`,
+    });
+    const ut = svg('title');
+    ut.textContent = `Unpack “${grp.label}” to see what it holds (or double-click)`;
+    unpack.append(
+      svg('rect', { x: -7, y: -7, width: 14, height: 14, rx: 3 }),
+      svg('path', { d: 'M-3.5 0H3.5M0 -3.5V3.5' }),
+      ut
+    );
+    const title = svg('title');
+    title.textContent = `Group “${grp.label}”: ${count} symbols packed. Double-click to unpack.`;
+    g.append(
+      svg('rect', {
+        class: 'halo',
+        x: -w - 8,
+        y: -h - 8,
+        width: 2 * w + 16,
+        height: 2 * h + 16,
+        rx: 8,
+      }),
+      // Two offset boxes read as a stack: more than one symbol in here.
+      svg('rect', { class: 'stack', x: -w + 5, y: -h - 5, width: 2 * w, height: 2 * h, rx: 6 }),
+      svg('rect', { class: 'group-body', x: -w, y: -h, width: 2 * w, height: 2 * h, rx: 6 }),
+      n,
+      label,
+      svg('text', { class: 'reading', y: h + 32 }),
+      unpack,
+      title
+    );
+    const badge = this.badgeFor(mark, -w - 2, -h - 2);
+    if (badge) g.append(badge);
+    this.groupEls.set(grp.id, g);
+    this.layers.nodes.append(g);
+  }
+
+  /** Flows across a packed group's edge between the same two ends, drawn as one. */
+  private renderBundle(m: StudioModel, b: Bundle): void {
+    const o = this.shapeOf(m, b.origin);
+    const t = this.shapeOf(m, b.target);
+    const curve = edgeCurve({ origin: b.id, target: `${b.id}~` }, o, t);
+    const d = pathData(curve);
+    const selected = this._selection?.kind === 'bundle' && this._selection.id === b.id;
+    const marks = b.edges.map((id) => this._issues.get(id)).filter((x) => x !== undefined);
+    const mark: Marked | undefined = marks.length
+      ? {
+          severity: marks.some((x) => x.severity === 'error') ? 'error' : 'warning',
+          messages: marks.flatMap((x) => x.messages),
+        }
+      : undefined;
+    const g = svg('g', {
+      class: `edge bundle${selected ? ' selected' : ''}${this.markFor(mark)}`,
+      'data-bundle': b.id,
+    });
+    const mid = pointAt(curve, 0.5);
+    const count = svg('text', { class: 'bundle-count', x: mid.x, y: mid.y - 10 });
+    count.textContent = b.edges.length > 1 ? `${b.edges.length} flows` : '';
+    const title = svg('title');
+    title.textContent = `${b.edges.length} flow${b.edges.length === 1 ? '' : 's'} combined: ${b.edges.join(', ')}`;
+    g.append(
+      svg('path', { class: 'hit', d }),
+      svg('path', { class: 'line', d, 'marker-end': 'url(#arrow)' }),
+      count,
+      svg('text', { class: 'sensor-reading bundle-reading', x: mid.x, y: mid.y + 18 }),
+      title
+    );
+    const badge = this.badgeFor(mark, mid.x + 18, mid.y);
+    if (badge) {
+      badge.setAttribute('data-bundle', b.id);
+      this.edgeBadges.push(badge);
+    }
+    this.bundleEls.set(b.id, g);
+    this.layers.edges.append(g);
+  }
+
   /**
    * Update levels and, when Flow widths is on, flow widths in place (a
    * Sankey-style reading of the run, FR-RES-003); no re-render.
@@ -522,6 +783,29 @@ export class DiagramCanvas extends BaseComponent {
           ? ''
           : `${1.2 + 4.8 * Math.min(1, Math.abs(f) / p.maxFlow)}px`;
     }
+    for (const b of this.view_?.bundles ?? []) {
+      const g = this.bundleEls.get(b.id);
+      if (!g) continue;
+      let sum: number | undefined = p ? 0 : undefined;
+      for (const id of b.edges) {
+        const f = p?.flows.get(id);
+        sum = sum === undefined || f === undefined ? undefined : sum + f;
+      }
+      const reading = g.querySelector('.bundle-reading');
+      if (reading) reading.textContent = sum === undefined ? '' : `ΣJ ${formatNumber(sum)}`;
+      const line = g.querySelector<SVGPathElement>('.line');
+      // The combined flow is never thinner than a single one.
+      if (line)
+        line.style.strokeWidth =
+          !this.flowWidths || sum === undefined || !(p && p.maxFlow > 0)
+            ? ''
+            : `${1.2 + 4.8 * Math.min(1, Math.abs(sum) / p.maxFlow)}px`;
+    }
+    for (const grp of this.view_?.packed ?? []) {
+      const reading = this.groupEls.get(grp.id)?.querySelector('.reading');
+      const v = p ? groupTotal(m, grp.id, p.values) : undefined;
+      if (reading) reading.textContent = v === undefined ? '' : `Σ ${formatNumber(v)}`;
+    }
   }
 
   // ---- input --------------------------------------------------------------
@@ -542,6 +826,25 @@ export class DiagramCanvas extends BaseComponent {
     const target = e.target as Element;
     const p = this.toModel(e);
     const key = `g${++this.gestureSeq}`;
+    const toggle = target.closest('[data-group-toggle]');
+    const group = target.closest('[data-group]');
+    const bundle = target.closest('[data-bundle]');
+    if (toggle) {
+      const id = toggle.getAttribute('data-group-toggle') ?? '';
+      const g = findGroup(this._model, id);
+      if (g) {
+        this.emit({
+          model: setCollapsed(this._model, id, !g.collapsed),
+          label: `${g.collapsed ? 'Unpack' : 'Pack'} ${g.label}`,
+          select: { kind: 'group', id },
+        });
+      }
+      return;
+    }
+    if (bundle) {
+      this.select({ kind: 'bundle', id: bundle.getAttribute('data-bundle') ?? '' });
+      return;
+    }
     const port = target.closest('[data-port]');
     const handle = target.closest('[data-edge-handle]');
     const resize = target.closest('[data-resize]');
@@ -576,6 +879,37 @@ export class DiagramCanvas extends BaseComponent {
       const ids = current.includes(id) ? current : [id];
       this.drag = { kind: 'node', ids, start: p, applied: { x: 0, y: 0 }, key };
       if (!current.includes(id)) this.select({ kind: 'node', id });
+    } else if (group) {
+      // A group, packed or as a frame, drags everything it holds.
+      const id = group.getAttribute('data-group') ?? '';
+      const ids = nodesIn(this._model, id);
+      const current = selectedNodeIds(this._selection);
+      if (e.shiftKey) {
+        const all = ids.every((x) => current.includes(x));
+        this.select(
+          selectNodes(all ? current.filter((x) => !ids.includes(x)) : [...current, ...ids])
+        );
+        return;
+      }
+      // The first click re-renders the symbol, so a native dblclick never lands: count clicks here.
+      const now = performance.now();
+      const packed = group.classList.contains('group');
+      if (packed && this.lastGroupClick?.id === id && now - this.lastGroupClick.at < 450) {
+        this.lastGroupClick = null;
+        this.unpack(id);
+        return;
+      }
+      this.lastGroupClick = packed ? { id, at: now } : null;
+      const within = ids.length > 0 && ids.every((x) => current.includes(x));
+      this.drag = {
+        kind: 'node',
+        ids: within ? current : ids,
+        start: p,
+        applied: { x: 0, y: 0 },
+        key,
+      };
+      if (!within && !(this._selection?.kind === 'group' && this._selection.id === id))
+        this.select({ kind: 'group', id });
     } else if (edge) {
       this.select({ kind: 'edge', id: edge.getAttribute('data-edge') ?? '' });
       return;
@@ -696,7 +1030,7 @@ export class DiagramCanvas extends BaseComponent {
     const n = hit.closest('[data-node]');
     if (n && n.getAttribute('data-node') !== (this.drag?.kind === 'wire' ? this.drag.from : ''))
       return n;
-    return hit.closest('[data-edge]');
+    return hit.closest('.node.group') ?? hit.closest('[data-edge]');
   }
 
   private onPointerUp(e: PointerEvent): void {
@@ -706,7 +1040,18 @@ export class DiagramCanvas extends BaseComponent {
       const target = this.dropTarget(e);
       const nodeId = target?.getAttribute('data-node');
       const edgeId = target?.getAttribute('data-edge');
-      if (nodeId) {
+      const groupId = target?.classList.contains('group')
+        ? target.getAttribute('data-group')
+        : null;
+      if (groupId) {
+        const g = findGroup(m, groupId);
+        this.dispatchEvent(
+          new CustomEvent('diagram-hint', {
+            detail: `Unpack “${g?.label ?? groupId}” to connect to a symbol inside it.`,
+            bubbles: true,
+          })
+        );
+      } else if (nodeId) {
         const { model, id } = connect(m, d.from, nodeId);
         if (id)
           this.emit({
@@ -725,15 +1070,13 @@ export class DiagramCanvas extends BaseComponent {
       this.select(null);
     } else if (d?.kind === 'marquee' && m) {
       const r = rectOf(d.start, d.to);
-      const inside = m.nodes
-        .filter(
-          (n) =>
-            n.visual.x >= r.x &&
-            n.visual.x <= r.x + r.w &&
-            n.visual.y >= r.y &&
-            n.visual.y <= r.y + r.h
-        )
-        .map((n) => n.id);
+      const within = (q: Point) => q.x >= r.x && q.x <= r.x + r.w && q.y >= r.y && q.y <= r.y + r.h;
+      const view = this.view_ ?? diagramView(m);
+      // A packed group is taken whole when its symbol is inside the box.
+      const inside = [
+        ...m.nodes.filter((n) => view.nodes.has(n.id) && within(n.visual)).map((n) => n.id),
+        ...view.packed.filter((g) => within(groupCentre(m, g.id))).flatMap((g) => nodesIn(m, g.id)),
+      ];
       this.select(selectNodes([...(d.add ? selectedNodeIds(this._selection) : []), ...inside]));
     }
     this.endDrag();
@@ -768,6 +1111,22 @@ export class DiagramCanvas extends BaseComponent {
       e.preventDefault();
       return;
     }
+    const focusedGroup = (e.target as Element).closest?.('.node.group')?.getAttribute('data-group');
+    if (e.key === 'Enter' && focusedGroup) {
+      this.select({ kind: 'group', id: focusedGroup });
+      e.preventDefault();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+      // Ctrl+G packs the selected symbols into a group (FR-GRP-001).
+      e.preventDefault();
+      const ids = selectedNodeIds(sel);
+      if (e.shiftKey || ids.length === 0) return;
+      const { model, id } = groupNodes(m, ids);
+      if (id)
+        this.emit({ model, label: `Group ${ids.length} symbols`, select: { kind: 'group', id } });
+      return;
+    }
     if ((e.key === 'Delete' || e.key === 'Backspace') && sel) {
       e.preventDefault();
       this.emit({
@@ -790,7 +1149,7 @@ export class DiagramCanvas extends BaseComponent {
       ArrowDown: { x: 0, y: step },
     };
     const dir = dirs[e.key];
-    const ids = selectedNodeIds(sel);
+    const ids = sel?.kind === 'group' ? nodesIn(m, sel.id) : selectedNodeIds(sel);
     if (dir && ids.length) {
       e.preventDefault();
       this.emit({
@@ -804,6 +1163,16 @@ export class DiagramCanvas extends BaseComponent {
       e.preventDefault();
       this.select(selectNodes(m.nodes.map((n) => n.id)));
     }
+  }
+
+  private unpack(id: string): void {
+    const g = this._model ? findGroup(this._model, id) : undefined;
+    if (!g || !this._model) return;
+    this.emit({
+      model: setCollapsed(this._model, id, false),
+      label: `Unpack ${g.label}`,
+      select: { kind: 'group', id },
+    });
   }
 
   private onDoubleClick(e: MouseEvent): void {

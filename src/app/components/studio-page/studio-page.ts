@@ -20,9 +20,12 @@ import {
   type Fragment,
   type Selection,
 } from '../../../model/ops.ts';
+import { revealNode } from '../../../model/groups.ts';
+import { canonicalJson, toKernelModel } from '../../../model/kernel-json.ts';
 import { emptyModel, type StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
 import type { RunResult } from '../../../sim/run.ts';
+import type { EnsembleOptions } from '../../../sim/ensemble.ts';
 import { getModel, saveModel } from '../../../store/models.ts';
 import { importNotes } from '../../import-notes.ts';
 import { simWorker } from '../../sim-client.ts';
@@ -34,6 +37,7 @@ import {
   SENSOR_DRAG_TYPE,
   type DiagramCanvas,
   type EditDetail,
+  type Marked,
   type Playback,
 } from '../diagram-canvas/diagram-canvas.ts';
 import type { InspectorPanel } from '../inspector-panel/inspector-panel.ts';
@@ -299,6 +303,18 @@ export class StudioPage extends BaseComponent {
           this.results.setSensitivity(r, targets, err instanceof Error ? err.message : String(err))
         );
     });
+    this.results.addEventListener('ensemble-request', (e) => {
+      const r = this.result;
+      const m = this.resultModel;
+      if (!r || !m) return;
+      this.results.setEnsemble(r, null);
+      simWorker()
+        .ensemble(m, (e as CustomEvent<EnsembleOptions>).detail)
+        .then((data) => this.results.setEnsemble(r, data))
+        .catch((err: unknown) =>
+          this.results.setEnsemble(r, err instanceof Error ? err.message : String(err))
+        );
+    });
     this.canvas.addEventListener('diagram-hint', (e) => toast((e as CustomEvent<string>).detail));
     this.canvas.addEventListener('diagram-rename', () => {
       this.inspector.querySelector<HTMLInputElement>('input[name="label"]')?.select();
@@ -468,6 +484,24 @@ export class StudioPage extends BaseComponent {
   }
 
   private select(s: Selection): void {
+    // Selecting a symbol or flow packed out of sight unpacks what hides it (FR-GRP-001).
+    const m = this.model;
+    const ends =
+      s?.kind === 'node'
+        ? [s.id]
+        : s?.kind === 'edge' && m
+          ? (() => {
+              const e = m.edges.find((x) => x.id === s.id);
+              return e ? [e.origin, e.target] : [];
+            })()
+          : [];
+    if (m && ends.length) {
+      const shown = ends.reduce(revealNode, m);
+      if (shown !== m) {
+        this.commit({ model: shown, label: 'Unpack to show', select: s });
+        return;
+      }
+    }
     this.selection = s;
     this.lastCoalesce = undefined;
     this.canvas.selection = s;
@@ -491,11 +525,15 @@ export class StudioPage extends BaseComponent {
           ? `${warnings} warning${warnings > 1 ? 's' : ''}`
           : 'Checks pass'
     );
-    this.canvas.invalid = new Set(
-      this.issues
-        .filter((i) => i.severity === 'error' && i.ref && i.ref.kind !== 'config')
-        .map((i) => i.ref?.id ?? '')
-    );
+    const marks = new Map<string, Marked>();
+    for (const i of this.issues) {
+      if (!i.ref || i.ref.kind === 'config') continue;
+      const m = marks.get(i.ref.id) ?? { severity: 'warning', messages: [] };
+      if (i.severity === 'error') m.severity = 'error';
+      m.messages.push(i.message);
+      marks.set(i.ref.id, m);
+    }
+    this.canvas.issues = marks;
     this.canvas.selection = this.selection;
     this.canvas.model = m;
     if (this.codeView) this.codeView.model = m;
@@ -513,10 +551,17 @@ export class StudioPage extends BaseComponent {
       this.running
         ? { state: 'running' }
         : this.result
-          ? { state: 'done', stale: this.resultModel !== m }
+          ? { state: 'done', stale: this.changedSinceRun(m) }
           : { state: 'idle' },
       fileNameFor(m).replace(/\.gssk\.json$/, '')
     );
+  }
+
+  /** Has the model the kernel sees changed since the run? Layout and packing do not count. */
+  private changedSinceRun(m: StudioModel): boolean {
+    const r = this.resultModel;
+    if (!r || r === m) return r === null;
+    return canonicalJson(toKernelModel(r)) !== canonicalJson(toKernelModel(m));
   }
 
   private undo(): void {

@@ -38,6 +38,45 @@ export type EdgeLogic = (typeof EDGE_LOGICS)[number];
 export const METHODS = ['auto', 'euler', 'rk4', 'expm'] as const;
 export type Method = (typeof METHODS)[number];
 
+/** Forcing waveforms the kernel evaluates (FR-FRC-001); one vocabulary for nodes and edges. */
+export const WAVEFORMS = [
+  'step',
+  'impulse',
+  'ramp',
+  'exponential',
+  'sine',
+  'square',
+  'sawtooth',
+  'jitter',
+  'table',
+] as const;
+export type Waveform = (typeof WAVEFORMS)[number];
+
+/**
+ * A forcing function, in the kernel's own schema (`$defs/Forcing`). On a
+ * source or constant it drives the held value; on an edge it drives the rate k.
+ */
+export interface Forcing {
+  waveform: Waveform;
+  t_on?: number;
+  v0?: number;
+  v1?: number;
+  area?: number;
+  slope?: number;
+  rate?: number;
+  period?: number;
+  phase?: number;
+  duty?: number;
+  mean?: number;
+  amplitude?: number;
+  min?: number;
+  max?: number;
+  times?: number[];
+  values?: number[];
+  interpolation?: 'linear' | 'step';
+  extrapolation?: 'hold' | 'cycle';
+}
+
 export interface Point {
   x: number;
   y: number;
@@ -66,6 +105,8 @@ export interface ModelNode {
     k_respiration?: number;
     k_metabolism?: number;
   };
+  /** Drives the held value over time (sources and constants only, FR-FRC-001). */
+  forcing?: Forcing;
   visual: NodeVisual;
 }
 
@@ -90,6 +131,8 @@ export interface ModelEdge {
     threshold?: number;
     numerator_node?: string;
   };
+  /** Drives the rate k over time, overriding params.k (FR-FRC-001). */
+  forcing?: Forcing;
   visual?: EdgeVisual;
 }
 
@@ -100,6 +143,21 @@ export interface Boundary {
   w: number;
   h: number;
   label: string;
+}
+
+/**
+ * A zoom group (FR-GRP-001): symbols packed into one. Editor-only: the kernel
+ * always runs every symbol inside, so packing never changes a result.
+ */
+export interface Group {
+  id: string;
+  label: string;
+  /** Node ids directly in this group (not in a group inside it). */
+  nodes: string[];
+  /** The group this one is nested in. */
+  parent?: string;
+  /** Packed: drawn as one symbol, its flows across the edge combined. */
+  collapsed: boolean;
 }
 
 export interface ModelConfig {
@@ -137,7 +195,7 @@ export interface StudioModel {
   nodes: ModelNode[];
   edges: ModelEdge[];
   /** Editor-only: diagram regions. The kernel ignores `_`-prefixed keys. */
-  _diagram: { boundaries: Boundary[] };
+  _diagram: { boundaries: Boundary[]; groups?: Group[] };
   /** Editor-only: observed data to fit runs against (M3). */
   _observations?: ObservationSeries[];
   /** Editor-only: the last Energese script applied, as provenance (ADR 0011). */

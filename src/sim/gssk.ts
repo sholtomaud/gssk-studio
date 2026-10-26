@@ -158,6 +158,16 @@ export class GsskKernel {
   }
 }
 
+/** Read access to a GSSK_EnsembleResult while it is alive; see GsskInstance.ensemble. */
+export interface EnsembleView {
+  /** Steps in the result, both ends included: round((t_end − t_start)/dt) + 1. */
+  readonly steps: number;
+  readonly nodes: number;
+  min(step: number, node: number): number;
+  mean(step: number, node: number): number;
+  max(step: number, node: number): number;
+}
+
 export class GsskInstance {
   private readonly kernel: GsskKernel;
   private ptr: number;
@@ -325,6 +335,49 @@ export class GsskInstance {
     return this.kernel.takeString('GSSK_ExportMutationLog', (out) =>
       m._GSSK_ExportMutationLog(this.p, out)
     );
+  }
+
+  /** The RNG seed (uint64, as a decimal string): what a stochastic result must cite. */
+  get seed(): string {
+    return this.kernel.module._GSSK_GetSeed(this.p).toString();
+  }
+
+  /** Rewind the RNG to `seed` (uint64, decimal). */
+  setSeed(seed: string): void {
+    this.kernel.module._GSSK_SetSeed(this.p, BigInt.asUintN(64, BigInt(seed)));
+  }
+
+  /** The kernel's own value of a node's forcing at t (FR-FRC-001). */
+  nodeForcingAt(nodeId: string, t: number): number {
+    return this.kernel.module._GSSK_EvaluateNodeForcing(this.p, this.nodeIndex(nodeId), t);
+  }
+
+  /** The kernel's own value of an edge's forcing (its rate k) at t. */
+  edgeForcingAt(edgeId: string, t: number): number {
+    return this.kernel.module._GSSK_EvaluateEdgeForcing(this.p, this.edgeIndex(edgeId), t);
+  }
+
+  /**
+   * GSSK_EnsembleForecast (FR-ENS-001): `runs` whole runs from t_start, each
+   * with every edge's k scaled by its own draw from the instance RNG, reduced
+   * to pointwise min, mean and max per node. `read` sees the result while it
+   * is alive; it is freed when `read` returns.
+   */
+  ensemble<T>(runs: number, perturbation: number, read: (view: EnsembleView) => T): T {
+    const m = this.kernel.module;
+    const res = m._GSSK_EnsembleForecast(this.p, runs, perturbation);
+    if (res === 0) throw new GsskError('GSSK_EnsembleForecast', 7);
+    try {
+      return read({
+        steps: m._GSSK_GetEnsembleStepCount(res),
+        nodes: m._GSSK_GetEnsembleNodeCount(res),
+        min: (s, n) => m._GSSK_GetEnsembleMin(res, s, n),
+        mean: (s, n) => m._GSSK_GetEnsembleMean(res, s, n),
+        max: (s, n) => m._GSSK_GetEnsembleMax(res, s, n),
+      });
+    } finally {
+      m._GSSK_FreeEnsembleResult(res);
+    }
   }
 
   free(): void {

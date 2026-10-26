@@ -5,12 +5,15 @@
  * dropped — an import never silently rewrites a model (ADR 0006).
  */
 import { isNodeType } from './catalogue.ts';
+import { parseForcing } from './forcing.ts';
+import { tidyGroups } from './groups.ts';
 import { uniqueId } from './ids.ts';
 import {
   DEFAULT_CONFIG,
   EDGE_LOGICS,
   METHODS,
   type Boundary,
+  type Group,
   type EdgeLogic,
   type Method,
   type ModelEdge,
@@ -123,6 +126,10 @@ export function normaliseModel(raw: unknown): ParseResult {
       if (pn) p.price_node = pn;
       if (Object.keys(p).length) node.params = p;
     }
+    const nf = parseForcing(rn.forcing);
+    if (nf) node.forcing = nf;
+    else if (rn.forcing !== undefined)
+      notes.push(`“${id}”: its forcing was not understood and was left out.`);
     if (rn.dataType !== undefined) {
       notes.push(
         `“${id}”: its data-stream mapping (dataType ${String(rn.dataType)}) is not kept; import observations as CSV with a column named “${id}” to compare them.`
@@ -170,6 +177,10 @@ export function normaliseModel(raw: unknown): ParseResult {
     if (numerator) edge.params.numerator_node = numerator;
     const carrier = str(re.carrier);
     if (carrier) edge.carrier = carrier;
+    const ef = parseForcing(re.forcing);
+    if (ef) edge.forcing = ef;
+    else if (re.forcing !== undefined)
+      notes.push(`Flow “${id}”: its forcing was not understood and was left out.`);
     const v = isObj(re.visual) ? re.visual : {};
     const pt = (p: unknown) =>
       isObj(p) && num(p.x) !== undefined && num(p.y) !== undefined
@@ -218,6 +229,28 @@ export function normaliseModel(raw: unknown): ParseResult {
     boundaries.push({ id, x, y, w, h, label: str(rb.label) ?? '' });
   }
 
+  // Zoom groups (FR-GRP-001): members must exist and sit in one group only.
+  const groups: Group[] = [];
+  const placed = new Set<string>();
+  const nodeIds = new Set(nodes.map((n) => n.id));
+  for (const rg of Array.isArray(diagram.groups) ? diagram.groups : []) {
+    if (!isObj(rg) || !Array.isArray(rg.nodes)) continue;
+    const id =
+      str(rg.id) && !taken.has(rg.id as string) ? (rg.id as string) : uniqueId('group', taken);
+    taken.add(id);
+    const members = rg.nodes.filter(
+      (n): n is string => typeof n === 'string' && nodeIds.has(n) && !placed.has(n)
+    );
+    for (const n of members) placed.add(n);
+    groups.push({
+      id,
+      label: str(rg.label) ?? id,
+      nodes: members,
+      collapsed: rg.collapsed === true,
+      ...(str(rg.parent) ? { parent: str(rg.parent) } : {}),
+    });
+  }
+
   const observations: ObservationSeries[] = [];
   const known = new Set([...nodes.map((n) => n.id), ...edges.map((e) => `flow:${e.id}`)]);
   for (const ro of Array.isArray(raw._observations) ? raw._observations : []) {
@@ -244,18 +277,17 @@ export function normaliseModel(raw: unknown): ParseResult {
   const script = str(rs.source);
   const scriptHash = str(rs.modelHash);
 
-  return {
-    model: {
-      metadata: { schema_version: 4, name, ...(description ? { description } : {}) },
-      config,
-      nodes,
-      edges,
-      _diagram: { boundaries },
-      ...(observations.length ? { _observations: observations } : {}),
-      ...(script && scriptHash ? { _energese: { source: script, modelHash: scriptHash } } : {}),
-    },
-    notes,
+  const model: StudioModel = {
+    metadata: { schema_version: 4, name, ...(description ? { description } : {}) },
+    config,
+    nodes,
+    edges,
+    _diagram: { boundaries, ...(groups.length ? { groups } : {}) },
+    ...(observations.length ? { _observations: observations } : {}),
+    ...(script && scriptHash ? { _energese: { source: script, modelHash: scriptHash } } : {}),
   };
+  tidyGroups(model);
+  return { model, notes };
 }
 
 /** The file contents for a model: pretty, stable, loadable by GSSK_Init as-is. */

@@ -11,10 +11,11 @@
  *   new ener.Flow(m, sun, grass, ener.linear(0.02));
  *   export default m;
  */
-import type { EdgeLogic, NodeType } from '../../model/types.ts';
+import type { EdgeLogic, Forcing, NodeType } from '../../model/types.ts';
 import {
   GsskModel,
   type EdgeRef,
+  type GroupLike,
   type NodeInput,
   type NodeLike,
   type NodeParamsInput,
@@ -22,7 +23,8 @@ import {
 } from '../gssk/builder.ts';
 
 export { GsskModel as Model } from '../gssk/builder.ts';
-export type { ModelInput, NodeLike, NodeRef, SynthOptions } from '../gssk/builder.ts';
+export type { GroupLike, ModelInput, NodeLike, NodeRef, SynthOptions } from '../gssk/builder.ts';
+export type { Forcing, Waveform } from '../../model/types.ts';
 
 /** What every symbol takes. `params` passes kernel parameters through by kernel name. */
 export interface SymbolProps {
@@ -32,6 +34,8 @@ export interface SymbolProps {
   at?: readonly [number, number];
   capacity?: number;
   params?: NodeParamsInput;
+  /** Drives a source's or constant's held value over time (FR-FRC-001). */
+  forcing?: Forcing;
 }
 
 abstract class OdumSymbol implements NodeRef {
@@ -56,6 +60,7 @@ abstract class OdumSymbol implements NodeRef {
       ...(props.at !== undefined ? { at: props.at } : {}),
       ...(props.capacity !== undefined ? { capacity: props.capacity } : {}),
       ...(Object.keys(params).length ? { params } : {}),
+      ...(props.forcing !== undefined ? { forcing: props.forcing } : {}),
     };
     const ref = scope.addNode(type, label, input);
     this.id = ref.id;
@@ -254,6 +259,8 @@ export interface FlowProps {
   sensor?: boolean;
   ctrl1?: readonly [number, number];
   ctrl2?: readonly [number, number];
+  /** Drives the rate k over time, overriding it (FR-FRC-001). */
+  forcing?: Forcing;
 }
 
 /** A pathway from `origin` to `target`. */
@@ -290,5 +297,19 @@ export class Boundary {
     rect: { x: number; y: number; w: number; h: number; id?: string }
   ) {
     this.id = scope.addBoundary(label, rect, rect.id !== undefined ? { id: rect.id } : {}).id;
+  }
+}
+
+/** A zoom group (FR-GRP-001): symbols packed into one on the diagram; the kernel runs them all. */
+export class Group {
+  readonly id: string;
+
+  constructor(
+    scope: GsskModel,
+    label: string,
+    members: readonly NodeLike[],
+    props: { id?: string; parent?: GroupLike; collapsed?: boolean } = {}
+  ) {
+    this.id = scope.addGroup(label, members, props).id;
   }
 }

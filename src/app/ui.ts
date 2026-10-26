@@ -52,6 +52,7 @@ const ICONS: Record<string, string> = {
   target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
   sliders:
     '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+  spread: '<path d="M3 12c4-6 14-6 18 0"/><path d="M3 12c4 6 14 6 18 0"/><path d="M3 12h18"/>',
   frame: '<rect x="3" y="5" width="18" height="14" rx="1" stroke-dasharray="3 2"/>',
   table: '<rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v16"/>',
   cpu: '<rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
