@@ -20,7 +20,8 @@
     "e2e": "playwright test",
     "bundle-size": "node scripts/bundle-size.ts",
     "gssk:verify": "node scripts/gssk-verify.ts",
-    "gssk:update": "sh scripts/gssk-update.sh"
+    "gssk:update": "sh scripts/gssk-update.sh",
+    "sdk:types": "node scripts/sdk-types.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.56.1",
@@ -29,5 +30,12 @@
     "typescript": "7.0.2",
     "vite": "8.3.5",
     "vitest": "5.0.3"
+  },
+  "dependencies": {
+    "@tsrs/wasm": "0.18.0-ts7.1.0-dev.20260929",
+    "monaco-editor": "0.57.0"
+  },
+  "overrides": {
+    "dompurify": "3.4.17"
   }
 }

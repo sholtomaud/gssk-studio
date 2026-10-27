@@ -1,7 +1,7 @@
 # K-9 — Transactions: priced counter-flows in the GSSK kernel
 
 **For**: the GSSK kernel (`energese-project/GSSK-Giannantoni`), to be implemented by a kernel
-agent. **From**: GSSK Studio (SPEC §6.2, §17 K-9 and K-10). **Against**: pinned GSSK 5.3.0
+agent. **From**: GSSK Studio (SPEC §5.6, §17 K-9 and K-10). **Against**: pinned GSSK 5.3.0
 (`dist` @ 3043a57c). **Status**: requested.
 
 The key words MUST, SHOULD and MAY are used as in RFC 2119.
@@ -128,7 +128,7 @@ two edges, but nothing reads the pairing outside quality accounting.
     chosen by edge carrier `kind`. Goods pass through unchanged, and money out = P × goods.
   - **Deprecate.** `GSSK_Init` prints one notice and expands the node into the KX-5 pair.
   - Either way, it MUST NOT silently compute nothing. The studio will not use the node. A
-    transaction is a marking on a coupled pair (SPEC §6.2), so KX-5 … KX-12 are what the studio
+    transaction is a marking on a coupled pair (SPEC §5.6), so KX-5 … KX-12 are what the studio
     needs. KX-13 exists so that no model with an `exchange` node runs wrong.
 
 ### 3.4 Coupling is checked (K-10, KX-14)

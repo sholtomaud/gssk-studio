@@ -1,6 +1,6 @@
-# ADR 0011 — Energetic types use international standards, not house names
+# ADR 0015 — Energetic types use international standards, not house names
 
-**Status**: accepted (M8, planned)
+**Status**: accepted (M13, planned)
 
 ## Context
 

@@ -273,6 +273,10 @@ export function normaliseModel(raw: unknown): ParseResult {
     });
   }
 
+  const rs = isObj(raw._energese) ? raw._energese : {};
+  const script = str(rs.source);
+  const scriptHash = str(rs.modelHash);
+
   const model: StudioModel = {
     metadata: { schema_version: 4, name, ...(description ? { description } : {}) },
     config,
@@ -280,6 +284,7 @@ export function normaliseModel(raw: unknown): ParseResult {
     edges,
     _diagram: { boundaries, ...(groups.length ? { groups } : {}) },
     ...(observations.length ? { _observations: observations } : {}),
+    ...(script && scriptHash ? { _energese: { source: script, modelHash: scriptHash } } : {}),
   };
   tidyGroups(model);
   return { model, notes };

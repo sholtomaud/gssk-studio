@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { EXAMPLES } from '../../src/model/examples/index.ts';
 import { fileNameFor, ModelFormatError, parseModel, serialiseModel } from '../../src/model/io.ts';
+import { cloneModel } from '../../src/model/types.ts';
 
 const fixture = readFileSync(
   new URL('../fixtures/gssk-dia-personal-finance.json', import.meta.url),
@@ -72,5 +73,15 @@ describe('model files (FR-IO-001..003, ADR 0006)', () => {
 
   it('names files after the model', () => {
     expect(fileNameFor(EXAMPLES[0]!.model)).toBe('Grassland-food-chain.gssk.json');
+  });
+});
+
+describe('script provenance (FR-SDK-007)', () => {
+  it('keeps a script with its model hash through a file, and drops a malformed one', () => {
+    const m = cloneModel(EXAMPLES[0]!.model);
+    m._energese = { source: "import * as ener from 'energese';\n", modelHash: 'abc123' };
+    expect(parseModel(serialiseModel(m)).model._energese).toEqual(m._energese);
+    const broken = { ...m, _energese: { source: 42 } };
+    expect(parseModel(JSON.stringify(broken)).model._energese).toBeUndefined();
   });
 });
