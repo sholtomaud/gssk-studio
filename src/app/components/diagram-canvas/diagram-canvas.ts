@@ -156,6 +156,9 @@ export class DiagramCanvas extends BaseComponent {
     });
     const defs = svg('defs');
     defs.innerHTML = `${SYMBOL_DEFS}
+      <filter id="fuzz" filterUnits="userSpaceOnUse" x="-20000" y="-20000" width="40000" height="40000">
+        <feGaussianBlur stdDeviation="7" />
+      </filter>
       <pattern id="grid" width="${GRID * 4}" height="${GRID * 4}" patternUnits="userSpaceOnUse">
         <path class="grid-line" d="M ${GRID * 4} 0 L 0 0 0 ${GRID * 4}" fill="none" />
       </pattern>`;
@@ -285,6 +288,25 @@ export class DiagramCanvas extends BaseComponent {
   }
 
   /** A "!" badge at (x, y) whose tooltip lists the problems. */
+  /**
+   * A soft blurred light behind a symbol with a problem (FR-VAL-002): red and
+   * slowly pulsing for an error, steady amber for a warning. It sits behind
+   * the symbol, so the symbol's own outline colour stays free to mean
+   * something else.
+   */
+  private glow(mark: Marked | undefined, w: number, h: number): SVGRectElement | null {
+    if (!mark) return null;
+    return svg('rect', {
+      class: 'glow',
+      // Wider than the symbol's opaque body, so the light shows around it.
+      x: -w - 18,
+      y: -h - 18,
+      width: 2 * w + 36,
+      height: 2 * h + 36,
+      rx: Math.min(w, h) + 18,
+    });
+  }
+
   /** The forcing mark (FR-FRC-001): a small wave beside a forced symbol or on a forced flow. */
   private forcedMark(x: number, y: number): SVGTextElement {
     const t = svg('text', { class: 'forced', x, y });
@@ -429,6 +451,8 @@ export class DiagramCanvas extends BaseComponent {
       'aria-label': `${spec.label}: ${label}`,
       'aria-pressed': selected ? 'true' : 'false',
     });
+    const glow = this.glow(this._issues.get(n.id), w, h);
+    if (glow) g.append(glow);
     g.append(
       svg('rect', {
         class: 'halo',
@@ -482,6 +506,7 @@ export class DiagramCanvas extends BaseComponent {
       'data-edge': e.id,
     });
     const d = pathData(curve);
+    if (this._issues.has(e.id)) g.append(svg('path', { class: 'glow', d }));
     g.append(
       svg('path', { class: 'hit', d }),
       svg('path', {
@@ -684,6 +709,8 @@ export class DiagramCanvas extends BaseComponent {
     );
     const title = svg('title');
     title.textContent = `Group “${grp.label}”: ${count} symbols packed. Double-click to unpack.`;
+    const glow = this.glow(mark, w, h);
+    if (glow) g.append(glow);
     g.append(
       svg('rect', {
         class: 'halo',
@@ -731,6 +758,7 @@ export class DiagramCanvas extends BaseComponent {
     count.textContent = b.edges.length > 1 ? `${b.edges.length} flows` : '';
     const title = svg('title');
     title.textContent = `${b.edges.length} flow${b.edges.length === 1 ? '' : 's'} combined: ${b.edges.join(', ')}`;
+    if (mark) g.append(svg('path', { class: 'glow', d }));
     g.append(
       svg('path', { class: 'hit', d }),
       svg('path', { class: 'line', d, 'marker-end': 'url(#arrow)' }),
