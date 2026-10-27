@@ -21,6 +21,17 @@ test('export a model, then import it back unchanged', async ({ page }) => {
   await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(4);
 });
 
+test('export a model as Energese code (FR-SDK-002)', async ({ page }) => {
+  await openExample(page, 'grassland');
+  const download = page.waitForEvent('download');
+  await page.getByText('Export', { exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Energese code (.energese.ts)' }).click();
+  const code = readFileSync(await (await download).path(), 'utf8');
+  expect(code).toContain("import * as ener from 'energese';");
+  expect(code).toContain("new ener.Producer(m, 'Grass'");
+  expect(code).toContain('export default m;');
+});
+
 test('import a gssk-dia model and list what changed', async ({ page }) => {
   await page.goto('./');
   await page
