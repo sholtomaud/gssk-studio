@@ -296,6 +296,54 @@ const budget: StudioModel = {
   },
 };
 
+/** A flow of `carrier` at a constant rate `k` per month. */
+const paid = (id: string, o: string, t: string, k: number, carrier: string): ModelEdge => ({
+  ...f(id, o, t, k, 'constant'),
+  carrier,
+});
+
+const purchases: StudioModel = {
+  metadata: {
+    schema_version: 4,
+    name: 'Paying for electricity and streaming',
+    description:
+      'Odum’s transactions: electricity and a video stream flow in, money flows out against each (FR-TRX-001).',
+  },
+  // Months.
+  config: { t_start: 0, t_end: 12, dt: 0.05, method: 'rk4' },
+  nodes: [
+    { ...n('grid', 'source', 1, 100, 140, 'Electricity grid'), carrier: 'electricity' },
+    { ...n('appliances', 'sink', 0, 640, 140, 'Appliances'), carrier: 'electricity' },
+    { ...n('streaming', 'source', 1, 100, 280, 'Streaming service'), carrier: 'video' },
+    { ...n('screen', 'sink', 0, 640, 280, 'Screen time'), carrier: 'video' },
+    { ...n('salary', 'source', 300, 100, 460, 'Salary'), carrier: 'aud' },
+    { ...n('bank', 'storage', 1000, 360, 460, 'Bank account', 30000), carrier: 'aud' },
+    { ...n('retailer', 'storage', 0, 640, 420, 'Power retailer', 2000), carrier: 'aud' },
+    { ...n('streamer', 'storage', 0, 640, 560, 'Streaming company', 500), carrier: 'aud' },
+  ],
+  edges: [
+    {
+      ...paid('power', 'grid', 'appliances', 300, 'electricity'),
+      coupled_edge: 'power_bill',
+      visual: { transaction: { purpose: '04', tags: ['utilities'] } },
+    },
+    {
+      ...paid('stream', 'streaming', 'screen', 50, 'video'),
+      coupled_edge: 'subscription',
+      visual: { transaction: { purpose: '08', tags: ['subscription'] } },
+    },
+    { ...f('pay', 'salary', 'bank', 1), carrier: 'aud' },
+    { ...paid('power_bill', 'bank', 'retailer', 96, 'aud'), coupled_edge: 'power' },
+    { ...paid('subscription', 'bank', 'streamer', 22, 'aud'), coupled_edge: 'stream' },
+  ],
+  carriers: [
+    { id: 'electricity', unit: 'kW.h', _label: 'Electricity' },
+    { id: 'video', unit: 'GBy', _label: 'Video stream' },
+    { id: 'aud', _label: 'Australian dollar', _currency: 'AUD' },
+  ],
+  _diagram: { boundaries: [] },
+};
+
 export const EXAMPLES: readonly Example[] = [
   {
     id: 'grassland',
@@ -338,6 +386,12 @@ export const EXAMPLES: readonly Example[] = [
     title: budget.metadata.name,
     summary: budget.metadata.description ?? '',
     model: budget,
+  },
+  {
+    id: 'purchases',
+    title: purchases.metadata.name,
+    summary: purchases.metadata.description ?? '',
+    model: purchases,
   },
 ];
 

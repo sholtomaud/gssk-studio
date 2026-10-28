@@ -8,6 +8,14 @@
 import { BaseComponent, define } from '../../core/base-component.ts';
 import { isNodeType, symbolFor } from '../../../model/catalogue.ts';
 import { describeForcing } from '../../../model/forcing.ts';
+import { kindOfCarrierId } from '../../../model/carriers.ts';
+import {
+  impliedPrice,
+  partnerOf,
+  priceUnit,
+  toggleTransaction,
+  transactionOf,
+} from '../../../model/transactions.ts';
 import {
   childGroups,
   diagramView,
@@ -56,6 +64,8 @@ import style from './diagram-canvas.css?raw';
 export const NODE_DRAG_TYPE = 'application/x-gssk-node-type';
 /** Dragged from the palette's Sensor tool; dropped on a flow (FR-EDIT-010). */
 export const SENSOR_DRAG_TYPE = 'application/x-gssk-sensor';
+/** Dragged from the palette's Transaction tool; dropped on a flow (FR-TRX-001). */
+export const TRANSACTION_DRAG_TYPE = 'application/x-gssk-transaction';
 const GRID = 10;
 function rectOf(a: Point, b: Point): { x: number; y: number; w: number; h: number } {
   return {
@@ -128,6 +138,8 @@ export class DiagramCanvas extends BaseComponent {
   /** What is drawn at the current packing (FR-GRP-001). */
   private view_: DiagramView | null = null;
   private lastGroupClick: { id: string; at: number } | null = null;
+  /** Where each flow's transaction diamond is drawn, to link the pair. */
+  private readonly trxPoints = new Map<string, Point>();
   /** Flow badges, appended to the overlay once every flow is drawn. */
   private edgeBadges: SVGGElement[] = [];
 
@@ -236,7 +248,12 @@ export class DiagramCanvas extends BaseComponent {
     this.root.addEventListener('dblclick', (e) => this.onDoubleClick(e));
     this.root.addEventListener('dragover', (e) => {
       const types = e.dataTransfer?.types ?? [];
-      if (e.dataTransfer && (types.includes(NODE_DRAG_TYPE) || types.includes(SENSOR_DRAG_TYPE))) {
+      if (
+        e.dataTransfer &&
+        (types.includes(NODE_DRAG_TYPE) ||
+          types.includes(SENSOR_DRAG_TYPE) ||
+          types.includes(TRANSACTION_DRAG_TYPE))
+      ) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
       }
@@ -428,7 +445,19 @@ export class DiagramCanvas extends BaseComponent {
     this.view_ = view;
     for (const g of view.frames) this.renderFrame(m, g);
     this.edgeBadges = [];
+    this.trxPoints.clear();
     for (const e of view.edges) this.renderEdge(m, e);
+    // A transaction's two diamonds are one exchange: a faint line joins them.
+    for (const e of view.edges) {
+      if (!e.visual?.transaction) continue;
+      const p = partnerOf(m, e);
+      const a = this.trxPoints.get(e.id);
+      const b = p ? this.trxPoints.get(p.id) : undefined;
+      if (a && b)
+        this.layers.edges.prepend(
+          svg('line', { class: 'pair-link', x1: a.x, y1: a.y, x2: b.x, y2: b.y })
+        );
+    }
     for (const b of view.bundles) this.renderBundle(m, b);
     this.layers.overlay.append(...this.edgeBadges);
     for (const n of m.nodes) if (view.nodes.has(n.id)) this.renderNode(n);
@@ -501,8 +530,10 @@ export class DiagramCanvas extends BaseComponent {
     if (!o || !t) return;
     const curve = edgeCurve(e, o, t);
     const selected = this._selection?.kind === 'edge' && this._selection.id === e.id;
+    const kind = kindOfCarrierId(m, e.carrier);
     const g = svg('g', {
-      class: `edge ${e.logic}${selected ? ' selected' : ''}${this.mark(e.id)}`,
+      // Odum's line styles by what flows (ADR 0015): money dashed, information dotted.
+      class: `edge ${e.logic}${kind ? ` kind-${kind}` : ''}${selected ? ' selected' : ''}${this.mark(e.id)}`,
       'data-edge': e.id,
     });
     const d = pathData(curve);
@@ -547,17 +578,36 @@ export class DiagramCanvas extends BaseComponent {
         reading
       );
     }
+    const trx = transactionOf(m, e);
+    if (trx) {
+      // Odum's transaction diamond, clear of a gate or sensor at the middle.
+      const at = pointAt(curve, control || e.visual?.sensor ? 0.64 : 0.5);
+      const marked = trx.marked === e;
+      const size = marked ? 40 : 28;
+      this.trxPoints.set(e.id, at);
+      const use = svg('use', {
+        class: `transaction${marked ? '' : ' counter'}`,
+        href: '#odum-transaction',
+        x: at.x - size / 2,
+        y: at.y - size / 2,
+        width: size,
+        height: size,
+      });
+      g.append(use);
+      if (marked) g.append(svg('text', { class: 'price-reading', x: at.x, y: at.y + 30 }));
+    }
     if (e.forcing) {
       // Clear of the labels at the origin end, the gate or sensor mid-flow and the badge at 0.78.
       const at = pointAt(curve, 0.38);
       g.append(this.forcedMark(at.x + 10, at.y - 6));
     }
     const title = svg('title');
-    title.textContent = `${e.id}: ${e.logic}, k = ${e.forcing ? describeForcing(e.forcing) : e.params.k}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}`;
+    const pair = trx ? (trx.marked === e ? partnerOf(m, e) : trx.marked) : undefined;
+    title.textContent = `${e.id}: ${e.logic}, k = ${e.forcing ? describeForcing(e.forcing) : e.params.k}${e.carrier ? `, carries ${e.carrier}` : ''}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}${trx ? (pair ? `, transaction with ${pair.id}` : ', transaction without its counter-flow') : ''}`;
     g.append(title);
     // On the curve, clear of a gate or sensor at the middle; in the overlay so it
     // draws above the selection handles, and still selects the flow when clicked.
-    const at = pointAt(curve, control || e.visual?.sensor ? 0.78 : 0.5);
+    const at = pointAt(curve, control || e.visual?.sensor || trx ? 0.78 : 0.5);
     const eb = this.badge(e.id, at.x, at.y);
     if (eb) {
       eb.setAttribute('data-edge', e.id);
@@ -810,6 +860,19 @@ export class DiagramCanvas extends BaseComponent {
         !this.flowWidths || f === undefined || !(p && p.maxFlow > 0)
           ? ''
           : `${1.2 + 4.8 * Math.min(1, Math.abs(f) / p.maxFlow)}px`;
+    }
+    for (const e of m.edges) {
+      const reading = this.edgeEls.get(e.id)?.querySelector('.price-reading');
+      if (!reading) continue;
+      const trx = transactionOf(m, e);
+      const price =
+        trx?.money && trx.goods
+          ? impliedPrice(p?.flows.get(trx.money.id), p?.flows.get(trx.goods.id))
+          : undefined;
+      reading.textContent =
+        price === undefined || !trx?.money || !trx.goods
+          ? ''
+          : `${formatNumber(price)} ${priceUnit(m, trx.money, trx.goods)}`;
     }
     for (const b of this.view_?.bundles ?? []) {
       const g = this.bundleEls.get(b.id);
@@ -1212,6 +1275,29 @@ export class DiagramCanvas extends BaseComponent {
   }
 
   private onDrop(e: DragEvent): void {
+    if (e.dataTransfer?.types.includes(TRANSACTION_DRAG_TYPE) && this._model) {
+      e.preventDefault();
+      const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-edge]');
+      const id = hit?.getAttribute('data-edge');
+      const edge = id ? this._model.edges.find((x) => x.id === id) : undefined;
+      if (edge && !transactionOf(this._model, edge)) {
+        this.emit({
+          model: toggleTransaction(this._model, edge.id),
+          label: `Transaction on ${edge.id}`,
+          select: { kind: 'edge', id: edge.id },
+        });
+      } else {
+        this.dispatchEvent(
+          new CustomEvent('diagram-hint', {
+            detail: edge
+              ? 'That flow is already part of a transaction.'
+              : 'Drop the transaction onto a flow.',
+            bubbles: true,
+          })
+        );
+      }
+      return;
+    }
     if (e.dataTransfer?.types.includes(SENSOR_DRAG_TYPE) && this._model) {
       e.preventDefault();
       const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-edge]');

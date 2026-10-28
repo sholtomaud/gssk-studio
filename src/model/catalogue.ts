@@ -108,14 +108,17 @@ export const CATALOGUE: readonly SymbolSpec[] = [
   },
   {
     type: 'exchange',
-    label: 'Transaction',
+    label: 'Exchange node',
     symbol: 'odum-transaction',
     half: { w: 32, h: 32 },
     holdsState: false,
     composite: false,
-    palette: true,
+    // In GSSK 5.3.0 the kernel's exchange node moves nothing (K-9). Odum's
+    // transaction is the palette's Transaction tool, a marking on two flows.
+    palette: false,
     valueLabel: 'Level',
-    summary: 'Goods one way, money the other, at a price.',
+    summary:
+      'The kernel’s exchange node, which moves nothing in GSSK 5.3.0 (K-9). Use a Transaction on a flow and its money counter-flow.',
   },
   {
     type: 'switch',

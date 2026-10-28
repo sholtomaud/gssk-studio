@@ -57,6 +57,19 @@ exports[`running models (FR-SIM-001) > runs the predator-prey example cleanly an
 }
 `;
 
+exports[`running models (FR-SIM-001) > runs the purchases example cleanly and reproducibly 1`] = `
+{
+  "appliances": 3600,
+  "bank": 3184,
+  "grid": 1,
+  "retailer": 1152,
+  "salary": 300,
+  "screen": 600,
+  "streamer": 264,
+  "streaming": 1,
+}
+`;
+
 exports[`running models (FR-SIM-001) > runs the reservoir example cleanly and reproducibly 1`] = `
 {
   "downstream": 331.29203,

@@ -185,10 +185,22 @@ function kitchenSink(): StudioModel {
   });
 }
 
+/** A transaction still missing its counter-flow, a one-way pairing, and a token carrier. */
+function unfinishedTrade(): StudioModel {
+  const m = cloneModel(EXAMPLES.find((e) => e.id === 'purchases')!.model);
+  delete m.edges.find((e) => e.id === 'stream')!.coupled_edge;
+  delete m.edges.find((e) => e.id === 'subscription')!.coupled_edge;
+  m.edges.find((e) => e.id === 'pay')!.coupled_edge = 'power';
+  m.carriers!.push({ id: 'btc', _label: 'Bitcoin', _dti: 'V15WLZJMF', conserved: true });
+  m.edges.find((e) => e.id === 'stream')!.visual = { transaction: {} };
+  return normal(m);
+}
+
 describe('Energese round trip (FR-SDK-002, FR-SDK-003)', () => {
   const cases: [string, StudioModel][] = [
     ...EXAMPLES.map((ex): [string, StudioModel] => [ex.id, normal(ex.model)]),
     ['every symbol and logic', kitchenSink()],
+    ['transactions half-made and pairings by hand', unfinishedTrade()],
   ];
   for (const [name, model] of cases) {
     it(`${name}: generated code synthesizes the same file, byte for byte`, () => {

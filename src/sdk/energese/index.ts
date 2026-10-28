@@ -11,9 +11,15 @@
  *   new ener.Flow(m, sun, grass, ener.linear(0.02));
  *   export default m;
  */
-import type { EdgeLogic, Forcing, NodeType } from '../../model/types.ts';
+import type {
+  EdgeLogic,
+  Forcing,
+  NodeType,
+  Transaction as TransactionMark,
+} from '../../model/types.ts';
 import {
   GsskModel,
+  type CarrierInput,
   type EdgeRef,
   type GroupLike,
   type NodeInput,
@@ -23,7 +29,14 @@ import {
 } from '../gssk/builder.ts';
 
 export { GsskModel as Model } from '../gssk/builder.ts';
-export type { GroupLike, ModelInput, NodeLike, NodeRef, SynthOptions } from '../gssk/builder.ts';
+export type {
+  CarrierInput,
+  GroupLike,
+  ModelInput,
+  NodeLike,
+  NodeRef,
+  SynthOptions,
+} from '../gssk/builder.ts';
 export type { Forcing, Waveform } from '../../model/types.ts';
 
 /** What every symbol takes. `params` passes kernel parameters through by kernel name. */
@@ -129,15 +142,19 @@ export class Interaction extends OdumSymbol {
   }
 }
 
-export interface TransactionProps extends SymbolProps {
+export interface ExchangeProps extends SymbolProps {
   price?: number;
   /** A node whose level is the price, instead of a constant one. */
   priceNode?: NodeLike;
 }
 
-/** Goods one way, money the other (the kernel's `exchange`). */
-export class Transaction extends OdumSymbol {
-  constructor(scope: GsskModel, label: string, props: TransactionProps = {}) {
+/**
+ * The kernel's `exchange` node. In GSSK 5.3.0 it moves nothing (K-9): for
+ * Odum's transaction, mark a flow and its money counter-flow with
+ * `Transaction` instead.
+ */
+export class Exchange extends OdumSymbol {
+  constructor(scope: GsskModel, label: string, props: ExchangeProps = {}) {
     super(scope, 'exchange', label, props, { price: props.price, price_node: props.priceNode });
   }
 }
@@ -192,7 +209,7 @@ export const CONSTRUCTS: Readonly<Record<NodeType, string>> = {
   producer: 'Producer',
   consumer: 'Consumer',
   interaction: 'Interaction',
-  exchange: 'Transaction',
+  exchange: 'Exchange',
   switch: 'Switch',
   gain: 'Amplifier',
   loop_limited: 'Receiver',
@@ -261,6 +278,8 @@ export interface FlowProps {
   ctrl2?: readonly [number, number];
   /** Drives the rate k over time, overriding it (FR-FRC-001). */
   forcing?: Forcing;
+  /** The kernel's `coupled_edge`, by id. A `Transaction` pairs flows for you. */
+  coupled?: string;
 }
 
 /** A pathway from `origin` to `target`. */
@@ -311,5 +330,49 @@ export class Group {
     props: { id?: string; parent?: GroupLike; collapsed?: boolean } = {}
   ) {
     this.id = scope.addGroup(label, members, props).id;
+  }
+}
+
+/**
+ * What flows (FR-TYP-001, ADR 0015): Odum's Code. A UCUM unit for energy, a
+ * material or information; an ISO 4217 currency or ISO 24165 token for money.
+ *
+ *   new ener.Carrier(m, 'aud', { currency: 'AUD' });
+ *   new ener.Carrier(m, 'electricity', { unit: 'kW.h' });
+ */
+export class Carrier {
+  readonly id: string;
+
+  constructor(scope: GsskModel, id: string, props: CarrierInput = {}) {
+    this.id = scope.addCarrier(id, props).id;
+  }
+}
+
+export interface TransactionProps {
+  /** The money flow that pays for this one, or the flow this money pays for. */
+  counter?: Flow | string;
+  /** COICOP 2018 code: the household budget account. */
+  purpose?: string;
+  tags?: string[];
+}
+
+/**
+ * Odum's transaction (FR-TRX-001): money flows against what it buys. Mark a
+ * flow and name its `counter`; without one, the checks say it is missing.
+ *
+ *   const power = new ener.Flow(m, grid, home, ener.constant(300), { carrier: 'electricity' });
+ *   const bill = new ener.Flow(m, bank, retailer, ener.constant(96), { carrier: 'aud' });
+ *   new ener.Transaction(m, power, { counter: bill, purpose: '04' });
+ */
+export class Transaction {
+  readonly flow: string;
+
+  constructor(scope: GsskModel, flow: Flow | string, props: TransactionProps = {}) {
+    const mark: TransactionMark = {
+      ...(props.purpose !== undefined ? { purpose: props.purpose } : {}),
+      ...(props.tags?.length ? { tags: [...props.tags] } : {}),
+    };
+    scope.markTransaction(flow, mark, props.counter);
+    this.flow = typeof flow === 'string' ? flow : flow.id;
   }
 }

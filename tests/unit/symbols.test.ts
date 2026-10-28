@@ -22,6 +22,11 @@ describe('Odum symbols (FR-EDIT-009)', () => {
 
   it('leaves constant out of the palette: a source does the same job', () => {
     expect(PALETTE.map((s) => s.type)).not.toContain('constant');
-    expect(PALETTE).toHaveLength(CATALOGUE.length - 1);
+  });
+
+  it('leaves the exchange node out: it moves nothing in the pinned kernel (K-9)', () => {
+    // Odum's transaction is the Transaction tool, a marking on a flow and its counter-flow.
+    expect(PALETTE.map((s) => s.type)).not.toContain('exchange');
+    expect(PALETTE).toHaveLength(CATALOGUE.length - 2);
   });
 });

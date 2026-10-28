@@ -1,6 +1,6 @@
 # ADR 0015 — Energetic types use international standards, not house names
 
-**Status**: accepted (M13, planned)
+**Status**: accepted (M13)
 
 ## Context
 
@@ -69,6 +69,7 @@ compete.
   studio therefore stores `kind`, the currency and the classifications as `_kind`,
   `_currency`/`_dti` and `_cpc` until the kernel adopts them (K-9 KX-1/KX-2), and the saved file
   still loads in the kernel unchanged.
-- The studio ships the COICOP 2018 divisions and groups as a code list, with their English
-  titles, and the ISO 4217 active codes. It does not ship the DTI registry: a DTI is entered and
-  checked only for its format.
+- The studio ships the COICOP 2018 divisions with their English titles and accepts finer codes
+  by their shape. It takes the ISO 4217 codes and names from the browser's own ICU data
+  (`Intl.supportedValuesOf('currency')`), so no currency list is maintained here. It does not
+  ship the DTI registry: a DTI is entered and checked only for its shape.

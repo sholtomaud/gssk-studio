@@ -38,8 +38,12 @@ test('import a gssk-dia model and list what changed', async ({ page }) => {
     .locator('library-page input[type="file"]')
     .setInputFiles('tests/fixtures/gssk-dia-personal-finance.json');
   await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(5);
-  await expect(page.getByRole('button', { name: 'Transaction: Market' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Exchange node: Market' })).toBeVisible();
   await expect(page.locator('inspector-panel .issues')).toContainText('Import:');
+  // gssk-dia's transaction is the kernel's exchange node, which moves nothing yet (K-9).
+  await expect(page.locator('inspector-panel .issues')).toContainText(
+    'exchange node moves nothing'
+  );
 });
 
 test('export the diagram as SVG and PNG (FR-IO-004)', async ({ page }) => {

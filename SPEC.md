@@ -152,7 +152,7 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
 A group (`_diagram.groups`) names the symbols packed into it and may sit inside another group. It
 is never sent to the kernel (ADR 0010): the run, and its model hash, are the same packed or not.
 
-### 5.5 Energetic types (M13, planned, FR-TYP-001, ADR 0015)
+### 5.5 Energetic types (M13, FR-TYP-001, ADR 0015)
 
 What every store and flow is, named by the standard that governs it, so a diagram can be bound
 to real data:
@@ -170,11 +170,25 @@ to real data:
 - **Purpose**: a COICOP 2018 code, the household budget account (04 Housing, water,
   electricity…; 03 Clothing and footwear; 07 Transport; 08 Information and communication). No
   field is called "sector"; in national accounts that word means who, not what.
-- **Tags**: free strings for filtering.
-- Checks: an observation series must share its target's unit, and a flow's carrier must match
-  the carriers of its two ends unless one is a transaction or a boundary.
+- **Tags**: free strings on a transaction, for filtering.
+- **Editing**: the model's inspector (select nothing) lists its carriers. Each has an id, a name,
+  and how it is measured: a UCUM unit, an ISO 4217 currency (from the browser's own ISO 4217
+  list, with names), or an ISO 24165 DTI (its shape is checked; the registry is not shipped).
+  Presets cover AUD, USD, electricity (kW.h), natural gas (MJ), water (kL), food (kg) and data
+  (GBy). Renaming a carrier renames it on everything that carries it. A symbol's or flow's
+  Carrier field offers the model's carriers and says what the chosen one measures.
+- **Stored** in the kernel's top-level `carriers` list. The kernel reads `id`, `unit` (for
+  money, its currency code) and `conserved`; the name, kind, currency and DTI are `_` fields
+  (`_label`, `_kind`, `_currency`, `_dti`) until the kernel adopts them (K-9 KX-1, KX-2). A model
+  without carriers sends the kernel none, so its model hash is unchanged.
+- **Checks** (FR-VAL-001):
+  - errors: an unusable or duplicate carrier id; a currency that is not ISO 4217; a DTI of the
+    wrong shape; both a currency and a DTI;
+  - warnings: a carrier whose kind is unknown (no unit, or one that cannot tell); a symbol or
+    flow carrying an id not in the carriers.
+  - Not yet: matching an observation's unit to its target's, and a flow's carrier to its ends'.
 
-### 5.6 Transactions (M13, planned, FR-TRX-001)
+### 5.6 Transactions (M13, FR-TRX-001)
 
 A transaction is a marking on a **pair of flows** that run opposite ways: something
 non-monetary one way, money the other (Odum's ecological-economic convention).
@@ -186,10 +200,25 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
   digital token (ISO 24165), and the other carries a non-monetary one. The message names what is
   missing, and **Add counter-flow** offers to draw the money flow, between money storages it
   proposes or new ones.
-- The pair is stored as the kernel's reciprocal `coupled_edge`. Purpose (COICOP), tags and a
-  price note live in the transaction's editor-only fields.
+- The pair is stored as the kernel's reciprocal `coupled_edge`; the marking, with its purpose
+  (COICOP 2018, a division or a finer code) and tags, is `visual.transaction` on the flow it was
+  placed on. The marked flow draws Odum's transaction diamond, its counter-flow a smaller one,
+  and a faint line joins the two. Taking the transaction off unpairs the flows; deleting either
+  flow unpairs the other, whose marking (if any) is invalid again; a copy keeps its pairing only
+  when both flows are copied.
+- **Add counter-flow** (in the flow's inspector) draws a `constant` money flow, k per unit
+  time, between two ends picked from the diagram or new money storages placed beside the
+  marked flow, in a declared monetary carrier or an ISO 4217 currency it declares.
+- A pairing with no marking (a `coupled_edge` written by hand) is checked too: to a missing flow,
+  to itself, or one-way is an error, which the kernel would accept silently (K-10).
+- The kernel's `exchange` node, which moves nothing in GSSK 5.3.0, is no longer in the palette.
+  Models that have one still load, with a warning that names K-9. In the Energese SDK it is
+  `ener.Exchange`; `ener.Transaction` is the marking and `ener.Carrier` a carrier.
+- The **Paying for electricity and streaming** example buys electricity (kW.h, COICOP 04) and a
+  video stream (GBy, information, COICOP 08) with AUD.
 - **Price**: until the kernel supports priced counter-flows (K-9), each flow keeps its own rate.
-  The results show the implied price, money J ÷ goods J, per transaction. Once K-9 lands, the
+  The inspector shows the implied price at constant rates (96 AUD ÷ 300 kW.h = 0.32 AUD/kW.h),
+  and during playback the diagram shows money J ÷ goods J under each diamond. Once K-9 lands, the
   money flow takes `logic: "price"` with a constant, a price node or a forced price, and payer
   exhaustion stops the purchase.
 
@@ -525,23 +554,23 @@ See [AGENTS.md](AGENTS.md#layout).
 
 ## 19. Milestones
 
-| ID  | Scope                                                                                                    | Status      |
-| --- | -------------------------------------------------------------------------------------------------------- | ----------- |
-| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                           | done        |
-| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback          | done        |
-| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done        |
-| M3  | Observations and fitness (§11)                                                                           | done        |
-| M4  | Calibration and sensitivity (§12)                                                                        | done        |
-| M5  | Forcing functions and ensembles (§12)                                                                    | done        |
-| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned     |
-| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                 | done        |
-| M7b | Reusable group symbols (kernel `archetypes`), unpacking built-in composites                              | exploratory |
-| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)              | done        |
-| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                | planned     |
-| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                           | planned     |
-| M11 | Article editing: LaTeX in the browser, figures bound to runs                                             | planned     |
-| M12 | Assistant: chat over the app's methods; it never produces a number (NFR-HON-002)                         | planned     |
-| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9             | planned     |
+| ID  | Scope                                                                                                    | Status                     |
+| --- | -------------------------------------------------------------------------------------------------------- | -------------------------- |
+| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                           | done                       |
+| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback          | done                       |
+| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done                       |
+| M3  | Observations and fitness (§11)                                                                           | done                       |
+| M4  | Calibration and sensitivity (§12)                                                                        | done                       |
+| M5  | Forcing functions and ensembles (§12)                                                                    | done                       |
+| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned                    |
+| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                 | done                       |
+| M7b | Reusable group symbols (kernel `archetypes`), unpacking built-in composites                              | exploratory                |
+| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)              | done                       |
+| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                | planned                    |
+| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                           | planned                    |
+| M11 | Article editing: LaTeX in the browser, figures bound to runs                                             | planned                    |
+| M12 | Assistant: chat over the app's methods; it never produces a number (NFR-HON-002)                         | planned                    |
+| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9             | done; pricing waits on K-9 |
 
 ## 20. Open questions
 

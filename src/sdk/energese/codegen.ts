@@ -134,6 +134,22 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
   // Variables first, so a reference to a later node can still be named by id.
   for (const n of m.nodes) if (!vars.has(n.id)) vars.set(n.id, identifier(n.id, used));
 
+  const carriers = m.carriers ?? [];
+  if (carriers.length) out.push('', '// Carriers');
+  for (const c of carriers) {
+    const entries: [string, Lit][] = [];
+    if (c._label !== undefined) entries.push(['label', str(c._label)]);
+    if (c.unit !== undefined) entries.push(['unit', str(c.unit)]);
+    if (c.conserved !== undefined) entries.push(['conserved', String(c.conserved)]);
+    if (c._kind !== undefined) entries.push(['kind', str(c._kind)]);
+    if (c._currency !== undefined) entries.push(['currency', str(c._currency)]);
+    if (c._dti !== undefined) entries.push(['dti', str(c._dti)]);
+    const lead = `new ener.Carrier(m, ${str(c.id)}`;
+    out.push(
+      entries.length ? `${lead}, ${obj(entries, '', LINE - lead.length - 4)});` : `${lead});`
+    );
+  }
+
   if (m.nodes.length) out.push('', '// Symbols');
   for (const n of m.nodes) {
     const label = n.visual.label ?? n.id;
@@ -161,6 +177,23 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
     declared.add(n.id);
   }
 
+  // Transactions pair their flows themselves, so those flows need names.
+  const byId = new Map(m.edges.map((e) => [e.id, e]));
+  const reciprocal = (e: ModelEdge) => {
+    const p = e.coupled_edge === undefined ? undefined : byId.get(e.coupled_edge);
+    return p && p.id !== e.id && p.coupled_edge === e.id ? p : undefined;
+  };
+  const marked = m.edges.filter((e) => e.visual?.transaction);
+  const paired = new Set<string>();
+  for (const e of marked) {
+    const p = reciprocal(e);
+    if (p) paired.add(e.id).add(p.id);
+  }
+  const flowVars = new Map<string, string>();
+  for (const e of m.edges) {
+    if (e.visual?.transaction || paired.has(e.id)) flowVars.set(e.id, identifier(e.id, used));
+  }
+
   if (m.edges.length) out.push('', '// Flows');
   for (const e of m.edges) {
     const def = uniqueId(`${e.origin}_to_${e.target}`, taken);
@@ -169,12 +202,28 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
     if (def !== e.id) props.push(['id', str(e.id)]);
     if (e.carrier) props.push(['carrier', str(e.carrier)]);
     if (e.forcing) props.push(['forcing', forcingLit(e.forcing)]);
+    // A pairing no transaction makes (a hand-built or broken one) is written as it stands.
+    if (e.coupled_edge !== undefined && !paired.has(e.id))
+      props.push(['coupled', str(e.coupled_edge)]);
     if (e.visual?.sensor) props.push(['sensor', 'true']);
     if (e.visual?.ctrl1)
       props.push(['ctrl1', `[${num(e.visual.ctrl1.x)}, ${num(e.visual.ctrl1.y)}]`]);
     if (e.visual?.ctrl2)
       props.push(['ctrl2', `[${num(e.visual.ctrl2.x)}, ${num(e.visual.ctrl2.y)}]`]);
-    const lead = `new ener.Flow(m, ${ref(e.origin)}, ${ref(e.target)}, ${flowLogic(e, ref)}`;
+    const fv = flowVars.get(e.id);
+    const lead = `${fv ? `const ${fv} = ` : ''}new ener.Flow(m, ${ref(e.origin)}, ${ref(e.target)}, ${flowLogic(e, ref)}`;
+    out.push(props.length ? `${lead}, ${obj(props, '', LINE - lead.length - 4)});` : `${lead});`);
+  }
+
+  if (marked.length) out.push('', '// Transactions');
+  for (const e of marked) {
+    const t = e.visual!.transaction!;
+    const p = reciprocal(e);
+    const props: [string, Lit][] = [];
+    if (p) props.push(['counter', flowVars.get(p.id)!]);
+    if (t.purpose !== undefined) props.push(['purpose', str(t.purpose)]);
+    if (t.tags?.length) props.push(['tags', { arr: t.tags.map(str) }]);
+    const lead = `new ener.Transaction(m, ${flowVars.get(e.id)!}`;
     out.push(props.length ? `${lead}, ${obj(props, '', LINE - lead.length - 4)});` : `${lead});`);
   }
 

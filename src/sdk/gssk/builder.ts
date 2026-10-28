@@ -14,6 +14,9 @@ import { uniqueId } from '../../model/ids.ts';
 import {
   DEFAULT_CONFIG,
   type Boundary,
+  type Carrier,
+  type CarrierKind,
+  type Transaction,
   type EdgeLogic,
   type Forcing,
   type Group,
@@ -92,6 +95,22 @@ export interface EdgeInput {
   ctrl2?: readonly [number, number];
   /** Drives the rate k over time, overriding k (FR-FRC-001). */
   forcing?: Forcing;
+  /** The kernel's `coupled_edge`, by id; a transaction sets it for you (`markTransaction`). */
+  coupled?: string;
+}
+
+/** A carrier (FR-TYP-001, ADR 0015): a UCUM unit, or a currency for money. */
+export interface CarrierInput {
+  label?: string;
+  /** UCUM code: `kW.h`, `kL`, `kg`, `By`. */
+  unit?: string;
+  conserved?: boolean;
+  /** Only when the unit cannot tell. */
+  kind?: CarrierKind;
+  /** ISO 4217 code for fiat money. */
+  currency?: string;
+  /** ISO 24165 DTI for a crypto-asset. */
+  dti?: string;
 }
 
 export interface ModelInput {
@@ -131,6 +150,35 @@ function forcing(f: Forcing, where: string): Forcing {
   return parsed;
 }
 
+/** A flow's keys in the order a loaded file has them, so synthesized and loaded models serialise alike. */
+function ordered(e: ModelEdge): ModelEdge {
+  const v = e.visual;
+  const visual = v && {
+    ...(v.ctrl1 ? { ctrl1: v.ctrl1 } : {}),
+    ...(v.ctrl2 ? { ctrl2: v.ctrl2 } : {}),
+    ...(v.sensor ? { sensor: true } : {}),
+    ...(v.transaction
+      ? {
+          transaction: {
+            ...(v.transaction.purpose !== undefined ? { purpose: v.transaction.purpose } : {}),
+            ...(v.transaction.tags?.length ? { tags: [...v.transaction.tags] } : {}),
+          },
+        }
+      : {}),
+  };
+  return {
+    id: e.id,
+    origin: e.origin,
+    target: e.target,
+    logic: e.logic,
+    params: e.params,
+    ...(e.carrier !== undefined ? { carrier: e.carrier } : {}),
+    ...(e.forcing !== undefined ? { forcing: e.forcing } : {}),
+    ...(e.coupled_edge !== undefined ? { coupled_edge: e.coupled_edge } : {}),
+    ...(visual && Object.keys(visual).length ? { visual } : {}),
+  };
+}
+
 export class GsskModel {
   readonly name: string;
   private readonly input: ModelInput;
@@ -138,6 +186,7 @@ export class GsskModel {
   private readonly edges: ModelEdge[] = [];
   private readonly boundaries: Boundary[] = [];
   private readonly groups: { group: Group; collapsed?: boolean }[] = [];
+  private readonly carriers: Carrier[] = [];
   private readonly taken = new Set<string>();
 
   constructor(name: string, input: ModelInput = {}) {
@@ -199,6 +248,7 @@ export class GsskModel {
     if (input.numerator !== undefined) edge.params.numerator_node = this.ref(input.numerator);
     if (input.carrier) edge.carrier = input.carrier;
     if (input.forcing) edge.forcing = forcing(input.forcing, `Flow “${id}”`);
+    if (input.coupled !== undefined) edge.coupled_edge = input.coupled;
     const c1 = pt(input.ctrl1);
     const c2 = pt(input.ctrl2);
     if (c1 || c2 || input.sensor) {
@@ -210,6 +260,49 @@ export class GsskModel {
     }
     this.edges.push(edge);
     return { id, model: this };
+  }
+
+  /** Declare what flows: Odum's Code, the kernel's `carriers` entry. */
+  addCarrier(id: string, input: CarrierInput = {}): { readonly id: string } {
+    if (this.carriers.some((c) => c.id === id))
+      throw new Error(`Carrier “${id}” is already declared in this model.`);
+    const c: Carrier = { id };
+    if (input.unit !== undefined) c.unit = input.unit;
+    if (input.conserved !== undefined) c.conserved = input.conserved;
+    if (input.label !== undefined) c._label = input.label;
+    if (input.kind !== undefined) c._kind = input.kind;
+    if (input.currency !== undefined) c._currency = input.currency;
+    if (input.dti !== undefined) c._dti = input.dti;
+    this.carriers.push(c);
+    return { id };
+  }
+
+  /**
+   * Odum's transaction (FR-TRX-001): mark a flow, and pair it with the money
+   * flow that pays for it (or is paid for by it). Without `counter`, the
+   * marking stands alone and the model's checks say a counter-flow is needed.
+   */
+  markTransaction(
+    flow: EdgeRef | string,
+    transaction: Transaction = {},
+    counter?: EdgeRef | string
+  ): void {
+    const e = this.edge(flow);
+    e.visual = { ...e.visual, transaction: structuredClone(transaction) };
+    if (counter !== undefined) {
+      const c = this.edge(counter);
+      e.coupled_edge = c.id;
+      c.coupled_edge = e.id;
+    }
+  }
+
+  private edge(ref: EdgeRef | string): ModelEdge {
+    const id = typeof ref === 'string' ? ref : ref.id;
+    if (typeof ref !== 'string' && ref.model !== this)
+      throw new Error(`Flow “${id}” belongs to another model.`);
+    const e = this.edges.find((x) => x.id === id);
+    if (!e) throw new Error(`There is no flow “${id}” (declare it before its transaction).`);
+    return e;
   }
 
   addBoundary(
@@ -278,15 +371,17 @@ export class GsskModel {
         const ctrl1 = edge.visual?.ctrl1 ?? old.visual.ctrl1;
         const ctrl2 = edge.visual?.ctrl2 ?? old.visual.ctrl2;
         const sensor = edge.visual?.sensor;
-        if (ctrl1 || ctrl2 || sensor) {
+        const transaction = edge.visual?.transaction;
+        if (ctrl1 || ctrl2 || sensor || transaction) {
           edge.visual = {
             ...(ctrl1 ? { ctrl1: { ...ctrl1 } } : {}),
             ...(ctrl2 ? { ctrl2: { ...ctrl2 } } : {}),
             ...(sensor ? { sensor: true } : {}),
+            ...(transaction ? { transaction } : {}),
           };
         }
       }
-      return edge;
+      return ordered(edge);
     });
 
     layoutUnplaced(nodes, edges, unplaced);
@@ -323,6 +418,7 @@ export class GsskModel {
       },
       nodes,
       edges,
+      ...(this.carriers.length ? { carriers: structuredClone(this.carriers) } : {}),
       _diagram: {
         boundaries: structuredClone(this.boundaries),
         ...(groups.length ? { groups } : {}),
