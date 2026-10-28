@@ -16,3 +16,4 @@
 | [0012](0012-gssk-is-general-energese-is-a-language.md) | GSSK is general; Energese is one language on it                      |
 | [0013](0013-code-view-tsrs-and-monaco.md)              | The code view: tsrs and Monaco, self-hosted, loaded on demand        |
 | [0014](0014-services-through-a-token-proxy.md)         | Proposed: publishing services through a stateless token proxy        |
+| [0015](0015-energetic-types-follow-standards.md)       | Energetic types use international standards, not house names         |

@@ -152,6 +152,47 @@ A boundary is a labelled dashed region drawn beneath the nodes. It is never sent
 A group (`_diagram.groups`) names the symbols packed into it and may sit inside another group. It
 is never sent to the kernel (ADR 0010): the run, and its model hash, are the same packed or not.
 
+### 5.5 Energetic types (M13, planned, FR-TYP-001, ADR 0015)
+
+What every store and flow is, named by the standard that governs it, so a diagram can be bound
+to real data:
+
+- **Carrier** (Odum's Code; the kernel's `carrier`): a named thing in a model-level carrier
+  list, such as electricity, water, a streaming service or AUD.
+- **Unit**: a UCUM code (`kW.h`, `kL`, `kg`, `By`, `{subscription}`). **Currency**: an ISO 4217
+  code for fiat (AUD, USD) or an ISO 24165 DTI for a crypto-asset (BTC).
+- **Kind**: energy, material, information or monetary. It is inferred from the unit or
+  currency, and asked for only when the unit cannot tell.
+  - Kind sets Odum's line style: solid for energy and material, dashed for monetary, dotted for
+    information.
+  - Kind sets the default `conserved`: information is not conserved, because copying a stream
+    does not use it up.
+- **Purpose**: a COICOP 2018 code, the household budget account (04 Housing, water,
+  electricity…; 03 Clothing and footwear; 07 Transport; 08 Information and communication). No
+  field is called "sector"; in national accounts that word means who, not what.
+- **Tags**: free strings for filtering.
+- Checks: an observation series must share its target's unit, and a flow's carrier must match
+  the carriers of its two ends unless one is a transaction or a boundary.
+
+### 5.6 Transactions (M13, planned, FR-TRX-001)
+
+A transaction is a marking on a **pair of flows** that run opposite ways: something
+non-monetary one way, money the other (Odum's ecological-economic convention).
+
+- **Placing**: drag the palette's Transaction onto a flow, as with the sensor (FR-EDIT-010). It
+  attaches to that flow and draws the transaction symbol on it.
+- **Invalid until complete**: the flow and its transaction glow red (FR-VAL-002) until a
+  counter-flow exists. Exactly one of the pair carries a monetary carrier, fiat (ISO 4217) or a
+  digital token (ISO 24165), and the other carries a non-monetary one. The message names what is
+  missing, and **Add counter-flow** offers to draw the money flow, between money storages it
+  proposes or new ones.
+- The pair is stored as the kernel's reciprocal `coupled_edge`. Purpose (COICOP), tags and a
+  price note live in the transaction's editor-only fields.
+- **Price**: until the kernel supports priced counter-flows (K-9), each flow keeps its own rate.
+  The results show the implied price, money J ÷ goods J, per transaction. Once K-9 lands, the
+  money flow takes `logic: "price"` with a constant, a price node or a forced price, and payer
+  exhaustion stops the purchase.
+
 ## 6. Editor (FR-EDIT)
 
 - **FR-EDIT-001** Palette: every palette symbol, plus Boundary and Sensor. Click places the symbol
@@ -464,6 +505,19 @@ GSSK is a general kernel and Energese is one language over it (ADR 0012). See
 - **K-8** `GSSK_EnsembleForecast` has no progress callback or cancel, and perturbs every run,
   so no member is the unperturbed run. Request: a chunked or cancellable ensemble, and an option
   to include the base run.
+- **K-9** Transactions: priced counter-flows. The `exchange` node computes nothing (its outflows
+  are 0 and no storage changes), and nothing outside quality accounting reads `coupled_edge`.
+  Request, specified in full with acceptance tests in
+  [docs/kernel/K-9-transactions.md](docs/kernel/K-9-transactions.md):
+  - carrier `kind`, plus ISO 4217 `currency` or ISO 24165 `dti`;
+  - a `price` edge logic computing J_money = P × J_goods, or a money-driven inverse, with P
+    constant, from a node or forced;
+  - payer exhaustion that stops the purchase and conserves money;
+  - validation of pairs;
+  - getters for price and coupling;
+  - repair or deprecation of `exchange`.
+- **K-10** `coupled_edge` naming an edge that does not exist is accepted silently. Request:
+  reject it, and reject self-coupling and non-reciprocal coupling (K-9 KX-14).
 
 ## 18. Repository layout
 
@@ -487,6 +541,7 @@ See [AGENTS.md](AGENTS.md#layout).
 | M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                           | planned     |
 | M11 | Article editing: LaTeX in the browser, figures bound to runs                                             | planned     |
 | M12 | Assistant: chat over the app's methods; it never produces a number (NFR-HON-002)                         | planned     |
+| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9             | planned     |
 
 ## 20. Open questions
 

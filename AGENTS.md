@@ -40,6 +40,7 @@ the requirements document. Cite its IDs (`FR-…`, `NFR-…`, `K-…`) in commit
 | `tests/fixtures`      | Synthetic model files.                                                                                                                          |
 | `scripts/`            | GSSK verify and update, bundle size, the Pages-like static server.                                                                              |
 | `docs/adr/`           | Architecture decisions.                                                                                                                         |
+| `docs/kernel/`        | Kernel feature specs (SPEC §17) for the GSSK kernel to implement.                                                                               |
 
 ## Conventions
 
