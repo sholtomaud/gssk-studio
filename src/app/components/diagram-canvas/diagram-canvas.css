@@ -373,3 +373,32 @@
     animation: none;
   }
 }
+
+/* Energetic types (ADR 0015): Odum's dashed money and dotted information pathways. */
+:host .edge.kind-monetary .line {
+  stroke-dasharray: 7 4;
+}
+:host .edge.kind-information .line {
+  stroke-dasharray: 1.5 3.5;
+  stroke-linecap: round;
+}
+/* Transactions (FR-TRX-001) */
+:host .edge .transaction {
+  color: var(--ink-flow);
+  fill: var(--canvas-bg);
+}
+:host .edge.selected .transaction {
+  color: var(--select);
+}
+:host .edge .price-reading {
+  fill: var(--text-secondary);
+  font: 11px var(--font-mono);
+  text-anchor: middle;
+  pointer-events: none;
+}
+:host .pair-link {
+  stroke: var(--border-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}

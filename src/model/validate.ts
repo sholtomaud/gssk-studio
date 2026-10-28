@@ -5,7 +5,10 @@
  * The kernel remains the authority: a model that passes here can still be
  * refused by GSSK_Init, and the run reports that verbatim.
  */
+import pin from '../../vendor/gssk/GSSK_PIN.json' with { type: 'json' };
+import { carrierProblems } from './carriers.ts';
 import { logicFor, symbolFor } from './catalogue.ts';
+import { transactionProblems } from './transactions.ts';
 import { canForceNode, forcingProblems } from './forcing.ts';
 import type { StudioModel } from './types.ts';
 
@@ -22,6 +25,9 @@ export interface Issue {
 export const MAX_STEPS = 500_000;
 
 const ID_RE = /^[A-Za-z0-9_.-]+$/;
+
+/** The pinned kernel, named in messages about what it does today. */
+const KERNEL_VERSION = pin.version;
 
 export function validate(m: StudioModel): Issue[] {
   const issues: Issue[] = [];
@@ -117,6 +123,65 @@ export function validate(m: StudioModel): Issue[] {
         `Flow “${e.id}” leaves the heat sink “${origin.id}”; degraded energy does no further work.`,
         ref
       );
+    }
+  }
+
+  // Energetic types and transactions (FR-TYP-001, FR-TRX-001).
+  const carrierIds = new Set<string>();
+  for (const c of m.carriers ?? []) {
+    const cref = { kind: 'config' as const, id: `carrier:${c.id}` };
+    if (!c.id || !ID_RE.test(c.id)) err('carrier-id', `Carrier id “${c.id}” is not usable.`, cref);
+    if (carrierIds.has(c.id)) err('carrier-dup', `Two carriers are called “${c.id}”.`, cref);
+    carrierIds.add(c.id);
+    for (const p of carrierProblems(c)) {
+      (p.severity === 'error' ? err : warn)('carrier', `Carrier “${c.id}”: ${p.text}.`, cref);
+    }
+  }
+  const undeclared = (id: string | undefined, ref: Issue['ref'], what: string) => {
+    if (id !== undefined && !carrierIds.has(id))
+      warn(
+        'carrier-undeclared',
+        `${what} carries “${id}”, which is not in the model's carriers: add it with a unit or currency.`,
+        ref
+      );
+  };
+  for (const n of m.nodes) {
+    undeclared(n.carrier, { kind: 'node', id: n.id }, `“${n.visual.label ?? n.id}”`);
+    if (n.type === 'exchange')
+      warn(
+        'exchange-node',
+        `The kernel's exchange node moves nothing in GSSK ${KERNEL_VERSION} (K-9): put a Transaction on the flow and add its money counter-flow instead.`,
+        { kind: 'node', id: n.id }
+      );
+  }
+  for (const e of m.edges) {
+    const ref = { kind: 'edge' as const, id: e.id };
+    undeclared(e.carrier, ref, `Flow “${e.id}”`);
+    if (e.visual?.transaction) {
+      const partner = e.coupled_edge ? m.edges.find((x) => x.id === e.coupled_edge) : undefined;
+      for (const p of transactionProblems(m, e)) {
+        const message = `${p[0]!.toUpperCase()}${p.slice(1)}.`;
+        err('transaction', message, ref);
+        // The counter-flow shares the problem, so both glow (FR-VAL-002).
+        if (partner && partner.id !== e.id)
+          err('transaction', message, { kind: 'edge', id: partner.id });
+      }
+    } else if (e.coupled_edge !== undefined) {
+      const p = m.edges.find((x) => x.id === e.coupled_edge);
+      // A pair whose transaction is on the other flow is checked there.
+      if (!p)
+        err(
+          'coupled-missing',
+          `Flow “${e.id}” is paired with a missing flow “${e.coupled_edge}” (K-10).`,
+          ref
+        );
+      else if (p.id === e.id) err('coupled-self', `Flow “${e.id}” is paired with itself.`, ref);
+      else if (p.coupled_edge !== e.id)
+        err(
+          'coupled-oneway',
+          `Flow “${e.id}” is paired with “${p.id}”, which does not pair back.`,
+          ref
+        );
     }
   }
 

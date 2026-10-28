@@ -36,6 +36,32 @@ import {
   type End,
 } from '../../../model/groups.ts';
 import {
+  addCarrier,
+  CARRIER_PRESETS,
+  COICOP_DIVISIONS,
+  conservedOf,
+  currencies,
+  currencyName,
+  findCarrier,
+  isCoicop,
+  kindOf,
+  kindOfCarrierId,
+  kindOfUnit,
+  removeCarrier,
+  renameCarrier,
+  unitOf,
+  updateCarrier,
+} from '../../../model/carriers.ts';
+import {
+  addCounterFlow,
+  impliedPrice,
+  partnerOf,
+  priceUnit,
+  toggleTransaction,
+  transactionOf,
+  updateTransaction,
+} from '../../../model/transactions.ts';
+import {
   canForceNode,
   defaultForcing,
   describeForcing,
@@ -43,7 +69,10 @@ import {
   WAVEFORM_INFO,
 } from '../../../model/forcing.ts';
 import {
+  CARRIER_KINDS,
   cloneModel,
+  type Carrier,
+  type CarrierKind,
   EDGE_LOGICS,
   WAVEFORMS,
   METHODS,
@@ -631,7 +660,421 @@ export class InspectorPanel extends BaseComponent {
           text: 'auto lets the kernel pick the matrix exponential where it can and verify it against RK4.',
         })
       ),
+      this.carriersSection(m),
       this.observationsSection(m)
+    );
+  }
+
+  /** What flows carry (FR-TYP-001): picked from the model's carriers, or typed. */
+  private carrierField(
+    m: StudioModel,
+    value: string | undefined,
+    commit: (v: string) => void
+  ): HTMLLabelElement {
+    const listId = 'carrier-options';
+    const input = el('input', {
+      type: 'text',
+      value: value ?? '',
+      name: 'carrier',
+      list: listId,
+      spellcheck: 'false',
+    });
+    input.addEventListener('input', () => commit(input.value.trim()));
+    const list = el('datalist', { id: listId });
+    for (const c of m.carriers ?? []) {
+      list.append(el('option', { value: c.id, text: `${c._label ?? c.id} · ${unitOf(c) ?? '?'}` }));
+    }
+    const c = findCarrier(m, value);
+    const kind = c ? kindOf(c) : undefined;
+    return el(
+      'label',
+      { class: 'field' },
+      'Carrier',
+      input,
+      list,
+      el('span', {
+        class: 'hint',
+        text: c
+          ? `${c._label ?? c.id}: ${kind ?? 'kind unknown'}${unitOf(c) ? `, in ${unitOf(c)}` : ''}`
+          : value
+            ? 'Not in the model’s carriers: add it under Carriers (select nothing).'
+            : 'What flows: pick one of the model’s carriers.',
+      })
+    );
+  }
+
+  /** The model's carriers (FR-TYP-001, ADR 0015): unit, currency, kind. */
+  private carriersSection(m: StudioModel): HTMLElement {
+    const cur = () => this._model ?? m;
+    const rows = (m.carriers ?? []).map((c) => {
+      const kind = kindOf(c);
+      const money = c._currency !== undefined ? 'fiat' : c._dti !== undefined ? 'token' : '';
+      const set = (label: string, field: string, f: (x: Carrier) => void) =>
+        this.emit(updateCarrier(cur(), c.id, f), label, `carrier:${c.id}:${field}`);
+      const idInput = el('input', {
+        type: 'text',
+        value: c.id,
+        name: `carrier-id-${c.id}`,
+        spellcheck: 'false',
+      });
+      idInput.addEventListener('change', () => {
+        const next = renameCarrier(cur(), c.id, idInput.value.trim());
+        if (next === cur()) {
+          idInput.setAttribute('aria-invalid', 'true');
+          return;
+        }
+        this.emit(next, `Rename carrier ${c.id}`);
+        this.renderForm(true);
+      });
+      const measure = this.selectField(
+        'Measured as',
+        money,
+        [
+          { value: '', label: 'A unit (UCUM)' },
+          { value: 'fiat', label: 'Money: a currency (ISO 4217)' },
+          { value: 'token', label: 'Money: a digital token (ISO 24165)' },
+        ],
+        (v) => {
+          this.emit(
+            updateCarrier(cur(), c.id, (x) => {
+              delete x._currency;
+              delete x._dti;
+              if (v === 'fiat') x._currency = 'AUD';
+              if (v === 'token') x._dti = '';
+            }),
+            'Carrier measure'
+          );
+          this.renderForm(true);
+        },
+        `carrier-measure-${c.id}`
+      );
+      const currencyList = el('datalist', { id: 'currency-options' });
+      for (const code of currencies())
+        currencyList.append(el('option', { value: code, text: currencyName(code) }));
+      const amount =
+        money === 'fiat'
+          ? (() => {
+              const input = el('input', {
+                type: 'text',
+                value: c._currency ?? '',
+                name: `carrier-currency-${c.id}`,
+                list: 'currency-options',
+                spellcheck: 'false',
+              });
+              input.addEventListener('input', () =>
+                set('Currency', 'currency', (x) => (x._currency = input.value.trim().toUpperCase()))
+              );
+              return el('label', { class: 'field' }, 'Currency', input, currencyList);
+            })()
+          : money === 'token'
+            ? this.textField(
+                'Digital token (DTI)',
+                c._dti ?? '',
+                (v) => set('Token', 'dti', (x) => (x._dti = v.trim().toUpperCase())),
+                `carrier-dti-${c.id}`
+              )
+            : this.textField(
+                'Unit (UCUM)',
+                c.unit ?? '',
+                (v) => set('Unit', 'unit', (x) => (x.unit = v.trim())),
+                `carrier-unit-${c.id}`
+              );
+      const needKind = !money && kindOfUnit(c.unit) === undefined;
+      const del = iconButton('trash', `Remove carrier ${c.id}`, 'ghost icon danger');
+      del.onclick = () => {
+        this.emit(removeCarrier(cur(), c.id), `Remove carrier ${c.id}`);
+        this.renderForm(true);
+      };
+      return el(
+        'div',
+        { class: 'carrier', 'data-carrier': c.id },
+        el(
+          'div',
+          { class: 'row2' },
+          el('label', { class: 'field' }, 'Id', idInput),
+          this.textField(
+            'Name',
+            c._label ?? '',
+            (v) => set('Carrier name', 'label', (x) => (x._label = v)),
+            `carrier-label-${c.id}`
+          )
+        ),
+        el('div', { class: 'row2' }, measure, amount),
+        needKind
+          ? this.selectField<CarrierKind>(
+              'Kind (the unit cannot tell)',
+              c._kind ?? '',
+              [
+                { value: '', label: '— choose —' },
+                ...CARRIER_KINDS.filter((k) => k !== 'monetary').map((k) => ({
+                  value: k,
+                  label: k,
+                })),
+              ],
+              (v) => set('Carrier kind', 'kind', (x) => (v ? (x._kind = v) : delete x._kind)),
+              `carrier-kind-${c.id}`
+            )
+          : null,
+        el(
+          'div',
+          { class: 'carrier-foot' },
+          el('span', {
+            class: 'hint',
+            text: `${kind ?? 'kind unknown'}${kind === 'monetary' && c._currency ? ` · ${currencyName(c._currency)}` : ''} · ${conservedOf(c) ? 'conserved' : 'not conserved'}`,
+          }),
+          del
+        )
+      );
+    });
+    const add = this.selectField(
+      'Add a carrier',
+      '',
+      [
+        { value: '', label: '— choose —' },
+        ...CARRIER_PRESETS.map((p) => ({ value: p.id, label: `${p._label} (${unitOf(p)})` })),
+        { value: '*', label: 'Other…' },
+      ],
+      (v) => {
+        if (!v) return;
+        const preset = CARRIER_PRESETS.find((p) => p.id === v) ?? { id: 'carrier' };
+        const { model } = addCarrier(cur(), preset);
+        this.emit(model, `Add carrier ${preset.id}`);
+        this.renderForm(true);
+      },
+      'add-carrier'
+    );
+    return el(
+      'section',
+      { class: 'carriers' },
+      el('h3', { text: 'Carriers' }),
+      el('p', {
+        class: 'hint',
+        text: 'What flows, in Odum’s sense (his Code): each with a UCUM unit, or an ISO 4217 currency or ISO 24165 token for money. Money draws dashed and information dotted.',
+      }),
+      ...rows,
+      add
+    );
+  }
+
+  /**
+   * Odum's transaction on a flow (FR-TRX-001): money flows against what it
+   * buys. Invalid until the counter-flow exists; this section adds it.
+   */
+  private transactionSection(m: StudioModel, e: ModelEdge): HTMLElement {
+    const cur = () => this._model ?? m;
+    const trx = transactionOf(m, e);
+    const head = el('h3', { text: 'Transaction' });
+    if (!trx) {
+      const box = el('input', { type: 'checkbox', name: 'transaction' });
+      box.onchange = () => {
+        this.emit(toggleTransaction(cur(), e.id), `Transaction on ${e.id}`);
+        this.renderForm(true);
+      };
+      return el(
+        'section',
+        { class: 'transaction' },
+        head,
+        el(
+          'label',
+          { class: 'check' },
+          box,
+          el('span', { text: 'Transaction on this flow: it is paid for by a money counter-flow' })
+        )
+      );
+    }
+    const marked = trx.marked;
+    const partner = partnerOf(m, marked);
+    const link = (x: ModelEdge) => {
+      const b = el('button', { type: 'button', text: x.id });
+      b.onclick = () => this.selectRef({ kind: 'edge', id: x.id });
+      return b;
+    };
+    const off = el('button', {
+      type: 'button',
+      text: 'Remove transaction',
+      name: 'remove-transaction',
+    });
+    off.onclick = () => {
+      this.emit(toggleTransaction(cur(), marked.id), `Remove transaction on ${marked.id}`);
+      this.renderForm(true);
+    };
+    const section = el('section', { class: 'transaction' }, head);
+    if (marked !== e) {
+      section.append(
+        el(
+          'div',
+          { class: 'links' },
+          el('span', { class: 'hint', text: 'Pays for' }),
+          link(marked)
+        ),
+        el('p', {
+          class: 'hint',
+          text: 'This flow is the money side of a transaction; its purpose and tags are on the other flow.',
+        }),
+        el('div', { class: 'actions' }, off)
+      );
+      return section;
+    }
+    // Purpose (COICOP 2018) and tags.
+    const purpose = marked.visual?.transaction?.purpose ?? '';
+    const division = purpose.slice(0, 2);
+    const purposeSel = this.selectField(
+      'Purpose (COICOP 2018)',
+      COICOP_DIVISIONS[division] ? division : '',
+      [
+        { value: '', label: '— none —' },
+        ...Object.entries(COICOP_DIVISIONS).map(([k, v]) => ({ value: k, label: `${k} ${v}` })),
+      ],
+      (v) => {
+        this.emit(
+          updateTransaction(cur(), marked.id, (t) => (v ? (t.purpose = v) : delete t.purpose)),
+          'Transaction purpose'
+        );
+        this.renderForm(true);
+      },
+      'purpose'
+    );
+    const fine = this.textField(
+      'Finer COICOP code (optional)',
+      purpose.length > 2 ? purpose : '',
+      (v) => {
+        const code = v.trim();
+        if (code && !isCoicop(code)) return;
+        this.emit(
+          updateTransaction(cur(), marked.id, (t) =>
+            code ? (t.purpose = code) : division ? (t.purpose = division) : delete t.purpose
+          ),
+          'Transaction purpose',
+          'purpose-code'
+        );
+      },
+      'purpose_code'
+    );
+    const tags = this.textField(
+      'Tags (comma-separated)',
+      (marked.visual?.transaction?.tags ?? []).join(', '),
+      (v) =>
+        this.emit(
+          updateTransaction(cur(), marked.id, (t) => {
+            const list = v
+              .split(',')
+              .map((x) => x.trim())
+              .filter(Boolean);
+            if (list.length) t.tags = list;
+            else delete t.tags;
+          }),
+          'Transaction tags',
+          'tags'
+        ),
+      'tags'
+    );
+    if (partner) {
+      const money = trx.money;
+      const goods = trx.goods;
+      const fixed =
+        money &&
+        goods &&
+        money.logic === 'constant' &&
+        goods.logic === 'constant' &&
+        !money.forcing &&
+        !goods.forcing
+          ? impliedPrice(money.params.k, goods.params.k)
+          : undefined;
+      section.append(
+        el(
+          'div',
+          { class: 'links' },
+          el('span', { class: 'hint', text: 'Counter-flow' }),
+          link(partner)
+        ),
+        el('p', {
+          class: 'hint',
+          text:
+            fixed !== undefined && money && goods
+              ? `Implied price at these rates: ${formatNumber(fixed)} ${priceUnit(m, money, goods)}. Each flow keeps its own rate until the kernel prices the pair (K-9).`
+              : 'Each flow keeps its own rate until the kernel prices the pair (K-9); during a run the diagram shows the implied price.',
+        })
+      );
+    } else {
+      section.append(
+        el('p', {
+          class: 'hint warn-text',
+          text: 'Invalid until it has a money counter-flow running the other way.',
+        }),
+        this.counterFlowForm(m, marked)
+      );
+    }
+    section.append(purposeSel, fine, tags, el('div', { class: 'actions' }, off));
+    return section;
+  }
+
+  /** Draw the money flow that pays for a marked flow (FR-TRX-001). */
+  private counterFlowForm(m: StudioModel, e: ModelEdge): HTMLElement {
+    const cur = () => this._model ?? m;
+    const moneyStores = m.nodes.filter(
+      (n) => symbolFor(n.type).holdsState && kindOfCarrierId(m, n.carrier) === 'monetary'
+    );
+    const options = [
+      { value: '+', label: 'A new money storage' },
+      ...m.nodes
+        .filter((n) => n.type !== 'sink')
+        .map((n) => ({ value: n.id, label: n.visual.label ?? n.id })),
+    ];
+    let payer = moneyStores[0]?.id ?? '+';
+    let payee = moneyStores.find((n) => n.id !== payer)?.id ?? '+';
+    const monetary = (m.carriers ?? []).filter((c) => kindOf(c) === 'monetary');
+    let currency = monetary[0]?.id ?? 'AUD';
+    let k = 1;
+    const go = el(
+      'button',
+      { type: 'button', class: 'primary', name: 'add-counter-flow' },
+      'Add counter-flow'
+    );
+    go.onclick = () => {
+      const o = findNode(cur(), e.origin);
+      const t = findNode(cur(), e.target);
+      const at = (n: typeof o, dy: number) => ({ x: n?.visual.x ?? 0, y: (n?.visual.y ?? 0) + dy });
+      // The payer is on the receiving side; the payee on the supplying side.
+      const { model, id } = addCounterFlow(cur(), e.id, {
+        payer: payer === '+' ? at(t, 160) : payer,
+        payee: payee === '+' ? at(o, 160) : payee,
+        carrier: currency,
+        k,
+      });
+      if (!id) {
+        toast('Choose two different ends and a currency for the counter-flow.');
+        return;
+      }
+      this.emit(model, `Counter-flow for ${e.id}`, undefined, { kind: 'edge', id: e.id });
+      this.renderForm(true);
+    };
+    return el(
+      'div',
+      { class: 'counter-form' },
+      this.selectField('Paid from', payer, options, (v) => (payer = v || '+'), 'payer'),
+      this.selectField('Paid to', payee, options, (v) => (payee = v || '+'), 'payee'),
+      el(
+        'div',
+        { class: 'row2' },
+        monetary.length
+          ? this.selectField(
+              'Money',
+              currency,
+              monetary.map((c) => ({ value: c.id, label: `${c._label ?? c.id} (${unitOf(c)})` })),
+              (v) => v && (currency = v),
+              'counter-carrier'
+            )
+          : this.textField(
+              'Currency (ISO 4217)',
+              currency,
+              (v) => (currency = v.trim().toUpperCase()),
+              'counter-currency'
+            ),
+        this.numberField('Amount per unit time', k, (v) => v !== undefined && (k = v), {
+          name: 'counter-k',
+        })
+      ),
+      el('div', { class: 'actions' }, go)
     );
   }
 
@@ -843,11 +1286,8 @@ export class InspectorPanel extends BaseComponent {
             : null
         ),
         ...params,
-        this.textField(
-          'Carrier (optional)',
-          n.carrier ?? '',
-          (v) => patch('Carrier', 'carrier', (x) => (v ? (x.carrier = v) : delete x.carrier)),
-          'carrier'
+        this.carrierField(m, n.carrier, (v) =>
+          patch('Carrier', 'carrier', (x) => (v ? (x.carrier = v) : delete x.carrier))
         ),
         spec.composite
           ? el('p', {
@@ -1004,11 +1444,8 @@ export class InspectorPanel extends BaseComponent {
               'numerator_node'
             )
           : null,
-        this.textField(
-          'Carrier (optional)',
-          e.carrier ?? '',
-          (v) => patch('Carrier', 'carrier', (x) => (v ? (x.carrier = v) : delete x.carrier)),
-          'carrier'
+        this.carrierField(m, e.carrier, (v) =>
+          patch('Carrier', 'carrier', (x) => (v ? (x.carrier = v) : delete x.carrier))
         ),
         needsControl
           ? el('p', {
@@ -1018,6 +1455,7 @@ export class InspectorPanel extends BaseComponent {
           : null,
         sensorField
       ),
+      this.transactionSection(m, e),
       this.forcingSection(
         m,
         e.forcing,

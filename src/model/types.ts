@@ -117,6 +117,42 @@ export interface EdgeVisual {
   ctrl2?: Point;
   /** Odum's sensor: a small box on the flow that reads its rate J (FR-EDIT-010). */
   sensor?: boolean;
+  /**
+   * A transaction on this flow (FR-TRX-001): what it buys or sells is paid
+   * for by the money flow named in `coupled_edge`.
+   */
+  transaction?: Transaction;
+}
+
+/** Odum's transaction: a marking on a flow, paid for by a counter-flow of money. */
+export interface Transaction {
+  /** COICOP 2018 code: the household budget account (ADR 0015). */
+  purpose?: string;
+  /** Free labels for filtering. */
+  tags?: string[];
+}
+
+/** What a carrier measures (ADR 0015): SEEA's physical and monetary split, physical by SI dimension. */
+export const CARRIER_KINDS = ['energy', 'material', 'information', 'monetary'] as const;
+export type CarrierKind = (typeof CARRIER_KINDS)[number];
+
+/**
+ * A carrier: Odum's Code, the kernel's `carriers` entry (FR-TYP-001). The
+ * kernel reads `id`, `unit` and `conserved`; the `_` fields are the studio's
+ * until the kernel adopts them (K-9 KX-1, KX-2).
+ */
+export interface Carrier {
+  id: string;
+  /** UCUM code for a physical carrier (`kW.h`, `kL`, `kg`, `By`). */
+  unit?: string;
+  conserved?: boolean;
+  _label?: string;
+  /** Only when the unit cannot tell (a count such as `{subscription}`). */
+  _kind?: CarrierKind;
+  /** ISO 4217 alphabetic code, for fiat money. */
+  _currency?: string;
+  /** ISO 24165 Digital Token Identifier, for a crypto-asset. */
+  _dti?: string;
 }
 
 export interface ModelEdge {
@@ -133,6 +169,8 @@ export interface ModelEdge {
   };
   /** Drives the rate k over time, overriding params.k (FR-FRC-001). */
   forcing?: Forcing;
+  /** The paired counter-flow (kernel field): money one way, what it pays for the other. */
+  coupled_edge?: string;
   visual?: EdgeVisual;
 }
 
@@ -194,6 +232,8 @@ export interface StudioModel {
   config: ModelConfig;
   nodes: ModelNode[];
   edges: ModelEdge[];
+  /** What flows (Odum's Code), with units and currencies (FR-TYP-001). */
+  carriers?: Carrier[];
   /** Editor-only: diagram regions. The kernel ignores `_`-prefixed keys. */
   _diagram: { boundaries: Boundary[]; groups?: Group[] };
   /** Editor-only: observed data to fit runs against (M3). */

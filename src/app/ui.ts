@@ -47,6 +47,7 @@ const ICONS: Record<string, string> = {
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   back: '<path d="M15 18l-6-6 6-6"/>',
   flow: '<path d="M4 6h16" style="stroke-width:1"/><path d="M4 12h16" style="stroke-width:2.4"/><path d="M4 18h16" style="stroke-width:4"/>',
+  transaction: '<path d="M12 4l8 8-8 8-8-8z"/><path d="M4 12h16"/>',
   sensor: '<path d="M2 12h6M16 12h6"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
   pin: '<path d="M9 4h6l-1 6 4 3v1H6v-1l4-3z"/><path d="M12 14v6"/>',
   target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',

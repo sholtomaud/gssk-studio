@@ -4,6 +4,7 @@
  * what it reads keeps the run manifest's model hash about the model, not the
  * layout — moving a symbol must not change a run's identity.
  */
+import { conservedOf, unitOf } from './carriers.ts';
 import type { NodeType, StudioModel } from './types.ts';
 
 /**
@@ -28,6 +29,7 @@ export interface KernelModel {
   config: StudioModel['config'];
   nodes: Record<string, unknown>[];
   edges: Record<string, unknown>[];
+  carriers?: { id: string; unit?: string; conserved: boolean }[];
 }
 
 function defined<T extends object>(o: T): Partial<T> {
@@ -72,8 +74,17 @@ export function toKernelModel(m: StudioModel): KernelModel {
           numerator_node: level(e.params.numerator_node),
         }),
         forcing: e.forcing,
+        coupled_edge: e.coupled_edge,
       })
     ),
+    // Without a carrier list the kernel gets none, so older models keep their hash.
+    ...(m.carriers?.length
+      ? {
+          carriers: m.carriers.map((c) =>
+            defined({ id: c.id, unit: unitOf(c), conserved: conservedOf(c) })
+          ) as { id: string; unit?: string; conserved: boolean }[],
+        }
+      : {}),
   };
 }
 

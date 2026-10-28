@@ -9,7 +9,7 @@ export async function openExample(page: Page, id: string): Promise<void> {
 }
 
 /** Screen point halfway along a flow's curve (its bounding-box centre is off the curve). */
-async function edgeMidpoint(
+export async function edgeMidpoint(
   page: Page,
   edgeId: string,
   at = 0.5

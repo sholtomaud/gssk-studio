@@ -153,14 +153,26 @@ export function removeNode(m: StudioModel, id: string): StudioModel {
     if (e.params.numerator_node === id) delete e.params.numerator_node;
   }
   for (const n of next.nodes) if (n.params?.price_node === id) delete n.params.price_node;
+  unpair(next);
   tidyGroups(next);
   return next;
+}
+
+/**
+ * A flow paired with one that is gone loses the pairing (FR-TRX-001): its
+ * transaction, if it has one, stays and is invalid until a new counter-flow.
+ */
+function unpair(m: StudioModel): void {
+  const ids = new Set(m.edges.map((e) => e.id));
+  for (const e of m.edges)
+    if (e.coupled_edge !== undefined && !ids.has(e.coupled_edge)) delete e.coupled_edge;
 }
 
 export function removeEdge(m: StudioModel, id: string): StudioModel {
   const next = cloneModel(m);
   retarget(next, `flow:${id}`, null);
   next.edges = next.edges.filter((e) => e.id !== id);
+  unpair(next);
   return next;
 }
 
@@ -355,12 +367,15 @@ export function pasteFragment(
     }
     next.nodes.push(n);
   }
+  const edgeRename = new Map<string, string>();
+  const pasted: ModelEdge[] = [];
   for (const src of frag.edges) {
     const e = structuredClone(src);
     e.origin = rename.get(src.origin) ?? e.origin;
     e.target = rename.get(src.target) ?? e.target;
     e.id = uniqueId(`${e.origin}_to_${e.target}`, taken);
     taken.add(e.id);
+    edgeRename.set(src.id, e.id);
     for (const key of ['control_node', 'numerator_node'] as const) {
       if (e.params[key] === undefined) continue;
       const r = ref(e.params[key]);
@@ -368,6 +383,13 @@ export function pasteFragment(
       else delete e.params[key];
     }
     next.edges.push(e);
+    pasted.push(e);
+  }
+  // A pairing goes with the copy only when both flows were copied.
+  for (const e of pasted) {
+    const p = e.coupled_edge === undefined ? undefined : edgeRename.get(e.coupled_edge);
+    if (p) e.coupled_edge = p;
+    else delete e.coupled_edge;
   }
   return { model: next, ids: frag.nodes.map((n) => rename.get(n.id) ?? n.id) };
 }

@@ -13,6 +13,10 @@ import {
   EDGE_LOGICS,
   METHODS,
   type Boundary,
+  CARRIER_KINDS,
+  type Carrier,
+  type CarrierKind,
+  type Transaction,
   type Group,
   type EdgeLogic,
   type Method,
@@ -181,6 +185,8 @@ export function normaliseModel(raw: unknown): ParseResult {
     if (ef) edge.forcing = ef;
     else if (re.forcing !== undefined)
       notes.push(`Flow “${id}”: its forcing was not understood and was left out.`);
+    const coupled = str(re.coupled_edge);
+    if (coupled) edge.coupled_edge = coupled;
     const v = isObj(re.visual) ? re.visual : {};
     const pt = (p: unknown) =>
       isObj(p) && num(p.x) !== undefined && num(p.y) !== undefined
@@ -189,11 +195,13 @@ export function normaliseModel(raw: unknown): ParseResult {
     const c1 = pt(v.ctrl1);
     const c2 = pt(v.ctrl2);
     const sensor = v.sensor === true;
-    if (c1 || c2 || sensor) {
+    const transaction = parseTransaction(v.transaction);
+    if (c1 || c2 || sensor || transaction) {
       edge.visual = {
         ...(c1 ? { ctrl1: c1 } : {}),
         ...(c2 ? { ctrl2: c2 } : {}),
         ...(sensor ? { sensor: true } : {}),
+        ...(transaction ? { transaction } : {}),
       };
     }
     edges.push(edge);
@@ -277,17 +285,61 @@ export function normaliseModel(raw: unknown): ParseResult {
   const script = str(rs.source);
   const scriptHash = str(rs.modelHash);
 
+  const carriers = parseCarriers(raw.carriers, notes);
   const model: StudioModel = {
     metadata: { schema_version: 4, name, ...(description ? { description } : {}) },
     config,
     nodes,
     edges,
+    ...(carriers.length ? { carriers } : {}),
     _diagram: { boundaries, ...(groups.length ? { groups } : {}) },
     ...(observations.length ? { _observations: observations } : {}),
     ...(script && scriptHash ? { _energese: { source: script, modelHash: scriptHash } } : {}),
   };
   tidyGroups(model);
   return { model, notes };
+}
+
+/** A transaction marking (FR-TRX-001): a purpose code and tags, both optional. */
+function parseTransaction(raw: unknown): Transaction | undefined {
+  if (raw === true) return {};
+  if (!isObj(raw)) return undefined;
+  const t: Transaction = {};
+  const purpose = str(raw.purpose);
+  if (purpose) t.purpose = purpose;
+  if (Array.isArray(raw.tags)) {
+    const tags = raw.tags.filter((x): x is string => typeof x === 'string' && x.trim() !== '');
+    if (tags.length) t.tags = tags;
+  }
+  return t;
+}
+
+/** The kernel's `carriers` list, with the studio's `_` fields (FR-TYP-001). */
+function parseCarriers(raw: unknown, notes: string[]): Carrier[] {
+  const out: Carrier[] = [];
+  const seen = new Set<string>();
+  for (const rc of Array.isArray(raw) ? raw : []) {
+    const id = isObj(rc) ? str(rc.id) : undefined;
+    if (!isObj(rc) || !id) continue;
+    if (seen.has(id)) {
+      notes.push(`Carrier “${id}” was listed twice; the second was left out.`);
+      continue;
+    }
+    seen.add(id);
+    const c: Carrier = { id };
+    const unit = str(rc.unit);
+    if (unit) c.unit = unit;
+    if (typeof rc.conserved === 'boolean') c.conserved = rc.conserved;
+    const label = str(rc._label);
+    if (label) c._label = label;
+    if (CARRIER_KINDS.includes(rc._kind as CarrierKind)) c._kind = rc._kind as CarrierKind;
+    const currency = str(rc._currency);
+    if (currency) c._currency = currency;
+    const dti = str(rc._dti);
+    if (dti) c._dti = dti;
+    out.push(c);
+  }
+  return out;
 }
 
 /** The file contents for a model: pretty, stable, loadable by GSSK_Init as-is. */

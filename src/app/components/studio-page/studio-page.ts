@@ -21,6 +21,7 @@ import {
   type Selection,
 } from '../../../model/ops.ts';
 import { revealNode } from '../../../model/groups.ts';
+import { toggleTransaction, transactionOf } from '../../../model/transactions.ts';
 import { canonicalJson, toKernelModel } from '../../../model/kernel-json.ts';
 import { emptyModel, type StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
@@ -35,6 +36,7 @@ import { diagramSvg, svgToPng } from '../../diagram-export.ts';
 import {
   NODE_DRAG_TYPE,
   SENSOR_DRAG_TYPE,
+  TRANSACTION_DRAG_TYPE,
   type DiagramCanvas,
   type EditDetail,
   type Marked,
@@ -260,7 +262,40 @@ export class StudioPage extends BaseComponent {
       }
       this.commit({ model: toggleSensor(this.model, s.id), label: `Sensor on ${s.id}` });
     };
-    grid.append(frame, sensor);
+    const transaction = el(
+      'button',
+      {
+        type: 'button',
+        class: 'boundary-tool',
+        draggable: 'true',
+        title:
+          'Odum’s transaction: money flows against what it buys. Drag onto a flow, or select a flow and click; then add its money counter-flow.',
+        'aria-label': 'Add transaction',
+      },
+      icon('transaction'),
+      el('span', { text: 'Transaction' })
+    );
+    transaction.addEventListener('dragstart', (e) => {
+      e.dataTransfer?.setData(TRANSACTION_DRAG_TYPE, 'transaction');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+    });
+    transaction.onclick = () => {
+      const s = this.selection;
+      const edge = s?.kind === 'edge' ? this.model?.edges.find((x) => x.id === s.id) : undefined;
+      if (!this.model || !edge) {
+        toast('Select a flow first, or drag the transaction onto a flow.');
+        return;
+      }
+      if (transactionOf(this.model, edge)) {
+        toast('That flow is already part of a transaction.');
+        return;
+      }
+      this.commit({
+        model: toggleTransaction(this.model, edge.id),
+        label: `Transaction on ${edge.id}`,
+      });
+    };
+    grid.append(frame, sensor, transaction);
     const palette = el(
       'aside',
       { class: 'palette', 'aria-label': 'Symbols' },

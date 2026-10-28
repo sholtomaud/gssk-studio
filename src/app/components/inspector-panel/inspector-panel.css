@@ -162,3 +162,28 @@
   color: var(--text-muted);
   margin-top: 2px;
 }
+:host .carrier {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+:host .carrier-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+:host .counter-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+}
+:host .warn-text {
+  color: var(--critical);
+}
