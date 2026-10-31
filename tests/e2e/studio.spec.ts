@@ -215,3 +215,46 @@ test('a model with a problem lists it and will not run', async ({ page }) => {
   await expect(page.locator('.toast')).toContainText('Fix the problems');
   await expect(page.locator('results-panel .series-line')).toHaveCount(0);
 });
+
+test('the icon view draws symbols as pictures: built-in, picked, or your own (FR-EDIT-014)', async ({
+  page,
+}) => {
+  await openExample(page, 'grassland');
+  const toggle = page.getByRole('button', { name: /^Icons/ });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-node="sun"] .picture')).toHaveCount(0);
+  await toggle.click();
+  // Each symbol type has a default picture.
+  await expect(page.locator('[data-node="sun"] use.picture')).toHaveAttribute('href', '#icon-sun');
+  await expect(page.locator('[data-node="grass"] use.picture')).toHaveAttribute(
+    'href',
+    '#icon-leaf'
+  );
+
+  // Pick another built-in for one symbol.
+  await page.locator('[data-node="grazers"] .shape').click();
+  await page.locator('inspector-panel select[name="icon"]').selectOption('builtin:people');
+  await expect(page.locator('[data-node="grazers"] use.picture')).toHaveAttribute(
+    'href',
+    '#icon-people'
+  );
+
+  // Or add your own picture, which the model keeps.
+  await page.locator('inspector-panel input[name="icon-file"]').setInputFiles({
+    name: 'cow.svg',
+    mimeType: 'image/svg+xml',
+    buffer: Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>'
+    ),
+  });
+  await expect(page.locator('[data-node="grazers"] image.picture')).toHaveAttribute(
+    'href',
+    /^data:image\/svg\+xml;base64,/
+  );
+  await expect(page.locator('inspector-panel select[name="icon"]')).toHaveValue('icon_cow');
+  await page.keyboard.press('Escape');
+  await page.locator('diagram-canvas svg.canvas').click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('inspector-panel .own-icon[data-icon="icon_cow"]')).toContainText(
+    '1 symbol'
+  );
+});

@@ -346,6 +346,12 @@ const purchases: StudioModel = {
   _diagram: { boundaries: [] },
 };
 
+/** A symbol drawn as one of the built-in icons in the icon view (FR-EDIT-014). */
+const withIcon = (node: ModelNode, icon: string): ModelNode => ({
+  ...node,
+  visual: { ...node.visual, icon: `builtin:${icon}` },
+});
+
 const water: StudioModel = {
   metadata: {
     schema_version: 4,
@@ -356,13 +362,22 @@ const water: StudioModel = {
   // Months.
   config: { t_start: 0, t_end: 24, dt: 0.05, method: 'rk4' },
   nodes: [
-    { ...n('rain', 'source', 400, 100, 140, 'Catchment rain'), carrier: 'water' },
-    { ...n('dam', 'storage', 5000, 280, 140, 'Utility dam', 20000), carrier: 'water' },
-    { ...n('revenue', 'storage', 0, 280, 340, 'Utility revenue', 2000), carrier: 'aud' },
-    { ...n('tank', 'storage', 2, 640, 140, 'Water tank', 10), carrier: 'water' },
-    { ...n('use', 'sink', 0, 820, 140, 'Household use'), carrier: 'water' },
-    { ...n('bank', 'storage', 1500, 640, 340, 'Bank account', 5000), carrier: 'aud' },
-    { ...n('wages', 'source', 300, 900, 340, 'Wages'), carrier: 'aud' },
+    withIcon({ ...n('rain', 'source', 400, 100, 140, 'Catchment rain'), carrier: 'water' }, 'rain'),
+    withIcon(
+      { ...n('dam', 'storage', 5000, 280, 140, 'Utility dam', 20000), carrier: 'water' },
+      'water'
+    ),
+    withIcon(
+      { ...n('revenue', 'storage', 0, 280, 340, 'Utility revenue', 2000), carrier: 'aud' },
+      'bank'
+    ),
+    withIcon({ ...n('tank', 'storage', 2, 640, 140, 'Water tank', 10), carrier: 'water' }, 'tank'),
+    withIcon({ ...n('use', 'sink', 0, 820, 140, 'Household use'), carrier: 'water' }, 'house'),
+    withIcon(
+      { ...n('bank', 'storage', 1500, 640, 340, 'Bank account', 5000), carrier: 'aud' },
+      'bank'
+    ),
+    withIcon({ ...n('wages', 'source', 300, 900, 340, 'Wages'), carrier: 'aud' }, 'money'),
   ],
   edges: [
     { ...f('inflow', 'rain', 'dam', 1), carrier: 'water' },

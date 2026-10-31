@@ -92,6 +92,19 @@ export interface NodeVisual {
   scale?: number;
   /** Turned clockwise, in degrees (FR-EDIT-013). */
   rotation?: number;
+  /**
+   * What it is drawn as in the icon view (FR-EDIT-014): `builtin:<name>`, or
+   * the id of one of the model's own icons. Unset: its symbol type's default.
+   */
+  icon?: string;
+}
+
+/** A picture of the model's own for the icon view (FR-EDIT-014): an image as a data URL. */
+export interface Icon {
+  id: string;
+  label: string;
+  /** `data:image/svg+xml;base64,…` or a PNG, JPEG, WebP or GIF; drawn as an image, never as markup. */
+  href: string;
 }
 
 export interface ModelNode {
@@ -239,7 +252,7 @@ export interface StudioModel {
   /** What flows (Odum's Code), with units and currencies (FR-TYP-001). */
   carriers?: Carrier[];
   /** Editor-only: diagram regions. The kernel ignores `_`-prefixed keys. */
-  _diagram: { boundaries: Boundary[]; groups?: Group[] };
+  _diagram: { boundaries: Boundary[]; groups?: Group[]; icons?: Icon[] };
   /** Editor-only: observed data to fit runs against (M3). */
   _observations?: ObservationSeries[];
   /** Editor-only: the last Energese script applied, as provenance (ADR 0011). */

@@ -48,6 +48,8 @@ const ICONS: Record<string, string> = {
   back: '<path d="M15 18l-6-6 6-6"/>',
   flow: '<path d="M4 6h16" style="stroke-width:1"/><path d="M4 12h16" style="stroke-width:2.4"/><path d="M4 18h16" style="stroke-width:4"/>',
   transaction: '<path d="M12 4l8 8-8 8-8-8z"/>',
+  image:
+    '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 17l-5-5-9 8"/>',
   gauge:
     '<rect x="9" y="3" width="6" height="18" rx="1"/><rect x="11" y="12" width="2" height="7" fill="currentColor" stroke="none"/>',
   level:

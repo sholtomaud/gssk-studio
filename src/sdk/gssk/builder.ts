@@ -81,6 +81,8 @@ export interface NodeInput {
   scale?: number;
   /** Turned clockwise, in degrees. */
   rotation?: number;
+  /** Drawn as in the icon view: `builtin:<name>` or one of the model's icons. */
+  icon?: string;
   /** Drives the held value over time (sources and constants, FR-FRC-001). */
   forcing?: Forcing;
 }
@@ -229,6 +231,7 @@ export class GsskModel {
         ...(input.capacity !== undefined ? { capacity: input.capacity } : {}),
         ...(input.scale !== undefined ? { scale: input.scale } : {}),
         ...(input.rotation !== undefined ? { rotation: input.rotation } : {}),
+        ...(input.icon !== undefined ? { icon: input.icon } : {}),
       },
     };
     if (input.carrier) node.carrier = input.carrier;
@@ -373,6 +376,9 @@ export class GsskModel {
         if (n.visual.rotation === undefined && old.visual.rotation !== undefined) {
           n.visual.rotation = old.visual.rotation;
         }
+        if (n.visual.icon === undefined && old.visual.icon !== undefined) {
+          n.visual.icon = old.visual.icon;
+        }
       } else unplaced.add(n.id);
     });
 
@@ -434,6 +440,8 @@ export class GsskModel {
       _diagram: {
         boundaries: structuredClone(this.boundaries),
         ...(groups.length ? { groups } : {}),
+        // Pictures are data, not structure: kept from the model this replaces, like observations.
+        ...(prev?._diagram.icons?.length ? { icons: structuredClone(prev._diagram.icons) } : {}),
       },
       ...(observations.length ? { _observations: observations } : {}),
     };

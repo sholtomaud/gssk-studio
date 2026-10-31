@@ -66,6 +66,8 @@ import {
   type Shape,
 } from '../../../diagram/geometry.ts';
 import { OUTLINES, SYMBOL_DEFS } from '../../../diagram/symbols.ts';
+import { builtinIcon, DEFAULT_ICON, ICON_DEFS } from '../../../diagram/icons.ts';
+import { iconsOf } from '../../../model/icons.ts';
 import { el, formatNumber, iconButton, svg } from '../../ui.ts';
 import style from './diagram-canvas.css?raw';
 
@@ -87,6 +89,7 @@ function rectOf(a: Point, b: Point): { x: number; y: number; w: number; h: numbe
 const FLOW_WIDTHS_KEY = 'gssk-studio-flow-widths';
 const GAUGES_KEY = 'gssk-studio-level-gauges';
 const FILL_KEY = 'gssk-studio-level-fill';
+const ICONS_KEY = 'gssk-studio-icons';
 
 /** A view switch remembered in this browser, or its default. */
 function storedFlag(key: string, fallback: boolean): boolean {
@@ -160,6 +163,8 @@ export class DiagramCanvas extends BaseComponent {
   /** Show each storage's level as a gauge beside it, as a fill of the symbol, or both (FR-RES-003). */
   private gauges = storedFlag(GAUGES_KEY, true);
   private fill = storedFlag(FILL_KEY, false);
+  /** Draw each symbol as a picture instead of its Energese symbol (FR-EDIT-014). */
+  private icons = storedFlag(ICONS_KEY, false);
   private drag: Drag | null = null;
   private fitted = false;
   private gestureSeq = 0;
@@ -200,6 +205,7 @@ export class DiagramCanvas extends BaseComponent {
     });
     const defs = svg('defs');
     defs.innerHTML = `${SYMBOL_DEFS}
+      ${ICON_DEFS}
       <filter id="fuzz" filterUnits="userSpaceOnUse" x="-20000" y="-20000" width="40000" height="40000">
         <feGaussianBlur stdDeviation="7" />
       </filter>
@@ -276,12 +282,24 @@ export class DiagramCanvas extends BaseComponent {
         this.render();
       }
     );
+    const pictures = this.switchButton(
+      'image',
+      'Icons: draw each symbol as a picture instead of its Energese symbol',
+      ICONS_KEY,
+      () => this.icons,
+      (on) => {
+        this.icons = on;
+        this.render();
+      }
+    );
     this.append(
       this.root,
       this.hint,
       el(
         'div',
         { class: 'zoom' },
+        pictures,
+        el('span', { class: 'sep' }),
         widths,
         gauges,
         fill,
@@ -563,7 +581,8 @@ export class DiagramCanvas extends BaseComponent {
     g.append(shape);
     shape.append(svg('rect', { class: 'body', x: -w, y: -h, width: 2 * w, height: 2 * h, rx: 4 }));
     const leveled = spec.holdsState && !!n.visual.capacity;
-    const outline = OUTLINES[spec.symbol];
+    // In the icon view a picture has no outline to fill, so its level shows as a gauge.
+    const outline = this.icons ? undefined : OUTLINES[spec.symbol];
     if (leveled && this.fill && outline) {
       // The symbol filled from the bottom up to its level: a hard-stopped gradient over its outline.
       const id = `level-${this.nodeEls.size}`;
@@ -583,7 +602,15 @@ export class DiagramCanvas extends BaseComponent {
       );
     }
     shape.append(
-      svg('use', { href: `#${spec.symbol}`, x: -SIZE / 2, y: -SIZE / 2, width: SIZE, height: SIZE })
+      this.icons
+        ? this.picture(n)
+        : svg('use', {
+            href: `#${spec.symbol}`,
+            x: -SIZE / 2,
+            y: -SIZE / 2,
+            width: SIZE,
+            height: SIZE,
+          })
     );
     const gauge = leveled && (this.gauges || !outline);
     if (gauge) {
@@ -616,6 +643,39 @@ export class DiagramCanvas extends BaseComponent {
     this.nodeEls.set(n.id, g);
     this.layers.nodes.append(g);
     if (selected && this._selection?.kind === 'node') this.renderShapeHandles(n);
+  }
+
+  /**
+   * A symbol in the icon view (FR-EDIT-014): the model's own picture as an
+   * image, or a built-in line icon; its type's default when it names none or
+   * one that is gone.
+   */
+  private picture(n: ModelNode): SVGElement {
+    const size = SIZE * 0.7;
+    const own = n.visual.icon
+      ? iconsOf(this._model!).find((i) => i.id === n.visual.icon)
+      : undefined;
+    if (own) {
+      return svg('image', {
+        class: 'picture',
+        href: own.href,
+        x: -size / 2,
+        y: -size / 2,
+        width: size,
+        height: size,
+        preserveAspectRatio: 'xMidYMid meet',
+      });
+    }
+    const named = n.visual.icon?.startsWith('builtin:') ? n.visual.icon.slice(8) : undefined;
+    const name = named && builtinIcon(named) ? named : DEFAULT_ICON[n.type];
+    return svg('use', {
+      class: 'picture',
+      href: `#icon-${name}`,
+      x: -size / 2,
+      y: -size / 2,
+      width: size,
+      height: size,
+    });
   }
 
   /**
@@ -1015,13 +1075,15 @@ export class DiagramCanvas extends BaseComponent {
           width: SIZE,
           height: SIZE,
         }),
-        svg('use', {
-          href: `#${symbolFor(inner.type).symbol}`,
-          x: -SIZE / 2,
-          y: -SIZE / 2,
-          width: SIZE,
-          height: SIZE,
-        }),
+        this.icons
+          ? this.picture(inner)
+          : svg('use', {
+              href: `#${symbolFor(inner.type).symbol}`,
+              x: -SIZE / 2,
+              y: -SIZE / 2,
+              width: SIZE,
+              height: SIZE,
+            }),
         pt
       );
       g.append(pg);

@@ -267,6 +267,17 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
   sink is still entered at its top); labels, gauge and port stay upright. Stored as
   `visual.rotation` (degrees, clockwise) and `visual.scale`, omitted at 0° and 100 %; layout
   only, so neither marks a run out of date, and both round-trip through files and Energese code.
+- **FR-EDIT-014** Icon view, as Odum and Odum set EXTEND's icons beside the energy diagram of a
+  pond. An **Icons** toggle on the canvas (off by default, remembered) draws each symbol as a
+  picture instead of its Energese symbol; flows, labels, gauges and checks are unchanged. Each
+  symbol type has a built-in line icon (source a sun, storage a tank, producer a plant…), and the
+  symbol's inspector picks another from the built-in set (bank, house, water, electricity,
+  factory, people…) or **adds your own picture**: an SVG, PNG, JPEG, WebP or GIF of at most about
+  146 KB, read in the browser and kept in the model file as a base64 data URL
+  (`_diagram.icons`, `visual.icon`). A picture is drawn as an image, never as markup, so it
+  cannot run script or load anything; loading a file drops anything that is not such an image.
+  The model's inspector lists its own icons and removes them. Layout only: the kernel never sees
+  them. In the icon view a storage's level shows as a gauge.
 
 ### 6.1 Packing and unpacking (M7a, FR-GRP-001)
 

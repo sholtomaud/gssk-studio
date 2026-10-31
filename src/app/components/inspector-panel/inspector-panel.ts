@@ -93,6 +93,15 @@ import { observationsFromCsv, observationTargets } from '../../../fit/observatio
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import { SYMBOL_SCALE } from '../../../diagram/geometry.ts';
 import { kernelHash, toKernelModel } from '../../../model/kernel-json.ts';
+import { BUILTIN_ICONS, builtinIcon, DEFAULT_ICON } from '../../../diagram/icons.ts';
+import {
+  addIcon,
+  iconsOf,
+  isIconHref,
+  MAX_ICON_CHARS,
+  removeIcon,
+  setNodeIcon,
+} from '../../../model/icons.ts';
 import style from './inspector-panel.css?raw';
 
 type NodeParam = keyof NonNullable<ModelNode['params']>;
@@ -780,7 +789,8 @@ export class InspectorPanel extends BaseComponent {
         })
       ),
       this.carriersSection(m),
-      this.observationsSection(m)
+      this.observationsSection(m),
+      ...(iconsOf(m).length ? [this.iconsSection(m)] : [])
     );
   }
 
@@ -1197,6 +1207,116 @@ export class InspectorPanel extends BaseComponent {
     );
   }
 
+  /**
+   * Read a picture file as a data URL the icon view will draw (FR-EDIT-014),
+   * or say why not. Nothing leaves the browser.
+   */
+  private async readIcon(f: File): Promise<string | null> {
+    const ext = f.name.toLowerCase().split('.').pop() ?? '';
+    const types: Record<string, string> = {
+      svg: 'image/svg+xml',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+      gif: 'image/gif',
+    };
+    const type = Object.values(types).includes(f.type) ? f.type : types[ext];
+    if (!type) {
+      toast(`${f.name} is not an SVG, PNG, JPEG, WebP or GIF picture.`);
+      return null;
+    }
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000)
+      bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    const href = `data:${type};base64,${btoa(bin)}`;
+    if (!isIconHref(href)) {
+      toast(
+        `${f.name} is too large for an icon (at most ${Math.floor((MAX_ICON_CHARS * 3) / 4 / 1024)} KB).`
+      );
+      return null;
+    }
+    return href;
+  }
+
+  /** What a symbol is drawn as in the icon view (FR-EDIT-014): a built-in, the model's own, or a new one. */
+  private iconField(m: StudioModel, n: ModelNode): HTMLElement {
+    const cur = () => this._model ?? m;
+    const own = iconsOf(m);
+    const def = builtinIcon(DEFAULT_ICON[n.type]);
+    const file = el('input', {
+      type: 'file',
+      accept:
+        'image/svg+xml,image/png,image/jpeg,image/webp,image/gif,.svg,.png,.jpg,.jpeg,.webp,.gif',
+      hidden: '',
+      name: 'icon-file',
+    });
+    file.onchange = async () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) return;
+      const href = await this.readIcon(f);
+      if (!href) return;
+      const { model, id } = addIcon(cur(), f.name, href, n.id);
+      if (id) {
+        this.emit(model, `Icon for ${n.id}`);
+        this.renderForm(true);
+      }
+    };
+    const field = this.selectField(
+      'Icon (in the icon view)',
+      n.visual.icon ?? '',
+      [
+        { value: '', label: `Its symbol’s own (${def?.label ?? n.type})` },
+        ...own.map((i) => ({ value: i.id, label: `${i.label} (this model’s)` })),
+        ...BUILTIN_ICONS.map((i) => ({ value: `builtin:${i.name}`, label: i.label })),
+        { value: '+', label: 'Add your own picture…' },
+      ],
+      (v) => {
+        if (v === '+') {
+          file.click();
+          this.renderForm(true);
+          return;
+        }
+        this.emit(setNodeIcon(cur(), n.id, v || undefined), `Icon for ${n.id}`, 'icon');
+      },
+      'icon'
+    );
+    return el('div', {}, field, file);
+  }
+
+  /** The model's own pictures for the icon view (FR-EDIT-014). */
+  private iconsSection(m: StudioModel): HTMLElement {
+    const own = iconsOf(m);
+    const cur = () => this._model ?? m;
+    const rows = own.map((i) => {
+      const used = m.nodes.filter((n) => n.visual.icon === i.id).length;
+      const del = iconButton('trash', `Remove ${i.label}`, 'ghost icon danger');
+      del.onclick = () => {
+        this.emit(removeIcon(cur(), i.id), `Remove icon ${i.label}`);
+        this.renderForm(true);
+      };
+      return el(
+        'li',
+        { class: 'own-icon', 'data-icon': i.id },
+        el('img', { src: i.href, alt: '', width: '28', height: '28' }),
+        el('span', { text: `${i.label} · ${used} symbol${used === 1 ? '' : 's'}` }),
+        del
+      );
+    });
+    return el(
+      'section',
+      {},
+      el('h3', { text: 'Icons' }),
+      el('p', {
+        class: 'hint',
+        text: 'Pictures this model’s symbols are drawn as in the icon view. They are saved in the model file.',
+      }),
+      el('ul', { class: 'own-icons' }, ...rows)
+    );
+  }
+
   /** Observed data to fit runs against (FR-OBS-001). */
   private observationsSection(m: StudioModel): HTMLElement {
     const cur = () => this._model ?? m;
@@ -1405,7 +1525,8 @@ export class InspectorPanel extends BaseComponent {
             },
             { optional: true, step: '15', name: 'rotation' }
           )
-        )
+        ),
+        this.iconField(m, n)
       ),
       el(
         'section',

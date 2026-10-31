@@ -19,6 +19,7 @@ const rain = new ener.Source(m, 'Catchment rain', {
   value: 400,
   carrier: 'water',
   at: [100, 140],
+  icon: 'builtin:rain',
 });
 const dam = new ener.Storage(m, 'Utility dam', {
   id: 'dam',
@@ -26,6 +27,7 @@ const dam = new ener.Storage(m, 'Utility dam', {
   carrier: 'water',
   at: [280, 140],
   capacity: 20000,
+  icon: 'builtin:water',
 });
 const revenue = new ener.Storage(m, 'Utility revenue', {
   id: 'revenue',
@@ -33,6 +35,7 @@ const revenue = new ener.Storage(m, 'Utility revenue', {
   carrier: 'aud',
   at: [280, 340],
   capacity: 2000,
+  icon: 'builtin:bank',
 });
 const tank = new ener.Storage(m, 'Water tank', {
   id: 'tank',
@@ -40,12 +43,14 @@ const tank = new ener.Storage(m, 'Water tank', {
   carrier: 'water',
   at: [640, 140],
   capacity: 10,
+  icon: 'builtin:tank',
 });
 const use = new ener.HeatSink(m, 'Household use', {
   id: 'use',
   value: 0,
   carrier: 'water',
   at: [820, 140],
+  icon: 'builtin:house',
 });
 const bank = new ener.Storage(m, 'Bank account', {
   id: 'bank',
@@ -53,8 +58,14 @@ const bank = new ener.Storage(m, 'Bank account', {
   carrier: 'aud',
   at: [640, 340],
   capacity: 5000,
+  icon: 'builtin:bank',
 });
-const wages = new ener.Source(m, 'Wages', { value: 300, carrier: 'aud', at: [900, 340] });
+const wages = new ener.Source(m, 'Wages', {
+  value: 300,
+  carrier: 'aud',
+  at: [900, 340],
+  icon: 'builtin:money',
+});
 
 // Flows
 new ener.Flow(m, rain, dam, ener.linear(1), { id: 'inflow', carrier: 'water' });
