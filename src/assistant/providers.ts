@@ -256,16 +256,19 @@ export function parseReply(cfg: ProviderConfig, json: unknown): Reply {
           : f === 'content_filter'
             ? 'refusal'
             : 'other';
-  // Replayed as the assistant message, with ids filled in for servers that leave them out.
+  // Replayed as the provider sent it: Gemini's thinking models put a thought_signature on
+  // each tool call (extra_content) and refuse a history without it. Only an id or type a
+  // server left out is filled in, so the tool results can name their call.
   const raw = {
+    ...(msg as Record<string, unknown>),
     role: 'assistant',
     content: msg.content ?? '',
-    ...(calls.length
+    ...(msg.tool_calls?.length
       ? {
-          tool_calls: calls.map((c) => ({
-            id: c.id,
-            type: 'function',
-            function: { name: c.name, arguments: JSON.stringify(c.input) },
+          tool_calls: msg.tool_calls.map((c, i) => ({
+            ...c,
+            id: calls[i]!.id,
+            type: (c as { type?: string }).type ?? 'function',
           })),
         }
       : {}),
