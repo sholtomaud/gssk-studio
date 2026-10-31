@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   anchor,
   bounds,
+  COUPLE_GAP,
+  couplePoint,
+  coupledCurve,
   edgeCurve,
   halfExtent,
   pathData,
   pointAt,
+  tangentAt,
 } from '../../src/diagram/geometry.ts';
 import type { ModelEdge, ModelNode } from '../../src/model/types.ts';
 
@@ -66,5 +70,37 @@ describe('diagram geometry (SPEC §6.2)', () => {
       )
     ).toEqual({ x: -5, y: -5, w: 20, h: 30 });
     expect(bounds([]).w).toBeGreaterThan(0);
+  });
+
+  describe('a transaction’s counter-flow (FR-TRX-001)', () => {
+    // Goods left to right along y = 0; money from below the buyer back to below the seller.
+    const goods = edgeCurve(edge, node('a', 'storage', 0, 0), node('b', 'storage', 400, 0));
+    const payer = node('p', 'storage', 400, 160);
+    const payee = node('q', 'storage', 0, 160);
+
+    it('passes the marked flow’s diamond a small gap away, on the side of its own ends', () => {
+      const at = pointAt(goods, 0.5);
+      const pass = couplePoint(goods, 0.5, payer, payee);
+      expect(Math.hypot(pass.x - at.x, pass.y - at.y)).toBeCloseTo(COUPLE_GAP);
+      expect(pass.y).toBeGreaterThan(at.y);
+      const c = coupledCurve(goods, 0.5, payer, payee);
+      const mid = pointAt(c, 0.5);
+      expect(mid.x).toBeCloseTo(pass.x);
+      expect(mid.y).toBeCloseTo(pass.y);
+    });
+
+    it('runs the opposite way to the marked flow where they meet', () => {
+      const c = coupledCurve(goods, 0.5, payer, payee);
+      const a = tangentAt(goods, 0.5);
+      const b = tangentAt(c, 0.5);
+      const cos = (a.x * b.x + a.y * b.y) / (Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y));
+      expect(cos).toBeCloseTo(-1);
+    });
+
+    it('starts and ends on its own symbols’ outlines', () => {
+      const c = coupledCurve(goods, 0.5, payer, payee);
+      expect(Math.hypot(c.p0.x - 400, c.p0.y - 160)).toBeLessThan(60);
+      expect(Math.hypot(c.p1.x, c.p1.y - 160)).toBeLessThan(60);
+    });
   });
 });

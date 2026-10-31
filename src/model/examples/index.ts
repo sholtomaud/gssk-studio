@@ -312,14 +312,16 @@ const purchases: StudioModel = {
   // Months.
   config: { t_start: 0, t_end: 12, dt: 0.05, method: 'rk4' },
   nodes: [
+    // Sellers on the left, the household on the right: each money flow runs back
+    // alongside what it pays for, under one transaction diamond (Odum's convention).
     { ...n('grid', 'source', 1, 100, 140, 'Electricity grid'), carrier: 'electricity' },
-    { ...n('appliances', 'sink', 0, 640, 140, 'Appliances'), carrier: 'electricity' },
-    { ...n('streaming', 'source', 1, 100, 280, 'Streaming service'), carrier: 'video' },
-    { ...n('screen', 'sink', 0, 640, 280, 'Screen time'), carrier: 'video' },
-    { ...n('salary', 'source', 300, 100, 460, 'Salary'), carrier: 'aud' },
-    { ...n('bank', 'storage', 1000, 360, 460, 'Bank account', 30000), carrier: 'aud' },
-    { ...n('retailer', 'storage', 0, 640, 420, 'Power retailer', 2000), carrier: 'aud' },
-    { ...n('streamer', 'storage', 0, 640, 560, 'Streaming company', 500), carrier: 'aud' },
+    { ...n('appliances', 'sink', 0, 660, 140, 'Appliances'), carrier: 'electricity' },
+    { ...n('streaming', 'source', 1, 100, 540, 'Streaming service'), carrier: 'video' },
+    { ...n('screen', 'sink', 0, 660, 540, 'Screen time'), carrier: 'video' },
+    { ...n('salary', 'source', 300, 880, 340, 'Salary'), carrier: 'aud' },
+    { ...n('bank', 'storage', 1000, 660, 340, 'Bank account', 30000), carrier: 'aud' },
+    { ...n('retailer', 'storage', 0, 100, 280, 'Power retailer', 2000), carrier: 'aud' },
+    { ...n('streamer', 'storage', 0, 100, 400, 'Streaming company', 500), carrier: 'aud' },
   ],
   edges: [
     {

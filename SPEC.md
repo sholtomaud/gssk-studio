@@ -202,8 +202,13 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
   proposes or new ones.
 - The pair is stored as the kernel's reciprocal `coupled_edge`; the marking, with its purpose
   (COICOP 2018, a division or a finer code) and tags, is `visual.transaction` on the flow it was
-  placed on. The marked flow draws Odum's transaction diamond, its counter-flow a smaller one,
-  and a faint line joins the two. Taking the transaction off unpairs the flows; deleting either
+  placed on.
+- **Drawing** (Odum's convention): the transaction symbol is a plain diamond. The counter-flow
+  runs back alongside the marked flow, the opposite way, and one diamond sits across both,
+  wherever the counter-flow's ends lie back the way the marked flow came (their directions more
+  than about 107° apart). Otherwise, or once its curve is shaped by hand, the counter-flow is
+  drawn on its own with a small diamond; **Straighten curve** brings it back alongside. Layout
+  only: the kernel model is the same. Taking the transaction off unpairs the flows; deleting either
   flow unpairs the other, whose marking (if any) is invalid again; a copy keeps its pairing only
   when both flows are copied.
 - **Add counter-flow** (in the flow's inspector) draws a `constant` money flow, k per unit
@@ -313,8 +318,12 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
 - **FR-RES-002** Hover crosshair with a tooltip of every charted value; direct end labels when four
   or fewer series are drawn; a table view of the same numbers.
 - **FR-RES-003** Playback: a time scrubber and play button drive the diagram — readings under each
-  label and storage gauges. A **Flow widths** toggle (off by default, remembered) also draws each
-  flow as wide as |J| relative to the run's largest flow, a Sankey-style reading.
+  label and each storage's level against its reference level. A **Flow widths** toggle (off by
+  default, remembered) also draws each flow as wide as |J| relative to the run's largest flow, a
+  Sankey-style reading. Two more toggles, remembered, show the level: **Level gauges** (on by
+  default), a bar beside the symbol, and **Level fill** (off by default), the symbol itself
+  filled from the bottom up to its level. A symbol with no closed outline to fill (a heat sink)
+  keeps its gauge.
 - **FR-RES-004** CSV download of every sample, node and flow.
 - **FR-RES-005** A result older than the model is marked "Model changed since this run": when
   the model the kernel would be given differs, not when only layout, packing or notes changed.

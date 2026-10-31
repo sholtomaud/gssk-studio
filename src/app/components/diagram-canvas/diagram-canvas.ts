@@ -49,15 +49,19 @@ import {
 import type { Group, ModelEdge, ModelNode, Point, StudioModel } from '../../../model/types.ts';
 import {
   bounds,
+  couplePoint,
+  coupledCurve,
   edgeCurve,
   GROUP_HALF,
   halfExtent,
   pathData,
   pointAt,
+  SCALE,
+  type Curve,
   SIZE,
   type Shape,
 } from '../../../diagram/geometry.ts';
-import { SYMBOL_DEFS } from '../../../diagram/symbols.ts';
+import { OUTLINES, SYMBOL_DEFS } from '../../../diagram/symbols.ts';
 import { el, formatNumber, iconButton, svg } from '../../ui.ts';
 import style from './diagram-canvas.css?raw';
 
@@ -77,12 +81,24 @@ function rectOf(a: Point, b: Point): { x: number; y: number; w: number; h: numbe
 }
 
 const FLOW_WIDTHS_KEY = 'gssk-studio-flow-widths';
+const GAUGES_KEY = 'gssk-studio-level-gauges';
+const FILL_KEY = 'gssk-studio-level-fill';
 
-function storedFlowWidths(): boolean {
+/** A view switch remembered in this browser, or its default. */
+function storedFlag(key: string, fallback: boolean): boolean {
   try {
-    return localStorage.getItem(FLOW_WIDTHS_KEY) === '1';
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === '1';
   } catch {
-    return false;
+    return fallback;
+  }
+}
+
+function storeFlag(key: string, on: boolean): void {
+  try {
+    localStorage.setItem(key, on ? '1' : '0');
+  } catch {
+    // Not remembered.
   }
 }
 const MIN_SCALE = 0.2;
@@ -127,7 +143,10 @@ export class DiagramCanvas extends BaseComponent {
   private _issues = new Map<string, Marked>();
   private view = { x: 0, y: 0, s: 1 };
   /** Draw flows as wide as their rate during playback (FR-RES-003); off by default. */
-  private flowWidths = storedFlowWidths();
+  private flowWidths = storedFlag(FLOW_WIDTHS_KEY, false);
+  /** Show each storage's level as a gauge beside it, as a fill of the symbol, or both (FR-RES-003). */
+  private gauges = storedFlag(GAUGES_KEY, true);
+  private fill = storedFlag(FILL_KEY, false);
   private drag: Drag | null = null;
   private fitted = false;
   private gestureSeq = 0;
@@ -138,8 +157,6 @@ export class DiagramCanvas extends BaseComponent {
   /** What is drawn at the current packing (FR-GRP-001). */
   private view_: DiagramView | null = null;
   private lastGroupClick: { id: string; at: number } | null = null;
-  /** Where each flow's transaction diamond is drawn, to link the pair. */
-  private readonly trxPoints = new Map<string, Point>();
   /** Flow badges, appended to the overlay once every flow is drawn. */
   private edgeBadges: SVGGElement[] = [];
 
@@ -212,18 +229,36 @@ export class DiagramCanvas extends BaseComponent {
     zoomOut.onclick = () => this.zoomBy(0.8);
     fit.onclick = () => this.fit();
     this.pct = el('span', { class: 'pct', text: '100%' });
-    const widths = iconButton('flow', 'Flow widths: draw each flow as wide as its rate');
-    widths.setAttribute('aria-pressed', String(this.flowWidths));
-    widths.onclick = () => {
-      this.flowWidths = !this.flowWidths;
-      widths.setAttribute('aria-pressed', String(this.flowWidths));
-      try {
-        localStorage.setItem(FLOW_WIDTHS_KEY, this.flowWidths ? '1' : '0');
-      } catch {
-        // Not remembered.
+    const widths = this.switchButton(
+      'flow',
+      'Flow widths: draw each flow as wide as its rate',
+      FLOW_WIDTHS_KEY,
+      () => this.flowWidths,
+      (on) => {
+        this.flowWidths = on;
+        this.applyPlayback();
       }
-      this.applyPlayback();
-    };
+    );
+    const gauges = this.switchButton(
+      'gauge',
+      'Level gauges: show each storage’s level in a bar beside it',
+      GAUGES_KEY,
+      () => this.gauges,
+      (on) => {
+        this.gauges = on;
+        this.render();
+      }
+    );
+    const fill = this.switchButton(
+      'level',
+      'Level fill: fill each storage’s symbol from the bottom up to its level',
+      FILL_KEY,
+      () => this.fill,
+      (on) => {
+        this.fill = on;
+        this.render();
+      }
+    );
     this.append(
       this.root,
       this.hint,
@@ -231,6 +266,8 @@ export class DiagramCanvas extends BaseComponent {
         'div',
         { class: 'zoom' },
         widths,
+        gauges,
+        fill,
         el('span', { class: 'sep' }),
         zoomOut,
         this.pct,
@@ -263,6 +300,25 @@ export class DiagramCanvas extends BaseComponent {
       if (!this.fitted && this._model && this.root.clientWidth > 0) this.fit();
     }).observe(this);
     this.render();
+  }
+
+  /** A pressed/unpressed view switch, remembered in this browser. */
+  private switchButton(
+    name: string,
+    label: string,
+    key: string,
+    get: () => boolean,
+    set: (on: boolean) => void
+  ): HTMLButtonElement {
+    const b = iconButton(name, label);
+    b.setAttribute('aria-pressed', String(get()));
+    b.onclick = () => {
+      const on = !get();
+      b.setAttribute('aria-pressed', String(on));
+      storeFlag(key, on);
+      set(on);
+    };
+    return b;
   }
 
   // ---- properties ---------------------------------------------------------
@@ -445,19 +501,7 @@ export class DiagramCanvas extends BaseComponent {
     this.view_ = view;
     for (const g of view.frames) this.renderFrame(m, g);
     this.edgeBadges = [];
-    this.trxPoints.clear();
     for (const e of view.edges) this.renderEdge(m, e);
-    // A transaction's two diamonds are one exchange: a faint line joins them.
-    for (const e of view.edges) {
-      if (!e.visual?.transaction) continue;
-      const p = partnerOf(m, e);
-      const a = this.trxPoints.get(e.id);
-      const b = p ? this.trxPoints.get(p.id) : undefined;
-      if (a && b)
-        this.layers.edges.prepend(
-          svg('line', { class: 'pair-link', x1: a.x, y1: a.y, x2: b.x, y2: b.y })
-        );
-    }
     for (const b of view.bundles) this.renderBundle(m, b);
     this.layers.overlay.append(...this.edgeBadges);
     for (const n of m.nodes) if (view.nodes.has(n.id)) this.renderNode(n);
@@ -491,10 +535,33 @@ export class DiagramCanvas extends BaseComponent {
         height: 2 * h + 16,
         rx: 6,
       }),
-      svg('rect', { class: 'body', x: -w, y: -h, width: 2 * w, height: 2 * h, rx: 4 }),
+      svg('rect', { class: 'body', x: -w, y: -h, width: 2 * w, height: 2 * h, rx: 4 })
+    );
+    const leveled = spec.holdsState && !!n.visual.capacity;
+    const outline = OUTLINES[spec.symbol];
+    if (leveled && this.fill && outline) {
+      // The symbol filled from the bottom up to its level: a hard-stopped gradient over its outline.
+      const id = `level-${this.nodeEls.size}`;
+      const grad = svg('linearGradient', { id, x1: 0, y1: 1, x2: 0, y2: 0 });
+      grad.append(
+        svg('stop', { class: 'level-on', offset: 0 }),
+        svg('stop', { class: 'level-off', offset: 0 })
+      );
+      g.append(
+        grad,
+        svg('path', {
+          class: 'level-fill',
+          d: outline,
+          fill: `url(#${id})`,
+          transform: `translate(${-SIZE / 2} ${-SIZE / 2}) scale(${SCALE})`,
+        })
+      );
+    }
+    g.append(
       svg('use', { href: `#${spec.symbol}`, x: -SIZE / 2, y: -SIZE / 2, width: SIZE, height: SIZE })
     );
-    if (spec.holdsState && n.visual.capacity) {
+    const gauge = leveled && (this.gauges || !outline);
+    if (gauge) {
       g.append(
         svg('rect', { class: 'gauge-bg', x: w + 6, y: -h, width: 6, height: 2 * h, rx: 2 }),
         svg('rect', { class: 'gauge', x: w + 6, y: h, width: 6, height: 0, rx: 2 })
@@ -509,7 +576,7 @@ export class DiagramCanvas extends BaseComponent {
       svg('circle', {
         class: 'port',
         'data-port': n.id,
-        cx: w + (spec.holdsState && n.visual.capacity ? 20 : 8),
+        cx: w + (gauge ? 20 : 8),
         cy: 0,
         r: 6,
       })
@@ -524,11 +591,50 @@ export class DiagramCanvas extends BaseComponent {
     this.layers.nodes.append(g);
   }
 
-  private renderEdge(m: StudioModel, e: ModelEdge): void {
+  /** Where on a flow its transaction diamond sits: clear of a gate or sensor at the middle. */
+  private diamondT(m: StudioModel, e: ModelEdge): number {
+    const control = e.params.control_node ? findNode(m, e.params.control_node) : undefined;
+    return control || e.visual?.sensor ? 0.64 : 0.5;
+  }
+
+  /**
+   * The marked flow a counter-flow runs alongside (FR-TRX-001): while both are
+   * drawn, the counter-flow has not been shaped by hand, and its ends lie
+   * back the way the marked flow came, as Odum draws a purchase.
+   */
+  private coupledTo(m: StudioModel, e: ModelEdge): ModelEdge | undefined {
+    const trx = transactionOf(m, e);
+    if (!trx || trx.marked === e || e.visual?.ctrl1 || e.visual?.ctrl2) return undefined;
+    const base = trx.marked;
+    if (partnerOf(m, base) !== e || !this.view_?.edges.some((x) => x.id === base.id)) return;
+    const chord = (x: ModelEdge): Point | undefined => {
+      const o = findNode(m, x.origin);
+      const t = findNode(m, x.target);
+      return o && t ? { x: t.visual.x - o.visual.x, y: t.visual.y - o.visual.y } : undefined;
+    };
+    const a = chord(base);
+    const b = chord(e);
+    if (!a || !b) return undefined;
+    const cos = (a.x * b.x + a.y * b.y) / (Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y) || 1);
+    return cos < -0.3 ? base : undefined;
+  }
+
+  /** A flow's curve; a counter-flow follows its marked flow. */
+  private curveOf(m: StudioModel, e: ModelEdge): Curve | undefined {
     const o = findNode(m, e.origin);
     const t = findNode(m, e.target);
-    if (!o || !t) return;
-    const curve = edgeCurve(e, o, t);
+    if (!o || !t) return undefined;
+    const base = this.coupledTo(m, e);
+    const bo = base && findNode(m, base.origin);
+    const bt = base && findNode(m, base.target);
+    if (base && bo && bt)
+      return coupledCurve(edgeCurve(base, bo, bt), this.diamondT(m, base), o, t);
+    return edgeCurve(e, o, t);
+  }
+
+  private renderEdge(m: StudioModel, e: ModelEdge): void {
+    const curve = this.curveOf(m, e);
+    if (!curve) return;
     const selected = this._selection?.kind === 'edge' && this._selection.id === e.id;
     const kind = kindOfCarrierId(m, e.carrier);
     const g = svg('g', {
@@ -579,22 +685,34 @@ export class DiagramCanvas extends BaseComponent {
       );
     }
     const trx = transactionOf(m, e);
-    if (trx) {
-      // Odum's transaction diamond, clear of a gate or sensor at the middle.
-      const at = pointAt(curve, control || e.visual?.sensor ? 0.64 : 0.5);
-      const marked = trx.marked === e;
-      const size = marked ? 40 : 28;
-      this.trxPoints.set(e.id, at);
-      const use = svg('use', {
-        class: `transaction${marked ? '' : ' counter'}`,
-        href: '#odum-transaction',
-        x: at.x - size / 2,
-        y: at.y - size / 2,
-        width: size,
-        height: size,
-      });
-      g.append(use);
-      if (marked) g.append(svg('text', { class: 'price-reading', x: at.x, y: at.y + 30 }));
+    const counter = trx && trx.marked !== e;
+    const alongside = counter ? this.coupledTo(m, e) : undefined;
+    if (trx && !alongside) {
+      // Odum's transaction diamond: one across both flows when the counter-flow runs alongside.
+      const t = this.diamondT(m, e);
+      let at = pointAt(curve, t);
+      const p = counter ? undefined : partnerOf(m, e);
+      if (p && this.coupledTo(m, p) === e) {
+        const po = findNode(m, p.origin);
+        const pt = findNode(m, p.target);
+        if (po && pt) {
+          const pass = couplePoint(curve, t, po, pt);
+          at = { x: (at.x + pass.x) / 2, y: (at.y + pass.y) / 2 };
+        }
+      }
+      // A counter-flow drawn apart from its marked flow carries a small diamond of its own.
+      const size = counter ? 28 : 44;
+      g.append(
+        svg('use', {
+          class: `transaction${counter ? ' counter' : ''}`,
+          href: '#odum-transaction',
+          x: at.x - size / 2,
+          y: at.y - size / 2,
+          width: size,
+          height: size,
+        })
+      );
+      if (!counter) g.append(svg('text', { class: 'price-reading', x: at.x, y: at.y + 32 }));
     }
     if (e.forcing) {
       // Clear of the labels at the origin end, the gate or sensor mid-flow and the badge at 0.78.
@@ -839,16 +957,16 @@ export class DiagramCanvas extends BaseComponent {
       const reading = g.querySelector('.reading');
       const v = p?.values.get(n.id);
       if (reading) reading.textContent = v === undefined ? '' : formatNumber(v);
+      if (!n.visual.capacity) continue;
+      const frac = Math.max(0, Math.min(1, (v ?? n.value) / n.visual.capacity));
       const gauge = g.querySelector<SVGRectElement>('.gauge');
-      if (gauge && n.visual.capacity) {
+      if (gauge) {
         const { h } = halfExtent(n.type);
-        const frac =
-          v === undefined
-            ? Math.max(0, Math.min(1, n.value / n.visual.capacity))
-            : Math.max(0, Math.min(1, v / n.visual.capacity));
         gauge.setAttribute('y', String(h - 2 * h * frac));
         gauge.setAttribute('height', String(2 * h * frac));
       }
+      for (const stop of g.querySelectorAll('.level-on, .level-off'))
+        stop.setAttribute('offset', String(frac));
     }
     for (const e of m.edges) {
       const line = this.edgeEls.get(e.id)?.querySelector<SVGPathElement>('.line');
@@ -1083,15 +1201,23 @@ export class DiagramCanvas extends BaseComponent {
         break;
       case 'ctrl': {
         const edge = m.edges.find((x) => x.id === d.edgeId);
-        const o = edge && findNode(m, edge.origin);
-        const t = edge && findNode(m, edge.target);
-        if (!edge || !o || !t) break;
-        const c = edgeCurve(edge, o, t);
+        const c = edge && this.curveOf(m, edge);
+        if (!edge || !c) break;
         const anchor = d.which === 1 ? c.p0 : c.p1;
         const offset = { x: Math.round(p.x - anchor.x), y: Math.round(p.y - anchor.y) };
+        // Shaping a counter-flow by hand keeps its other handle where it was drawn.
+        const coupled = this.coupledTo(m, edge);
+        const held = (q: Point, at: Point) => ({
+          x: Math.round(q.x - at.x),
+          y: Math.round(q.y - at.y),
+        });
         this.emit({
           model: updateEdge(m, d.edgeId, (x) => {
-            x.visual = { ...x.visual, [d.which === 1 ? 'ctrl1' : 'ctrl2']: offset };
+            x.visual = {
+              ...x.visual,
+              ...(coupled ? { ctrl1: held(c.c1, c.p0), ctrl2: held(c.c2, c.p1) } : {}),
+              [d.which === 1 ? 'ctrl1' : 'ctrl2']: offset,
+            };
           }),
           label: 'Shape flow',
           coalesce: d.key,

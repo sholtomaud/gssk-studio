@@ -24,40 +24,40 @@ const grid = new ener.Source(m, 'Electricity grid', {
 const appliances = new ener.HeatSink(m, 'Appliances', {
   value: 0,
   carrier: 'electricity',
-  at: [640, 140],
+  at: [660, 140],
 });
 const streaming = new ener.Source(m, 'Streaming service', {
   id: 'streaming',
   value: 1,
   carrier: 'video',
-  at: [100, 280],
+  at: [100, 540],
 });
 const screen = new ener.HeatSink(m, 'Screen time', {
   id: 'screen',
   value: 0,
   carrier: 'video',
-  at: [640, 280],
+  at: [660, 540],
 });
-const salary = new ener.Source(m, 'Salary', { value: 300, carrier: 'aud', at: [100, 460] });
+const salary = new ener.Source(m, 'Salary', { value: 300, carrier: 'aud', at: [880, 340] });
 const bank = new ener.Storage(m, 'Bank account', {
   id: 'bank',
   value: 1000,
   carrier: 'aud',
-  at: [360, 460],
+  at: [660, 340],
   capacity: 30000,
 });
 const retailer = new ener.Storage(m, 'Power retailer', {
   id: 'retailer',
   value: 0,
   carrier: 'aud',
-  at: [640, 420],
+  at: [100, 280],
   capacity: 2000,
 });
 const streamer = new ener.Storage(m, 'Streaming company', {
   id: 'streamer',
   value: 0,
   carrier: 'aud',
-  at: [640, 560],
+  at: [100, 400],
   capacity: 500,
 });
 

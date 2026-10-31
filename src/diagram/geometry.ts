@@ -117,6 +117,68 @@ export function edgeCurve(
   return { p0, c1, c2, p1 };
 }
 
+/**
+ * Where a transaction's counter-flow passes its marked flow (FR-TRX-001):
+ * beside the marked flow's point at `t`, `COUPLE_GAP` to the side where the
+ * counter-flow's own ends lie, so the pair never cross to reach it.
+ */
+export const COUPLE_GAP = 12;
+
+export function couplePoint(base: Curve, t: number, origin: Shape, target: Shape): Point {
+  const at = pointAt(base, t);
+  const tan = unit(tangentAt(base, t), base);
+  const normal = { x: -tan.y, y: tan.x };
+  const mid = {
+    x: (origin.visual.x + target.visual.x) / 2,
+    y: (origin.visual.y + target.visual.y) / 2,
+  };
+  const side = (mid.x - at.x) * normal.x + (mid.y - at.y) * normal.y < 0 ? -1 : 1;
+  return { x: at.x + normal.x * COUPLE_GAP * side, y: at.y + normal.y * COUPLE_GAP * side };
+}
+
+/**
+ * A transaction's counter-flow drawn as Odum draws it: alongside its marked
+ * flow, the opposite way, passing it at the transaction diamond. A single
+ * cubic through the pass point at t = ½ with the reversed tangent there.
+ */
+export function coupledCurve(base: Curve, t: number, origin: Shape, target: Shape): Curve {
+  const m = couplePoint(base, t, origin, target);
+  const tan = unit(tangentAt(base, t), base);
+  const p0 = anchor(origin, m);
+  const p1 = anchor(target, m);
+  const len = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  // B(½) = (p0 + 3c1 + 3c2 + p1) / 8 = m, and B'(½) = ¾ (p1 − p0 + c2 − c1) ∥ −tan.
+  const sum = { x: (8 * m.x - p0.x - p1.x) / 3, y: (8 * m.y - p0.y - p1.y) / 3 };
+  const diff = { x: -tan.x * len - (p1.x - p0.x), y: -tan.y * len - (p1.y - p0.y) };
+  return {
+    p0,
+    c1: { x: (sum.x - diff.x) / 2, y: (sum.y - diff.y) / 2 },
+    c2: { x: (sum.x + diff.x) / 2, y: (sum.y + diff.y) / 2 },
+    p1,
+  };
+}
+
+export function tangentAt(c: Curve, t: number): Point {
+  const u = 1 - t;
+  const a = 3 * u * u;
+  const b = 6 * u * t;
+  const d = 3 * t * t;
+  return {
+    x: a * (c.c1.x - c.p0.x) + b * (c.c2.x - c.c1.x) + d * (c.p1.x - c.c2.x),
+    y: a * (c.c1.y - c.p0.y) + b * (c.c2.y - c.c1.y) + d * (c.p1.y - c.c2.y),
+  };
+}
+
+/** A unit vector along `v`, or along the curve's chord when `v` vanishes. */
+function unit(v: Point, c: Curve): Point {
+  let l = Math.hypot(v.x, v.y);
+  if (l < 1e-9) {
+    v = { x: c.p1.x - c.p0.x, y: c.p1.y - c.p0.y };
+    l = Math.hypot(v.x, v.y);
+  }
+  return l < 1e-9 ? { x: 1, y: 0 } : { x: v.x / l, y: v.y / l };
+}
+
 export function pointAt(c: Curve, t: number): Point {
   const u = 1 - t;
   const a = u * u * u;

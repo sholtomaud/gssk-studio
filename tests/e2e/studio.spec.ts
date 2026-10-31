@@ -25,6 +25,36 @@ test('flow widths are off by default and toggle on', async ({ page }) => {
   await expect.poll(width).toMatch(/^[\d.]+px$/);
 });
 
+test('a storage shows its level as a gauge, a fill of its symbol, or both (FR-RES-003)', async ({
+  page,
+}) => {
+  await openExample(page, 'purchases');
+  const bank = page.locator('[data-node="bank"]');
+  const gauges = page.getByRole('button', { name: /Level gauges/ });
+  const fill = page.getByRole('button', { name: /Level fill/ });
+  await expect(gauges).toHaveAttribute('aria-pressed', 'true');
+  await expect(fill).toHaveAttribute('aria-pressed', 'false');
+  await expect(bank.locator('.gauge')).toHaveCount(1);
+  await expect(bank.locator('.level-fill')).toHaveCount(0);
+
+  await fill.click();
+  await gauges.click();
+  await expect(bank.locator('.gauge')).toHaveCount(0);
+  await expect(bank.locator('.level-fill')).toHaveCount(1);
+  // 1,000 of a 30,000 reference level, filled from the bottom up.
+  await expect(bank.locator('.level-on')).toHaveAttribute('offset', /^0\.033/);
+  await run(page);
+  await page.locator('results-panel input[type="range"]').fill('0');
+  await expect(bank.locator('.level-on')).toHaveAttribute('offset', /^0\.033/);
+
+  // Remembered across a reload.
+  await page.reload();
+  await expect(page.getByRole('button', { name: /Level fill/ })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+});
+
 test('build a model from the palette, wire it, run it, undo it', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('button', { name: 'New model' }).click();
