@@ -63,6 +63,49 @@
 }
 :host .msg.assistant {
   background: var(--surface-sunken);
+  white-space: normal;
+}
+:host .msg.assistant.streaming {
+  white-space: pre-wrap;
+}
+:host .msg.assistant > :first-child {
+  margin-top: 0;
+}
+:host .msg.assistant > :last-child {
+  margin-bottom: 0;
+}
+:host .msg.assistant p,
+:host .msg.assistant ul,
+:host .msg.assistant ol,
+:host .msg.assistant pre {
+  margin: 0 0 8px;
+}
+:host .msg.assistant ul,
+:host .msg.assistant ol {
+  padding-left: 20px;
+}
+:host .msg.assistant li + li {
+  margin-top: 3px;
+}
+:host .msg.assistant h4 {
+  margin: 10px 0 4px;
+  font-size: 13.5px;
+}
+:host .msg.assistant code {
+  font: 12px var(--font-mono);
+  background: var(--surface-2);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+:host .msg.assistant pre {
+  overflow: auto;
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border-radius: 4px;
+}
+:host .msg.assistant pre code {
+  padding: 0;
+  background: none;
 }
 :host .msg .hint {
   margin: 6px 0 0;

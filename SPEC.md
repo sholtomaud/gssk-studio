@@ -568,6 +568,17 @@ and builds or changes the model with the person.
 - **Numbers** (NFR-HON-002): every input the assistant sets is marked (§5.7). Results come only
   from `run_model`, which reports the run's model hash. A figure in a reply that is in no tool
   result, message or model is struck through and flagged.
+- **Replies stream** as the provider writes them (server-sent events from OpenAI-compatible
+  providers and Anthropic; a server that answers with plain JSON still works), then are drawn as
+  Markdown (paragraphs, headings, lists, bold, italic, code) by an in-house reader that builds DOM
+  nodes and never sets HTML.
+- **About this model, and acting on it**: each message carries a short summary of the model
+  (its symbols and flows by id, and the storages with no loss to a heat sink). The instructions
+  ask for brief answers, and for a change the person asks for, or agrees should be made, to be
+  made with the tools in the same turn, not only described. They state Odum's conventions,
+  among them that every storage loses something as it stores. **add_loss** drains a storage to a
+  heat sink with a linear flow (a new sink below it unless one is named), carrying its carrier,
+  with k marked as an assumption.
 - **Not yet**: calibration and Energese scripts as tools, and drawing a card's draft on the canvas
   before it is applied.
 

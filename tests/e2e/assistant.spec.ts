@@ -212,3 +212,74 @@ test('sign in with OpenRouter: a key for the session, nothing to copy (ADR 0016)
   await expect(page.locator('assistant-panel .msg.assistant')).toHaveText('Hello from OpenRouter.');
   expect(chats[0]?.authorization).toBe('Bearer sk-or-test');
 });
+
+test('a streamed reply is drawn as Markdown, and the assistant makes the change it suggests', async ({
+  page,
+}) => {
+  const sse = (events: unknown[]) =>
+    events.map((e) => `data: ${typeof e === 'string' ? e : JSON.stringify(e)}\n\n`).join('');
+  const call = (id: string, name: string, args: unknown) => ({
+    choices: [
+      {
+        delta: {
+          tool_calls: [
+            { index: 0, id, type: 'function', function: { name, arguments: JSON.stringify(args) } },
+          ],
+        },
+        finish_reason: 'tool_calls',
+      },
+    ],
+  });
+  const streams = [
+    sse([
+      { choices: [{ delta: { content: 'Yes: every storage loses something.' } }] },
+      call('c1', 'add_symbol', {
+        type: 'storage',
+        label: 'Water tank',
+        x: 300,
+        y: 200,
+        value: null,
+        capacity: null,
+        carrier: null,
+        why: null,
+      }),
+      '[DONE]',
+    ]),
+    sse([
+      call('c2', 'add_loss', {
+        from: 'water_tank',
+        sink: null,
+        k: 0.01,
+        why: 'leaks and evaporation',
+      }),
+      '[DONE]',
+    ]),
+    sse([
+      { choices: [{ delta: { content: '**Added** a loss:\n\n- the tank drains to a ' } }] },
+      { choices: [{ delta: { content: 'heat sink\n- at k = 0.01' }, finish_reason: 'stop' }] },
+      '[DONE]',
+    ]),
+  ];
+  await page.route(LOCAL, (route) =>
+    route.fulfill({ contentType: 'text/event-stream', body: streams.shift() ?? sse(['[DONE]']) })
+  );
+  await openAssistant(page);
+  await page.locator('assistant-panel textarea').fill('Should the tank have a heat sink?');
+  await page.locator('assistant-panel textarea').press('Enter');
+  await page
+    .locator('consent-dialog dialog.consent')
+    .getByRole('button', { name: 'Send without asking until I reload' })
+    .click();
+
+  const reply = page.locator('assistant-panel .msg.assistant');
+  await expect(reply.locator('strong')).toHaveText('Added');
+  await expect(reply.locator('li')).toHaveText(['the tank drains to a heat sink', 'at k = 0.01']);
+  await expect(reply).toContainText('Yes: every storage loses something.');
+  const card = page.locator('assistant-panel .card');
+  await expect(card.locator('li')).toHaveText([
+    'Add storage “Water tank”',
+    'Add loss: “Water tank” → heat sink (k = 0.01)',
+  ]);
+  await card.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.locator('[data-node="water_tank_loss"]')).toHaveCount(1);
+});

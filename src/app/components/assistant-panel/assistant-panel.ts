@@ -14,6 +14,7 @@ import type { RunSummary, ToolContext } from '../../../assistant/tools.ts';
 import { serialiseModel } from '../../../model/io.ts';
 import type { StudioModel } from '../../../model/types.ts';
 import { assistantGate, assistantReady, onAssistantChange } from '../../assistant-state.ts';
+import { renderMarkdown } from '../../markdown.ts';
 import { el, icon, iconButton } from '../../ui.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import style from './assistant-panel.css?raw';
@@ -159,6 +160,9 @@ export class AssistantPanel extends BaseComponent {
     this.sendBtn.disabled = true;
     this.addMessage('user', text);
     this.status.textContent = 'Thinking…';
+    // The reply streams in as plain text, then is drawn as Markdown with its figures checked.
+    const bubble = el('div', { class: 'msg assistant streaming' });
+    let streamed = '';
     try {
       const out = await runTurn({
         cfg: ready.cfg,
@@ -168,11 +172,19 @@ export class AssistantPanel extends BaseComponent {
         userText: note + text,
         ctx,
         onStep: (name) => (this.status.textContent = `Working: ${name.replace(/_/g, ' ')}…`),
+        onText: (piece) => {
+          if (!bubble.isConnected) this.log.append(bubble);
+          streamed += piece;
+          bubble.textContent = streamed;
+          this.status.textContent = 'Writing…';
+          this.log.scrollTop = this.log.scrollHeight;
+        },
       });
       this.lastRun = ctx.lastRun;
       card.draft = ctx.draft;
       if (card.steps.length) this.cards.push(card);
       this.addReply(
+        bubble,
         out.text ||
           (out.stop === 'refusal' ? 'The model declined to answer that.' : '(No answer in words.)'),
         // A reply may quote tool results, the message, and the model's inputs, its own marked ones too.
@@ -182,6 +194,7 @@ export class AssistantPanel extends BaseComponent {
       if (out.stop === 'max_tokens') this.addNote('The answer was cut off at the length limit.');
       if (out.stop === 'rounds') this.addNote('Stopped after many tool calls in one turn.');
     } catch (err) {
+      bubble.remove();
       // Nothing sent, or the provider failed: drop the unanswered message from the history.
       while (this.history.length && this.history.at(-1)?.role !== 'user') this.history.pop();
       this.history.pop();
@@ -209,29 +222,30 @@ export class AssistantPanel extends BaseComponent {
   }
 
   /** The reply, with figures no tool result supports struck through (NFR-HON-002). */
-  private addReply(text: string, sources: string[], card?: Card): void {
-    const parts = checkFigures(text, sources);
-    const body = el('div', { class: 'msg assistant' });
-    for (const p of parts) {
-      if (!p.flagged) body.append(document.createTextNode(p.text));
-      else
-        body.append(
-          el('s', {
-            class: 'unsupported',
-            text: p.text,
-            title:
-              'Not from any tool result: the assistant may not state results (NFR-HON-002). Run the model to get the number.',
-          })
-        );
-    }
-    if (parts.some((p) => p.flagged))
+  /** The reply as Markdown, with figures no tool result supports struck through (NFR-HON-002). */
+  private addReply(body: HTMLElement, text: string, sources: string[], card?: Card): void {
+    let flagged = false;
+    const mark = (t: string): Node[] =>
+      checkFigures(t, sources).map((p) => {
+        if (!p.flagged) return document.createTextNode(p.text);
+        flagged = true;
+        return el('s', {
+          class: 'unsupported',
+          text: p.text,
+          title:
+            'Not from any tool result: the assistant may not state results (NFR-HON-002). Run the model to get the number.',
+        });
+      });
+    body.classList.remove('streaming');
+    body.replaceChildren(renderMarkdown(text, mark));
+    if (flagged)
       body.append(
         el('p', {
           class: 'hint',
           text: 'Struck-through figures are not from a run or any tool result, so treat them as unchecked.',
         })
       );
-    this.log.append(body);
+    if (!body.isConnected) this.log.append(body);
     if (card) this.log.append(this.renderCard(card));
     this.log.scrollTop = this.log.scrollHeight;
   }

@@ -60,14 +60,50 @@ export type Consent = 'send' | 'send-always' | 'cancel';
 
 export class EgressRefused extends Error {}
 
+/** What `send` returns when the reply streamed: its events went to `onEvent` instead. */
+export const STREAMED = Symbol('streamed');
+
 export interface Gate {
+  /**
+   * Send a request. A JSON reply is returned parsed. A reply of server-sent
+   * events, when `onEvent` is given, is passed on event by event (each
+   * `data:` payload) and `STREAMED` returned.
+   */
   send(
     cfg: ProviderConfig,
     key: string | undefined,
     req: HttpRequest,
-    purpose?: string
+    purpose?: string,
+    onEvent?: (data: string) => void
   ): Promise<unknown>;
   readonly log: readonly LogEntry[];
+}
+
+/** Read a server-sent event stream, handing on each event's data. */
+async function readEvents(res: Response, onEvent: (data: string) => void): Promise<void> {
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const flush = (block: string) => {
+    const data = block
+      .split(/\r?\n/)
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => l.slice(5).replace(/^ /, ''))
+      .join('\n');
+    if (data && data !== '[DONE]') onEvent(data);
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let at: number;
+    while ((at = buffer.search(/\r?\n\r?\n/)) >= 0) {
+      flush(buffer.slice(0, at));
+      buffer = buffer.slice(at).replace(/^\r?\n\r?\n/, '');
+    }
+  }
+  if (buffer.trim()) flush(buffer);
 }
 
 async function sha256(text: string): Promise<string> {
@@ -86,7 +122,7 @@ export function createGate(deps: {
   const now = deps.now ?? (() => new Date().toISOString());
   return {
     log,
-    async send(cfg, key, req, purpose = 'A message to the assistant') {
+    async send(cfg, key, req, purpose = 'A message to the assistant', onEvent) {
       if (!isAllowedUrl(req.url)) {
         throw new EgressRefused(
           `${new URL(req.url).origin} is not an origin the assistant may call. Use a local server, or Anthropic, OpenAI or Gemini.`
@@ -129,6 +165,10 @@ export function createGate(deps: {
         );
       }
       log.push({ ...entry, status: res.status });
+      if (res.ok && onEvent && res.headers.get('content-type')?.includes('text/event-stream')) {
+        await readEvents(res, onEvent);
+        return STREAMED;
+      }
       const text = await res.text();
       if (!res.ok) throw new Error(`${entry.origin} answered ${res.status}: ${text.slice(0, 300)}`);
       try {

@@ -230,6 +230,17 @@ export const TOOLS: readonly ToolSpec[] = [
     }),
   },
   {
+    name: 'add_loss',
+    description:
+      'Odum’s depreciation pathway: drain a storage to a heat sink with a linear flow, J = k·Q. Every storage loses something as it stores (leaks, evaporation, wear, decay). Adds a heat sink below it unless you name one.',
+    parameters: schema({
+      from: str('The storage that loses'),
+      sink: optStr('An existing heat sink id to drain into, or null to add one below the storage'),
+      k: optNum('The loss rate k per unit time (a fraction of the store); null for 0.01'),
+      why: WHY,
+    }),
+  },
+  {
     name: 'pack',
     description: 'Pack a group into one symbol, or unpack it to show what it holds. Layout only.',
     parameters: schema({
@@ -615,6 +626,44 @@ async function dispatch(ctx: ToolContext, name: string, a: Args): Promise<unknow
       return { id };
     }
 
+    case 'add_loss': {
+      const from = node(s(a, 'from'));
+      if (!symbolFor(from.type).holdsState || from.type === 'sink')
+        refuse(`“${from.id}” holds nothing to lose: add_loss is for storages.`);
+      const sinkId = s(a, 'sink');
+      if (sinkId && node(sinkId).type !== 'sink') refuse(`“${sinkId}” is not a heat sink.`);
+      let model = m;
+      let sink = sinkId;
+      if (!sink) {
+        const added = addNode(
+          m,
+          'sink',
+          { x: from.visual.x, y: from.visual.y + 150 },
+          `${from.visual.label ?? from.id} loss`
+        );
+        model = added.model;
+        sink = added.id;
+      }
+      const joined = connect(model, from.id, sink);
+      if (!joined.id) refuse(`Could not connect “${from.id}” to “${sink}”.`);
+      const e = findEdge(joined.model, joined.id)!;
+      e.logic = 'linear';
+      if (from.carrier) {
+        e.carrier = from.carrier;
+        const h = findNode(joined.model, sink)!;
+        h.carrier ??= from.carrier;
+      }
+      const k = n(a, 'k');
+      e.params.k = k ?? 0.01;
+      commit(
+        joined.model,
+        `Add loss: “${labelOf(m, from.id)}” → heat sink (k = ${e.params.k})`,
+        k !== undefined ? [inputKey('edge', joined.id, 'params.k')] : [],
+        s(a, 'why')
+      );
+      return { flow: joined.id, sink, k: e.params.k, checks: checksOf(ctx.draft) };
+    }
+
     case 'pack': {
       const id = s(a, 'group') ?? '';
       const g = findGroup(m, id);
@@ -690,4 +739,36 @@ export function symbolCatalogue(): string {
   return CATALOGUE.filter((x) => x.palette)
     .map((x) => `- ${x.type} (${x.label}): ${x.summary}`)
     .join('\n');
+}
+
+/**
+ * The model in a few lines, sent with each message so a reply is about this
+ * model (ADR 0016): its symbols and flows by id, and the storages with no
+ * loss to a heat sink. Long models are cut short; describe_model has it all.
+ */
+export function modelBrief(m: StudioModel, limit = 40): string {
+  if (m.nodes.length === 0) return 'The model is empty.';
+  const sym = m.nodes
+    .slice(0, limit)
+    .map(
+      (x) =>
+        `${x.id} (${x.type}${x.visual.label && x.visual.label !== x.id ? ` “${x.visual.label}”` : ''}${x.carrier ? `, ${x.carrier}` : ''})`
+    );
+  const flows = m.edges
+    .slice(0, limit)
+    .map((e) => `${e.id}: ${e.origin}→${e.target} ${e.logic} k=${e.params.k}`);
+  const sinks = new Set(m.nodes.filter((x) => x.type === 'sink').map((x) => x.id));
+  const lossless = m.nodes
+    .filter(
+      (x) => symbolFor(x.type).holdsState && x.type !== 'sink' && !symbolFor(x.type).composite
+    )
+    .filter((x) => !m.edges.some((e) => e.origin === x.id && sinks.has(e.target)))
+    .map((x) => x.id);
+  const more = (all: unknown[]) =>
+    all.length > limit ? `; and ${all.length - limit} more (describe_model)` : '';
+  return [
+    `Symbols: ${sym.join(', ')}${more(m.nodes)}.`,
+    `Flows: ${flows.length ? flows.join('; ') : 'none'}${more(m.edges)}.`,
+    ...(lossless.length ? [`Storages with no loss to a heat sink: ${lossless.join(', ')}.`] : []),
+  ].join('\n');
 }
