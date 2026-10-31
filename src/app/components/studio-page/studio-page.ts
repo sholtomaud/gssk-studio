@@ -51,6 +51,9 @@ import '../results-panel/results-panel.ts';
 import '../calibrate-dialog/calibrate-dialog.ts';
 import type { CalibrateDialog } from '../calibrate-dialog/calibrate-dialog.ts';
 import type { CodeView } from '../code-view/code-view.ts';
+import '../assistant-panel/assistant-panel.ts';
+import type { AssistantPanel } from '../assistant-panel/assistant-panel.ts';
+import type { RunSummary } from '../../../assistant/tools.ts';
 import style from './studio-page.css?raw';
 
 const SAVE_DELAY_MS = 400;
@@ -85,6 +88,8 @@ export class StudioPage extends BaseComponent {
   private canvas!: DiagramCanvas;
   private inspector!: InspectorPanel;
   private results!: ResultsPanel;
+  private assistant!: AssistantPanel;
+  private assistantBtn!: HTMLButtonElement;
   private nameEl!: HTMLElement;
   private savedEl!: HTMLElement;
   private undoBtn!: HTMLButtonElement;
@@ -168,6 +173,18 @@ export class StudioPage extends BaseComponent {
     };
     this.viewBtns.diagram.setAttribute('aria-pressed', 'true');
     const exportBtn = this.exportMenu();
+    this.assistantBtn = el(
+      'button',
+      {
+        type: 'button',
+        class: 'assistant-toggle',
+        title: 'Chat with an assistant that builds and explains models (off until you turn it on)',
+        'aria-pressed': 'false',
+      },
+      icon('chat'),
+      el('span', { class: 'hide-narrow', text: 'Assistant' })
+    );
+    this.assistantBtn.onclick = () => this.showAssistant(this.assistant.hidden !== false);
     this.runBtn = el(
       'button',
       { type: 'button', class: 'primary run', title: 'Run the model (Ctrl+Enter)' },
@@ -196,6 +213,7 @@ export class StudioPage extends BaseComponent {
       ),
       el('span', { class: 'spacer' }),
       this.checksBadge,
+      this.assistantBtn,
       exportBtn,
       this.runBtn
     );
@@ -315,7 +333,14 @@ export class StudioPage extends BaseComponent {
     });
     this.setupSplitter(splitter);
     this.centre = el('div', { class: 'centre' }, this.canvas, splitter, this.results);
-    this.work = el('div', { class: 'work' }, palette, this.centre, this.inspector);
+    this.assistant = document.createElement('assistant-panel') as AssistantPanel;
+    this.assistant.hidden = true;
+    this.assistant.runModel = (m) => this.runSummary(m);
+    this.assistant.addEventListener('diagram-edit', (e) =>
+      this.commit((e as CustomEvent<EditDetail>).detail)
+    );
+    this.assistant.addEventListener('assistant-close', () => this.showAssistant(false));
+    this.work = el('div', { class: 'work' }, palette, this.centre, this.inspector, this.assistant);
     this.setContent(toolbar, this.work);
 
     for (const target of [this.canvas, this.inspector]) {
@@ -483,6 +508,36 @@ export class StudioPage extends BaseComponent {
     });
   }
 
+  private showAssistant(on: boolean): void {
+    this.assistant.hidden = !on;
+    this.assistantBtn.setAttribute('aria-pressed', String(on));
+    if (on) this.assistant.querySelector<HTMLTextAreaElement>('textarea')?.focus();
+  }
+
+  /**
+   * A whole run for the assistant (ADR 0016): the same worker and kernel as
+   * the Run button, reported by its model hash so a reply can cite it.
+   */
+  private async runSummary(m: StudioModel): Promise<RunSummary> {
+    const worker = simWorker();
+    const { token } = await worker.begin(m);
+    for (;;) {
+      const p = await worker.advance(token, 120);
+      if (p.done) break;
+    }
+    const r = await worker.finish(token);
+    return {
+      runId: r.manifest.modelHash.slice(0, 12),
+      steps: r.manifest.steps,
+      method: r.manifest.method,
+      assumedInputs: r.manifest.assumedInputs,
+      solverConfident: r.diagnostics.solverConfident,
+      final: Object.fromEntries(
+        Object.entries(r.final).map(([k, v]) => [k, Number(v.toPrecision(6))])
+      ),
+    };
+  }
+
   /** Diagram or code (FR-SDK-006). The code view, Monaco and tsrs load on first use. */
   private async setView(view: 'diagram' | 'code'): Promise<void> {
     if (view === this.view) return;
@@ -576,6 +631,7 @@ export class StudioPage extends BaseComponent {
     this.canvas.model = m;
     if (this.codeView) this.codeView.model = m;
     this.inspector.model = m;
+    this.assistant.model = m;
     this.inspector.selection = this.selection;
     this.inspector.issues = this.issues;
     this.results.observations = m._observations ?? [];

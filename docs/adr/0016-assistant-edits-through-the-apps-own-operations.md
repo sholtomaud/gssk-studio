@@ -1,6 +1,7 @@
 # ADR 0016 — The assistant edits through the app's own operations, and marks every number it sets
 
-**Status**: proposed (M12). Amends NFR-HON-002 at the owner's request.
+**Status**: accepted (M12). Amends NFR-HON-002 at the owner's request. Calibration and
+Energese scripts as tools, and drawing a card's draft on the canvas, are still to come.
 
 ## Context
 
