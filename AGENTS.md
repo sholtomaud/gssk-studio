@@ -9,7 +9,10 @@ the requirements document. Cite its IDs (`FR-…`, `NFR-…`, `K-…`) in commit
    fold, approximate or silently rewrite what the user drew; when a kernel gap forces a rewrite,
    do it in `src/model/kernel-json.ts`, test it, and file it in SPEC §17.
 2. **No silent network** (NFR-PRIV-003). No third-party scripts, analytics or runtime CDN loads.
-   The build's CSP is `connect-src 'self'`. An e2e test asserts it.
+   The build's CSP `connect-src` is `'self'` plus the assistant's providers in
+   `ALLOWED_ORIGINS` (`src/assistant/egress.ts`, ADR 0016), called only after the person turns
+   the assistant on and agrees to each call. E2e tests assert the list, and that nothing leaves
+   the origin otherwise.
 3. **GSSK is pinned and unmodified** (NFR-KER-001). Never edit `vendor/gssk/`. Upgrade with
    `npm run gssk:update -- <dist-commit>` in its own PR.
 4. **Every number has a provenance** (NFR-HON-001): a run's manifest says which kernel, which

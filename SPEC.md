@@ -227,6 +227,23 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
   money flow takes `logic: "price"` with a constant, a price node or a forced price, and payer
   exhaustion stops the purchase.
 
+### 5.7 Who set an input (M12, FR-PROV-001, ADR 0016)
+
+An LLM never produces a result (NFR-HON-002), but the assistant may set an input: a node's
+value or capacity, or a node's or flow's parameter. Every input it sets is marked.
+
+- **Stored** in `_provenance`, keyed `node:<id>:<field>` or `edge:<id>:<field>` (`value`,
+  `capacity`, `params.k`…), as `{ by, at, provider?, model?, why? }`, with `by` one of
+  `assistant`, `user` or `calibration`. The kernel never sees it, so the model hash is unchanged.
+- **Shown**: a ≈ mark on the symbol or flow, with which inputs and why on hover; a note in its
+  inspector; an info item in the checks ("2 values were set by the assistant and are not from
+  data").
+- **Counted**: every run's manifest carries `assumedInputs`, the assistant's marks nobody has
+  replaced, shown beside the model hash.
+- **Replaced, never cleared silently**: an edit that changes a marked value marks it `user`;
+  calibration marks it `calibration`. Undo restores the mark. Renames follow; marks on inputs
+  that are gone are dropped. Rebuilding the model from Energese code keeps them.
+
 ## 6. Editor (FR-EDIT)
 
 - **FR-EDIT-001** Palette: every palette symbol, plus Boundary and Sensor. Click places the symbol
@@ -500,8 +517,11 @@ GSSK is a general kernel and Energese is one language over it (ADR 0012). See
 
 ## 13. External services (M6, opt-in, planned)
 
-- **NFR-PRIV-003** No silent network. v1 makes no request outside its own origin; the build's CSP
-  is `connect-src 'self'`, and an e2e test asserts no foreign request.
+- **NFR-PRIV-003** No silent network. Nothing leaves the app's origin unless the person turns the
+  assistant on and agrees to the call (§13.1). The build's CSP `connect-src` is `'self'` plus the
+  assistant's providers (`ALLOWED_ORIGINS`): localhost on any port, the Anthropic, OpenAI and
+  Gemini APIs. E2e tests assert that list, that building and running send nothing foreign, and
+  that an Energese script reaches nothing, localhost included (ADR 0013).
 - A future service (a live data source, an AI write-up of a run) must be enabled by the user,
   consented per call, listed in the CSP at build time, and its key held in memory or encrypted at
   rest — never in plain `localStorage`.
@@ -509,6 +529,36 @@ GSSK is a general kernel and Energese is one language over it (ADR 0012). See
   with its run id. It may propose structure and set inputs (a rate, an initial value, a
   capacity), each marked as an assumption with its provenance until a person or calibration
   replaces it, and counted in every run's manifest (ADR 0016).
+
+### 13.1 The assistant (M12, FR-AST-001, ADR 0016)
+
+A chat beside the inspector (**Assistant** in the toolbar) that explains energy systems diagrams
+and builds or changes the model with the person.
+
+- **Off until turned on.** The person picks a provider: a local OpenAI-compatible server
+  (llamafile, llama-server or Ollama on localhost; no key, nothing leaves the machine), Anthropic
+  (`claude-opus-5-5` by default), OpenAI, or Gemini through its OpenAI-compatible endpoint.
+  Provider, endpoint and model are remembered in this browser; a key is held in memory for the
+  page only.
+- **Consent per call** (`src/assistant/egress.ts`): every request is shown, exactly as sent,
+  before it goes; **Don't send** sends nothing, and "Send without asking" lasts until the page
+  reloads. Only origins in `ALLOWED_ORIGINS` (the CSP's `connect-src`) can be called. Each call is
+  logged for the session (time, provider, origin, bytes, status, SHA-256 of the body) under the
+  panel's settings.
+- **Tools** (`src/assistant/tools.ts`) are the app's own operations, with strict JSON Schemas:
+  describe the model, read the checks and the kernel JSON, add symbols, connect, set a control,
+  set values, declare and set carriers, move, remove, group and pack, add a transaction and its
+  counter-flow, and run the model through the app's worker. A refused call changes nothing and
+  says why; every edit returns the checks.
+- **Cards**: a turn's edits build a draft, shown as one card listing each step. **Apply** makes
+  them one undo step; **Discard**, or sending the next message without applying, leaves the
+  model as it was, and the assistant is told which. A card whose model has changed since is not
+  applied.
+- **Numbers** (NFR-HON-002): every input the assistant sets is marked (§5.7). Results come only
+  from `run_model`, which reports the run's model hash. A figure in a reply that is in no tool
+  result, message or model is struck through and flagged.
+- **Not yet**: calibration and Energese scripts as tools, and drawing a card's draft on the canvas
+  before it is applied.
 
 ## 14. Storage and security
 
@@ -605,23 +655,23 @@ See [AGENTS.md](AGENTS.md#layout).
 
 ## 19. Milestones
 
-| ID  | Scope                                                                                                                                              | Status                     |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                                                                     | done                       |
-| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback                                                    | done                       |
-| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor                                           | done                       |
-| M3  | Observations and fitness (§11)                                                                                                                     | done                       |
-| M4  | Calibration and sensitivity (§12)                                                                                                                  | done                       |
-| M5  | Forcing functions and ensembles (§12)                                                                                                              | done                       |
-| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                                                                       | planned                    |
-| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                                                           | done                       |
-| M7b | Building blocks: packed groups saved as cited, tested blocks with typed ports, from a library repository (ADR 0017); unpacking built-in composites | proposed                   |
-| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)                                                        | done                       |
-| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                                                          | planned                    |
-| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                                                                     | planned                    |
-| M11 | Article editing: LaTeX in the browser, figures bound to runs                                                                                       | planned                    |
-| M12 | Assistant: chat that edits through the app's operations as cards to apply; local model first; inputs it sets are marked (ADR 0016)                 | proposed                   |
-| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9                                                       | done; pricing waits on K-9 |
+| ID  | Scope                                                                                                                                              | Status                                                   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                                                                     | done                                                     |
+| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback                                                    | done                                                     |
+| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor                                           | done                                                     |
+| M3  | Observations and fitness (§11)                                                                                                                     | done                                                     |
+| M4  | Calibration and sensitivity (§12)                                                                                                                  | done                                                     |
+| M5  | Forcing functions and ensembles (§12)                                                                                                              | done                                                     |
+| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                                                                       | planned                                                  |
+| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                                                           | done                                                     |
+| M7b | Building blocks: packed groups saved as cited, tested blocks with typed ports, from a library repository (ADR 0017); unpacking built-in composites | proposed                                                 |
+| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)                                                        | done                                                     |
+| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                                                          | planned                                                  |
+| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                                                                     | planned                                                  |
+| M11 | Article editing: LaTeX in the browser, figures bound to runs                                                                                       | planned                                                  |
+| M12 | Assistant: chat that edits through the app's operations as cards to apply; local model first; inputs it sets are marked (ADR 0016)                 | done; calibrate and script tools, canvas preview to come |
+| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9                                                       | done; pricing waits on K-9                               |
 
 ## 20. Open questions
 

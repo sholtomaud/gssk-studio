@@ -372,8 +372,8 @@ export class ResultsPanel extends BaseComponent {
         solver,
         ' ',
         el('span', {
-          text: `${m.steps.toLocaleString('en')} steps · ${m.method} · dt ${m.dt} · ${r.elapsedMs.toFixed(0)} ms · GSSK ${m.kernelVersion} · model ${m.modelHash.slice(0, 8)}`,
-          title: `Model hash ${m.modelHash}\nKernel SHA-256 ${m.kernelSha256}`,
+          text: `${m.steps.toLocaleString('en')} steps · ${m.method} · dt ${m.dt} · ${r.elapsedMs.toFixed(0)} ms · GSSK ${m.kernelVersion} · model ${m.modelHash.slice(0, 8)}${m.assumedInputs ? ` · ${m.assumedInputs} assumed input${m.assumedInputs === 1 ? '' : 's'}` : ''}`,
+          title: `Model hash ${m.modelHash}\nKernel SHA-256 ${m.kernelSha256}${m.assumedInputs ? `\n${m.assumedInputs} input${m.assumedInputs === 1 ? ' was' : 's were'} set by the assistant, not from data (ADR 0016)` : ''}`,
         })
       );
       if (s.state === 'done' && s.stale)

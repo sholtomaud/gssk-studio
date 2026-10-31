@@ -16,3 +16,20 @@ test('no request goes outside the app origin', async ({ page, baseURL }) => {
   await expect(page.locator('.k-status')).toHaveText(/Verified/);
   expect(foreign).toEqual([]);
 });
+
+/** The page may reach only its own origin and the assistant's providers (ADR 0016). */
+test('the CSP lists only its own origin and the assistant’s providers', async ({ page }) => {
+  await page.goto('./');
+  const csp = await page
+    .locator('meta[http-equiv="Content-Security-Policy"]')
+    .getAttribute('content');
+  const connect = csp?.split(';').find((d) => d.trim().startsWith('connect-src'));
+  expect(connect?.trim().split(/\s+/).slice(1)).toEqual([
+    "'self'",
+    'http://localhost:*',
+    'http://127.0.0.1:*',
+    'https://api.anthropic.com',
+    'https://api.openai.com',
+    'https://generativelanguage.googleapis.com',
+  ]);
+});

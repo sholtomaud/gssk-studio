@@ -96,6 +96,9 @@
 :host .issues li.warning .icon-svg {
   color: var(--warning-text);
 }
+:host .issues li.info .icon-svg {
+  color: var(--accent-strong);
+}
 :host .issues li.ok .icon-svg {
   color: var(--good-text);
 }
@@ -249,4 +252,19 @@
   flex: 1;
   min-width: 0;
   font-size: 13px;
+}
+/* Inputs the assistant set (ADR 0016) */
+:host .assumed-note {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+}
+:host .assumed-note ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+:host .assumed-note p {
+  margin: 0;
 }

@@ -93,6 +93,7 @@ import { observationsFromCsv, observationTargets } from '../../../fit/observatio
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import { SYMBOL_SCALE } from '../../../diagram/geometry.ts';
 import { kernelHash, toKernelModel } from '../../../model/kernel-json.ts';
+import { marksFor } from '../../../model/provenance.ts';
 import { BUILTIN_ICONS, builtinIcon, DEFAULT_ICON } from '../../../diagram/icons.ts';
 import {
   addIcon,
@@ -1317,6 +1318,30 @@ export class InspectorPanel extends BaseComponent {
     );
   }
 
+  /**
+   * Which of a symbol's or flow's inputs the assistant set, and why (ADR
+   * 0016). Editing one, or calibrating it, replaces the mark.
+   */
+  private assumedNote(m: StudioModel, kind: 'node' | 'edge', id: string): HTMLElement | null {
+    const marks = marksFor(m, kind, id).filter((x) => x.mark.by === 'assistant');
+    if (marks.length === 0) return null;
+    return el(
+      'div',
+      { class: 'assumed-note', role: 'note' },
+      el('strong', { text: '≈ Assumed by the assistant, not from data' }),
+      el(
+        'ul',
+        {},
+        ...marks.map((x) =>
+          el('li', {
+            text: `${x.field.replace(/^params\./, '')}${x.mark.why ? `: ${x.mark.why}` : ''}${x.mark.model ? ` (${x.mark.model})` : ''}`,
+          })
+        )
+      ),
+      el('p', { class: 'hint', text: 'Edit a value, or calibrate it, to replace the assumption.' })
+    );
+  }
+
   /** Observed data to fit runs against (FR-OBS-001). */
   private observationsSection(m: StudioModel): HTMLElement {
     const cur = () => this._model ?? m;
@@ -1532,6 +1557,7 @@ export class InspectorPanel extends BaseComponent {
         'section',
         {},
         el('h3', { text: 'Values' }),
+        this.assumedNote(m, 'node', n.id),
         el(
           'div',
           { class: 'row2' },
@@ -1657,6 +1683,7 @@ export class InspectorPanel extends BaseComponent {
           el('span', { class: 'hint', text: '→' }),
           end(e.target)
         ),
+        this.assumedNote(m, 'edge', id),
         this.selectField<EdgeLogic>(
           'Logic',
           e.logic,
@@ -1935,13 +1962,14 @@ export class InspectorPanel extends BaseComponent {
   private renderChecks(): void {
     const errors = this._issues.filter((i) => i.severity === 'error');
     const warnings = this._issues.filter((i) => i.severity === 'warning');
+    const infos = this._issues.filter((i) => i.severity === 'info');
     const list = el('ul', { class: 'issues' });
-    if (this._issues.length === 0) {
+    if (errors.length === 0 && warnings.length === 0) {
       list.append(
         el('li', { class: 'ok' }, icon('check'), el('span', { text: 'No problems found.' }))
       );
     }
-    for (const i of [...errors, ...warnings]) {
+    for (const i of [...errors, ...warnings, ...infos]) {
       const text: Node =
         i.ref && i.ref.kind !== 'config'
           ? (() => {
@@ -1951,7 +1979,9 @@ export class InspectorPanel extends BaseComponent {
               return b;
             })()
           : el('span', { text: i.message });
-      list.append(el('li', { class: i.severity }, icon('alert'), text));
+      list.append(
+        el('li', { class: i.severity }, icon(i.severity === 'info' ? 'info' : 'alert'), text)
+      );
     }
     for (const n of this._notes)
       list.append(

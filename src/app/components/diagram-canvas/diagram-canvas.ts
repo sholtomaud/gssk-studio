@@ -68,6 +68,7 @@ import {
 import { OUTLINES, SYMBOL_DEFS } from '../../../diagram/symbols.ts';
 import { builtinIcon, DEFAULT_ICON, ICON_DEFS } from '../../../diagram/icons.ts';
 import { iconsOf } from '../../../model/icons.ts';
+import { marksFor } from '../../../model/provenance.ts';
 import { el, formatNumber, iconButton, svg } from '../../ui.ts';
 import style from './diagram-canvas.css?raw';
 
@@ -129,6 +130,11 @@ export interface EditDetail {
   label: string;
   /** Consecutive edits with the same key make one undo step (a drag, a nudge). */
   coalesce?: string;
+  /**
+   * Who made the edit, for the marks on inputs (ADR 0016): the assistant sets
+   * its own; calibration and (by default) a person replace the ones they change.
+   */
+  by?: 'assistant' | 'calibration';
   select?: Selection;
 }
 
@@ -422,6 +428,25 @@ export class DiagramCanvas extends BaseComponent {
     return t;
   }
 
+  /**
+   * The "assumed" mark (ADR 0016): on a symbol or flow with an input the
+   * assistant set and nobody has replaced, saying which and why.
+   */
+  private assumedMark(kind: 'node' | 'edge', id: string, x: number, y: number): SVGElement | null {
+    const marks = this._model
+      ? marksFor(this._model, kind, id).filter((x) => x.mark.by === 'assistant')
+      : [];
+    if (marks.length === 0) return null;
+    const t = svg('text', { class: 'assumed', x, y });
+    t.textContent = '≈';
+    const title = svg('title');
+    title.textContent = `Assumed by the assistant, not from data: ${marks
+      .map((x) => `${x.field.replace(/^params\./, '')}${x.mark.why ? ` (${x.mark.why})` : ''}`)
+      .join('; ')}. Edit or calibrate to replace.`;
+    t.append(title);
+    return t;
+  }
+
   private badge(id: string, x: number, y: number): SVGGElement | null {
     return this.badgeFor(this._issues.get(id), x, y);
   }
@@ -640,6 +665,8 @@ export class DiagramCanvas extends BaseComponent {
     g.append(title);
     const nb = this.badge(n.id, -box.w - 2, -box.h - 2);
     if (nb) g.append(nb);
+    const assumed = this.assumedMark('node', n.id, -box.w - 4, box.h - 2);
+    if (assumed) g.append(assumed);
     this.nodeEls.set(n.id, g);
     this.layers.nodes.append(g);
     if (selected && this._selection?.kind === 'node') this.renderShapeHandles(n);
@@ -864,6 +891,9 @@ export class DiagramCanvas extends BaseComponent {
       const at = pointAt(curve, 0.38);
       g.append(this.forcedMark(at.x + 10, at.y - 6));
     }
+    const guess = pointAt(curve, 0.22);
+    const assumed = this.assumedMark('edge', e.id, guess.x, guess.y - 8);
+    if (assumed) g.append(assumed);
     const title = svg('title');
     const pair = trx ? (trx.marked === e ? partnerOf(m, e) : trx.marked) : undefined;
     title.textContent = `${e.id}: ${e.logic}, k = ${e.forcing ? describeForcing(e.forcing) : e.params.k}${e.carrier ? `, carries ${e.carrier}` : ''}${control ? `, controlled by ${control.id}` : ''}${e.visual?.sensor ? ', sensed' : ''}${trx ? (pair ? `, transaction with ${pair.id}` : ', transaction without its counter-flow') : ''}`;

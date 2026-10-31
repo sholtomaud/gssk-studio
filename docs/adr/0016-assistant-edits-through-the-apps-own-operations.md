@@ -1,6 +1,7 @@
 # ADR 0016 — The assistant edits through the app's own operations, and marks every number it sets
 
-**Status**: proposed (M12). Amends NFR-HON-002 at the owner's request.
+**Status**: accepted (M12). Amends NFR-HON-002 at the owner's request. Calibration and
+Energese scripts as tools, and drawing a card's draft on the canvas, are still to come.
 
 ## Context
 
@@ -113,5 +114,9 @@ Each card says why. The person can apply them one at a time.
   drives e2e tests, so CI needs no network or model.
 - The e2e test that no request leaves the origin keeps passing with the assistant off. A second
   test asserts that each call goes only to the chosen provider's origin, after consent.
+- Widening `connect-src` reaches the Energese script worker too, which inherits the page's
+  policy (ADR 0013). The worker therefore seals every network API (`fetch`, XHR, WebSocket,
+  EventSource, `sendBeacon`) and `Worker` before a script loads, and an e2e test asserts a
+  script cannot reach localhost.
 - This builds on M10's services groundwork (ADR 0014) for the hosted providers. The local
   provider needs none of it.

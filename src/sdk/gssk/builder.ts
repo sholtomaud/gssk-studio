@@ -444,6 +444,9 @@ export class GsskModel {
         ...(prev?._diagram.icons?.length ? { icons: structuredClone(prev._diagram.icons) } : {}),
       },
       ...(observations.length ? { _observations: observations } : {}),
+      // Who set each input (ADR 0016) is data, like observations: kept from the model this
+      // replaces. A value the script changes becomes the person's when the edit is committed.
+      ...(prev?._provenance ? { _provenance: structuredClone(prev._provenance) } : {}),
     };
     // As loading a file does: drop members that are not nodes, and empty groups.
     tidyGroups(model);

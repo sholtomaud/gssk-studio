@@ -99,6 +99,20 @@ export interface NodeVisual {
   icon?: string;
 }
 
+/**
+ * Who set an input value (NFR-HON-002, ADR 0016): the assistant (an
+ * assumption), a person, or calibration against observations.
+ */
+export interface Provenance {
+  by: 'assistant' | 'user' | 'calibration';
+  /** ISO 8601 time it was set. */
+  at: string;
+  /** For the assistant: which provider and model, and why it chose the value. */
+  provider?: string;
+  model?: string;
+  why?: string;
+}
+
 /** A picture of the model's own for the icon view (FR-EDIT-014): an image as a data URL. */
 export interface Icon {
   id: string;
@@ -257,6 +271,8 @@ export interface StudioModel {
   _observations?: ObservationSeries[];
   /** Editor-only: the last Energese script applied, as provenance (ADR 0011). */
   _energese?: ScriptProvenance;
+  /** Editor-only: who set each input, keyed `node:<id>:<field>` or `edge:<id>:<field>` (ADR 0016). */
+  _provenance?: Record<string, Provenance>;
 }
 
 /**
