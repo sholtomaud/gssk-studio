@@ -235,7 +235,10 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
 - **FR-EDIT-002** Select, move (grid 10), delete (Delete/Backspace), nudge (arrows, Shift ×5).
 - **FR-EDIT-003** Wire: drag from a node's port onto another node to add a flow; onto a flow to
   make the node that flow's control, turning it into an interaction with a drawn work gate.
-  Self-loops and duplicate flows are refused.
+  Self-loops are refused. A symbol takes any number of flows in and out, and a second flow
+  between the same two symbols is a parallel pathway, as Odum draws them: its own logic and
+  rate, added by the kernel. Each further parallel flow bows 24 units further out, so all can be
+  seen and picked.
 - **FR-EDIT-004** Shape: a selected flow shows two Bézier handles; "Straighten curve" removes them.
 - **FR-EDIT-005** Inspector: properties of the selection or, with nothing selected, of the model
   and its run settings. Renaming an id rewrites every reference to it.
@@ -257,6 +260,13 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
   under fresh ids; a control outside the copy keeps pointing at the original while it exists.
 - **FR-EDIT-012** Align (left, centre, right, top, middle, bottom) and distribute (horizontally,
   vertically) several symbols from the inspector.
+- **FR-EDIT-013** Turn and size a symbol, as Odum turns an interaction toward its heat sink. A
+  single selected symbol shows a knob above it, which turns it in 15° steps (Shift: 1°), and a
+  corner square, which sizes it from 50 % to 300 % in 5 % steps; the inspector's **Turn (°)** and
+  **Size (%)** fields do the same. Flows attach to the outline as turned and sized (a turned heat
+  sink is still entered at its top); labels, gauge and port stay upright. Stored as
+  `visual.rotation` (degrees, clockwise) and `visual.scale`, omitted at 0° and 100 %; layout
+  only, so neither marks a run out of date, and both round-trip through files and Energese code.
 
 ### 6.1 Packing and unpacking (M7a, FR-GRP-001)
 

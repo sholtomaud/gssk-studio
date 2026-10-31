@@ -169,6 +169,8 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
     if (n.carrier) entries.push(['carrier', str(n.carrier)]);
     entries.push(['at', `[${num(n.visual.x)}, ${num(n.visual.y)}]`]);
     if (n.visual.capacity !== undefined) entries.push(['capacity', num(n.visual.capacity)]);
+    if (n.visual.scale !== undefined) entries.push(['scale', num(n.visual.scale)]);
+    if (n.visual.rotation !== undefined) entries.push(['rotation', num(n.visual.rotation)]);
     if (n.forcing) entries.push(['forcing', forcingLit(n.forcing)]);
     if (raw.length) entries.push(['params', { obj: raw }]);
     const v = vars.get(n.id)!;

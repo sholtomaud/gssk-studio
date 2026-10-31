@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   anchor,
   bounds,
+  boxOf,
   COUPLE_GAP,
+  LANE_GAP,
   couplePoint,
   coupledCurve,
   edgeCurve,
@@ -57,6 +59,31 @@ describe('diagram geometry (SPEC §6.2)', () => {
     const c = edgeCurve(e, node('a', 'storage', 0, 0), node('b', 'storage', 300, 0));
     expect(c.c1.y).toBeCloseTo(c.p0.y - 100);
     expect(c.c2.y).toBeCloseTo(c.p1.y - 100);
+  });
+
+  it('anchors on a symbol as sized and turned (FR-EDIT-013)', () => {
+    const big = { ...node('a', 'source', 0, 0), visual: { x: 0, y: 0, scale: 2 } };
+    expect(anchor(big, { x: 100, y: 0 }).x).toBeCloseTo(2 * halfExtent('source').w);
+    // A heat sink turned a quarter clockwise is entered at its top, now on its right.
+    const sink = { ...node('s', 'sink', 0, 0), visual: { x: 0, y: 0, rotation: 90 } };
+    const p = anchor(sink, { x: 0, y: 1000 });
+    expect(p.x).toBeCloseTo(halfExtent('sink').h);
+    expect(p.y).toBeCloseTo(0);
+    // A turned box swaps its width and height.
+    const turned = { ...node('t', 'storage', 0, 0), visual: { x: 0, y: 0, rotation: 90 } };
+    expect(boxOf(turned).w).toBeCloseTo(halfExtent('storage').h);
+    expect(boxOf(turned).h).toBeCloseTo(halfExtent('storage').w);
+  });
+
+  it('bows each parallel flow between the same two symbols further out (FR-EDIT-003)', () => {
+    const a = node('a', 'source', 0, 0);
+    const b = node('b', 'source', 300, 0);
+    const y = (lane: number) => pointAt(edgeCurve(edge, a, b, lane), 0.5).y;
+    // About LANE_GAP apart: their ends also slide round the outlines.
+    for (const gap of [y(1) - y(0), y(2) - y(1)]) {
+      expect(Math.abs(gap)).toBeGreaterThan(LANE_GAP - 3);
+      expect(Math.abs(gap)).toBeLessThan(LANE_GAP + 3);
+    }
   });
 
   it('bounds points with padding, and a default view when empty', () => {

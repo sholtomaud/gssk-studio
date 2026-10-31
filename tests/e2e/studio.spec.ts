@@ -87,6 +87,63 @@ test('build a model from the palette, wire it, run it, undo it', async ({ page }
   await expect(page.locator('results-panel .status')).toContainText('Model changed since this run');
 });
 
+test('two flows between the same symbols are parallel pathways (FR-EDIT-003)', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'New model' }).click();
+  await page.getByRole('button', { name: 'Add Source' }).click();
+  await page.getByRole('button', { name: 'Add Storage' }).click();
+  await wire(page, 'source', 'node:storage');
+  await page.keyboard.press('Escape');
+  await wire(page, 'source', 'node:storage');
+  await expect(page.locator('diagram-canvas g.edge[data-edge]')).toHaveCount(2);
+  const mid = (id: string) =>
+    page
+      .locator(`[data-edge="${id}"] .line`)
+      .evaluate(
+        (el) =>
+          (el as SVGPathElement).getPointAtLength((el as SVGPathElement).getTotalLength() / 2).y
+      );
+  // The second bows further out, so both can be seen and picked.
+  expect(
+    Math.abs((await mid('source_to_storage_2')) - (await mid('source_to_storage')))
+  ).toBeGreaterThan(18);
+});
+
+test('turn and size a symbol by its handles or the inspector (FR-EDIT-013)', async ({ page }) => {
+  await openExample(page, 'grassland');
+  const grass = page.locator('[data-node="grass"]');
+  await grass.locator('.shape').click();
+  await expect(page.locator('diagram-canvas .rotate-handle')).toHaveCount(1);
+
+  // Swing the knob a quarter turn clockwise about the symbol's centre.
+  const c = await grass.locator('.shape').boundingBox();
+  const k = await page.locator('diagram-canvas .rotate-handle').boundingBox();
+  const cx = c!.x + c!.width / 2;
+  const cy = c!.y + c!.height / 2;
+  await page.mouse.move(k!.x + k!.width / 2, k!.y + k!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cx + 50, cy - 50, { steps: 4 });
+  await page.mouse.move(cx + 70, cy, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator('inspector-panel input[name="rotation"]')).toHaveValue('90');
+  await expect(grass.locator('.shape')).toHaveAttribute('transform', /rotate\(90\)/);
+
+  // Drag the corner outwards to grow it, in 5 % steps.
+  const s = await page.locator('diagram-canvas .size-handle').boundingBox();
+  await page.mouse.move(s!.x + s!.width / 2, s!.y + s!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(s!.x + 40, s!.y + 40, { steps: 5 });
+  await page.mouse.up();
+  const size = Number(await page.locator('inspector-panel input[name="scale"]').inputValue());
+  expect(size).toBeGreaterThan(100);
+  expect(size % 5).toBe(0);
+
+  // The inspector sets them too; 0° and 100 % store nothing.
+  await page.locator('inspector-panel input[name="rotation"]').fill('0');
+  await page.locator('inspector-panel input[name="scale"]').fill('100');
+  await expect(grass.locator('.shape')).toHaveAttribute('transform', 'rotate(0) scale(1)');
+});
+
 test('a sensor on a flow shows its rate and charts it (FR-EDIT-010)', async ({ page }) => {
   await openExample(page, 'household');
   await clickEdge(page, 'spend');

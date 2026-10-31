@@ -46,6 +46,10 @@ export interface SymbolProps {
   carrier?: string;
   at?: readonly [number, number];
   capacity?: number;
+  /** Drawn size, 1 as drawn. */
+  scale?: number;
+  /** Turned clockwise, in degrees. */
+  rotation?: number;
   params?: NodeParamsInput;
   /** Drives a source's or constant's held value over time (FR-FRC-001). */
   forcing?: Forcing;
@@ -72,6 +76,8 @@ abstract class OdumSymbol implements NodeRef {
       ...(props.carrier !== undefined ? { carrier: props.carrier } : {}),
       ...(props.at !== undefined ? { at: props.at } : {}),
       ...(props.capacity !== undefined ? { capacity: props.capacity } : {}),
+      ...(props.scale !== undefined ? { scale: props.scale } : {}),
+      ...(props.rotation !== undefined ? { rotation: props.rotation } : {}),
       ...(Object.keys(params).length ? { params } : {}),
       ...(props.forcing !== undefined ? { forcing: props.forcing } : {}),
     };

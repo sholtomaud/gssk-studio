@@ -108,6 +108,10 @@ export function normaliseModel(raw: unknown): ParseResult {
     };
     const cap = num(v.capacity);
     if (cap !== undefined) node.visual.capacity = cap;
+    const scale = num(v.scale);
+    if (scale !== undefined && scale > 0 && scale !== 1) node.visual.scale = scale;
+    const rotation = num(v.rotation);
+    if (rotation !== undefined && rotation % 360 !== 0) node.visual.rotation = rotation;
     if (x === undefined || y === undefined)
       notes.push(`“${id}” had no position; placed on a grid.`);
     const carrier = str(rn.carrier);

@@ -88,6 +88,10 @@ export interface NodeVisual {
   label?: string;
   /** Reference level for the storage fill gauge (0–100 %). */
   capacity?: number;
+  /** Drawn size, 1 as drawn by default (FR-EDIT-013). */
+  scale?: number;
+  /** Turned clockwise, in degrees (FR-EDIT-013). */
+  rotation?: number;
 }
 
 export interface ModelNode {

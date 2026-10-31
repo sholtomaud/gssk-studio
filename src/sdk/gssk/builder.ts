@@ -77,6 +77,10 @@ export interface NodeInput {
   at?: readonly [number, number];
   /** Reference level for the storage gauge. */
   capacity?: number;
+  /** Drawn size, 1 as drawn. */
+  scale?: number;
+  /** Turned clockwise, in degrees. */
+  rotation?: number;
   /** Drives the held value over time (sources and constants, FR-FRC-001). */
   forcing?: Forcing;
 }
@@ -223,6 +227,8 @@ export class GsskModel {
         y: at?.y ?? 0,
         label,
         ...(input.capacity !== undefined ? { capacity: input.capacity } : {}),
+        ...(input.scale !== undefined ? { scale: input.scale } : {}),
+        ...(input.rotation !== undefined ? { rotation: input.rotation } : {}),
       },
     };
     if (input.carrier) node.carrier = input.carrier;
@@ -360,6 +366,12 @@ export class GsskModel {
         n.visual.y = old.visual.y;
         if (n.visual.capacity === undefined && old.visual.capacity !== undefined) {
           n.visual.capacity = old.visual.capacity;
+        }
+        if (n.visual.scale === undefined && old.visual.scale !== undefined) {
+          n.visual.scale = old.visual.scale;
+        }
+        if (n.visual.rotation === undefined && old.visual.rotation !== undefined) {
+          n.visual.rotation = old.visual.rotation;
         }
       } else unplaced.add(n.id);
     });

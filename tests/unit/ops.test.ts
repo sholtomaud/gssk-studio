@@ -42,12 +42,14 @@ describe('model operations (SPEC §6)', () => {
     expect(JSON.stringify(m)).toBe(before);
   });
 
-  it('connects two nodes once, refusing self-loops and duplicates', () => {
+  it('connects two nodes, refusing self-loops; a second flow is a parallel pathway', () => {
     const m = threeNodes();
     const a = connect(m, 'sun', 'tank');
     expect(a.id).toBe('sun_to_tank');
     expect(a.model.edges[0]).toMatchObject({ origin: 'sun', target: 'tank', logic: 'linear' });
-    expect(connect(a.model, 'sun', 'tank').id).toBeNull();
+    const b = connect(a.model, 'sun', 'tank');
+    expect(b.id).toBe('sun_to_tank_2');
+    expect(b.model.edges).toHaveLength(2);
     expect(connect(m, 'sun', 'sun').id).toBeNull();
     expect(connect(m, 'sun', 'nowhere').id).toBeNull();
   });

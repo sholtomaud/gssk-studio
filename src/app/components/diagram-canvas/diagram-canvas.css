@@ -407,3 +407,10 @@
   text-anchor: middle;
   pointer-events: none;
 }
+/* Turning and sizing a symbol (FR-EDIT-013) */
+:host .rotate-handle {
+  cursor: grab;
+}
+:host .size-handle {
+  cursor: nwse-resize;
+}

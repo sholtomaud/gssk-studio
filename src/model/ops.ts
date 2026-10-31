@@ -95,8 +95,10 @@ function defaultLogic(m: StudioModel, origin: string): EdgeLogic {
 }
 
 /**
- * A flow from origin to target. Refuses self-loops and duplicates of an
- * existing origin→target flow, returning the model unchanged and id null.
+ * A flow from origin to target. Refuses self-loops, returning the model
+ * unchanged and id null. A second flow between the same two symbols is a
+ * pathway of its own, as Odum draws them (FR-EDIT-003): each has its own
+ * logic and rate, and the kernel adds them.
  */
 export function connect(
   m: StudioModel,
@@ -104,9 +106,6 @@ export function connect(
   target: string
 ): { model: StudioModel; id: string | null } {
   if (origin === target || !findNode(m, origin) || !findNode(m, target)) {
-    return { model: m, id: null };
-  }
-  if (m.edges.some((e) => e.origin === origin && e.target === target)) {
     return { model: m, id: null };
   }
   const next = cloneModel(m);

@@ -91,6 +91,7 @@ import { symbolIcon } from '../../symbol-icon.ts';
 import { el, formatNumber, icon, iconButton, svg, toast } from '../../ui.ts';
 import { observationsFromCsv, observationTargets } from '../../../fit/observations.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
+import { SYMBOL_SCALE } from '../../../diagram/geometry.ts';
 import style from './inspector-panel.css?raw';
 
 type NodeParam = keyof NonNullable<ModelNode['params']>;
@@ -1258,6 +1259,34 @@ export class InspectorPanel extends BaseComponent {
             this.renderForm(true);
           },
           'type'
+        ),
+        // Layout only: the kernel never sees a symbol's size or turn (FR-EDIT-013).
+        el(
+          'div',
+          { class: 'row2' },
+          this.numberField(
+            'Size (%)',
+            Math.round((n.visual.scale ?? 1) * 100),
+            (v) => {
+              const { min, max } = SYMBOL_SCALE;
+              const k = Math.min(max, Math.max(min, (v ?? 100) / 100));
+              patch('Size', 'scale', (x) =>
+                k === 1 ? delete x.visual.scale : (x.visual.scale = k)
+              );
+            },
+            { optional: true, step: '5', name: 'scale' }
+          ),
+          this.numberField(
+            'Turn (°)',
+            n.visual.rotation ?? 0,
+            (v) => {
+              const deg = (((v ?? 0) % 360) + 360) % 360;
+              patch('Turn', 'rotation', (x) =>
+                deg === 0 ? delete x.visual.rotation : (x.visual.rotation = deg)
+              );
+            },
+            { optional: true, step: '15', name: 'rotation' }
+          )
         )
       ),
       el(

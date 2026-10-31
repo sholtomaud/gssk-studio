@@ -39,6 +39,7 @@ import {
   snap,
   updateBoundary,
   updateEdge,
+  updateNode,
   moveNodes,
   selectedNodeIds,
   selectNodes,
@@ -49,6 +50,7 @@ import {
 import type { Group, ModelEdge, ModelNode, Point, StudioModel } from '../../../model/types.ts';
 import {
   bounds,
+  boxOf,
   couplePoint,
   coupledCurve,
   edgeCurve,
@@ -59,6 +61,7 @@ import {
   SCALE,
   type Curve,
   SIZE,
+  SYMBOL_SCALE,
   type Shape,
 } from '../../../diagram/geometry.ts';
 import { OUTLINES, SYMBOL_DEFS } from '../../../diagram/symbols.ts';
@@ -103,6 +106,8 @@ function storeFlag(key: string, on: boolean): void {
 }
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
+/** How far above a selected symbol its turn knob sits. */
+const ROTATE_REACH = 30;
 
 /** What the validator found on one node or flow (FR-VAL-002). */
 export interface Marked {
@@ -134,7 +139,10 @@ type Drag =
   | { kind: 'wire'; from: string; to: Point }
   | { kind: 'ctrl'; edgeId: string; which: 1 | 2; key: string }
   | { kind: 'boundary'; id: string; offset: Point; key: string; moved: boolean }
-  | { kind: 'resize'; id: string; key: string };
+  | { kind: 'resize'; id: string; key: string }
+  /** Turning by the knob: the pointer's angle and the symbol's turn when the drag began. */
+  | { kind: 'rotate'; id: string; key: string; from: number; base: number }
+  | { kind: 'scale'; id: string; key: string };
 
 export class DiagramCanvas extends BaseComponent {
   private _model: StudioModel | null = null;
@@ -512,7 +520,10 @@ export class DiagramCanvas extends BaseComponent {
 
   private renderNode(n: ModelNode): void {
     const spec = symbolFor(n.type);
+    // The symbol is drawn at its own size and turn; its labels, gauge and port sit
+    // upright around the box that holds it (FR-EDIT-013).
     const { w, h } = halfExtent(n.type);
+    const box = boxOf(n);
     const selected = selectedNodeIds(this._selection).includes(n.id);
     const label = n.visual.label ?? n.id;
     const g = svg('g', {
@@ -524,19 +535,24 @@ export class DiagramCanvas extends BaseComponent {
       'aria-label': `${spec.label}: ${label}`,
       'aria-pressed': selected ? 'true' : 'false',
     });
-    const glow = this.glow(this._issues.get(n.id), w, h);
+    const glow = this.glow(this._issues.get(n.id), box.w, box.h);
     if (glow) g.append(glow);
     g.append(
       svg('rect', {
         class: 'halo',
-        x: -w - 8,
-        y: -h - 8,
-        width: 2 * w + 16,
-        height: 2 * h + 16,
+        x: -box.w - 8,
+        y: -box.h - 8,
+        width: 2 * box.w + 16,
+        height: 2 * box.h + 16,
         rx: 6,
-      }),
-      svg('rect', { class: 'body', x: -w, y: -h, width: 2 * w, height: 2 * h, rx: 4 })
+      })
     );
+    const shape = svg('g', {
+      class: 'shape',
+      transform: `rotate(${n.visual.rotation ?? 0}) scale(${n.visual.scale ?? 1})`,
+    });
+    g.append(shape);
+    shape.append(svg('rect', { class: 'body', x: -w, y: -h, width: 2 * w, height: 2 * h, rx: 4 }));
     const leveled = spec.holdsState && !!n.visual.capacity;
     const outline = OUTLINES[spec.symbol];
     if (leveled && this.fill && outline) {
@@ -547,7 +563,7 @@ export class DiagramCanvas extends BaseComponent {
         svg('stop', { class: 'level-on', offset: 0 }),
         svg('stop', { class: 'level-off', offset: 0 })
       );
-      g.append(
+      shape.append(
         grad,
         svg('path', {
           class: 'level-fill',
@@ -557,38 +573,80 @@ export class DiagramCanvas extends BaseComponent {
         })
       );
     }
-    g.append(
+    shape.append(
       svg('use', { href: `#${spec.symbol}`, x: -SIZE / 2, y: -SIZE / 2, width: SIZE, height: SIZE })
     );
     const gauge = leveled && (this.gauges || !outline);
     if (gauge) {
+      const { w, h } = box;
       g.append(
         svg('rect', { class: 'gauge-bg', x: w + 6, y: -h, width: 6, height: 2 * h, rx: 2 }),
         svg('rect', { class: 'gauge', x: w + 6, y: h, width: 6, height: 0, rx: 2 })
       );
     }
-    const text = svg('text', { class: 'label', y: h + 18 });
+    const text = svg('text', { class: 'label', y: box.h + 18 });
     text.textContent = label;
-    const reading = svg('text', { class: 'reading', y: h + 32 });
+    const reading = svg('text', { class: 'reading', y: box.h + 32 });
     g.append(
       text,
       reading,
       svg('circle', {
         class: 'port',
         'data-port': n.id,
-        cx: w + (gauge ? 20 : 8),
+        cx: box.w + (gauge ? 20 : 8),
         cy: 0,
         r: 6,
       })
     );
-    if (n.forcing) g.append(this.forcedMark(w + 2, -h + 4));
+    if (n.forcing) g.append(this.forcedMark(box.w + 2, -box.h + 4));
     const title = svg('title');
     title.textContent = `${spec.label} “${label}” (${n.id})${n.forcing ? `, forced: ${describeForcing(n.forcing)}` : ''}`;
     g.append(title);
-    const nb = this.badge(n.id, -w - 2, -h - 2);
+    const nb = this.badge(n.id, -box.w - 2, -box.h - 2);
     if (nb) g.append(nb);
     this.nodeEls.set(n.id, g);
     this.layers.nodes.append(g);
+    if (selected && this._selection?.kind === 'node') this.renderShapeHandles(n);
+  }
+
+  /**
+   * Turn and size handles on a single selected symbol (FR-EDIT-013), upright
+   * whatever its turn: a knob above it turns it, in 15° steps (Shift: 1°); the
+   * bottom-right corner sizes it.
+   */
+  private renderShapeHandles(n: ModelNode): void {
+    const { w, h } = boxOf(n);
+    const { x, y } = n.visual;
+    const top = { x, y: y - h - 8 };
+    const knob = { x, y: y - h - ROTATE_REACH };
+    const corner = { x: x + w + 8, y: y + h + 8 };
+    const turner = svg('circle', {
+      class: 'handle rotate-handle',
+      'data-rotate': n.id,
+      cx: knob.x,
+      cy: knob.y,
+      r: 6,
+    });
+    const sizer = svg('rect', {
+      class: 'handle size-handle',
+      'data-scale': n.id,
+      x: corner.x - 5,
+      y: corner.y - 5,
+      width: 10,
+      height: 10,
+      rx: 2,
+    });
+    const rt = svg('title');
+    rt.textContent = `Drag to turn (Shift: by 1°); now ${n.visual.rotation ?? 0}°`;
+    const st = svg('title');
+    st.textContent = `Drag to resize; now ${Math.round((n.visual.scale ?? 1) * 100)} %`;
+    turner.append(rt);
+    sizer.append(st);
+    this.layers.overlay.append(
+      svg('line', { class: 'handle-line', x1: top.x, y1: top.y, x2: knob.x, y2: knob.y }),
+      turner,
+      sizer
+    );
   }
 
   /** Where on a flow its transaction diamond sits: clear of a gate or sensor at the middle. */
@@ -619,6 +677,19 @@ export class DiagramCanvas extends BaseComponent {
     return cos < -0.3 ? base : undefined;
   }
 
+  /**
+   * Which of the parallel flows from the same origin to the same target this
+   * is (FR-EDIT-003): 0 for the first, each later one bowing further out.
+   */
+  private laneOf(m: StudioModel, e: ModelEdge): number {
+    let lane = 0;
+    for (const x of m.edges) {
+      if (x === e) return lane;
+      if (x.origin === e.origin && x.target === e.target) lane++;
+    }
+    return 0;
+  }
+
   /** A flow's curve; a counter-flow follows its marked flow. */
   private curveOf(m: StudioModel, e: ModelEdge): Curve | undefined {
     const o = findNode(m, e.origin);
@@ -628,8 +699,13 @@ export class DiagramCanvas extends BaseComponent {
     const bo = base && findNode(m, base.origin);
     const bt = base && findNode(m, base.target);
     if (base && bo && bt)
-      return coupledCurve(edgeCurve(base, bo, bt), this.diamondT(m, base), o, t);
-    return edgeCurve(e, o, t);
+      return coupledCurve(
+        edgeCurve(base, bo, bt, this.laneOf(m, base)),
+        this.diamondT(m, base),
+        o,
+        t
+      );
+    return edgeCurve(e, o, t, this.laneOf(m, e));
   }
 
   private renderEdge(m: StudioModel, e: ModelEdge): void {
@@ -961,7 +1037,7 @@ export class DiagramCanvas extends BaseComponent {
       const frac = Math.max(0, Math.min(1, (v ?? n.value) / n.visual.capacity));
       const gauge = g.querySelector<SVGRectElement>('.gauge');
       if (gauge) {
-        const { h } = halfExtent(n.type);
+        const { h } = boxOf(n);
         gauge.setAttribute('y', String(h - 2 * h * frac));
         gauge.setAttribute('height', String(2 * h * frac));
       }
@@ -1057,6 +1133,8 @@ export class DiagramCanvas extends BaseComponent {
     const port = target.closest('[data-port]');
     const handle = target.closest('[data-edge-handle]');
     const resize = target.closest('[data-resize]');
+    const turner = target.closest('[data-rotate]');
+    const sizer = target.closest('[data-scale]');
     const node = target.closest('[data-node]');
     const edge = target.closest('[data-edge]');
     const boundary = target.closest('[data-boundary]');
@@ -1073,6 +1151,19 @@ export class DiagramCanvas extends BaseComponent {
       };
     } else if (resize) {
       this.drag = { kind: 'resize', id: resize.getAttribute('data-resize') ?? '', key };
+    } else if (turner) {
+      const id = turner.getAttribute('data-rotate') ?? '';
+      const n = findNode(this._model, id);
+      if (!n) return;
+      this.drag = {
+        kind: 'rotate',
+        id,
+        key,
+        from: Math.atan2(p.y - n.visual.y, p.x - n.visual.x),
+        base: n.visual.rotation ?? 0,
+      };
+    } else if (sizer) {
+      this.drag = { kind: 'scale', id: sizer.getAttribute('data-scale') ?? '', key };
     } else if (node) {
       const id = node.getAttribute('data-node') ?? '';
       const n = findNode(this._model, id);
@@ -1199,6 +1290,45 @@ export class DiagramCanvas extends BaseComponent {
           coalesce: d.key,
         });
         break;
+      case 'rotate': {
+        const n = findNode(m, d.id);
+        if (!n) break;
+        // Turned by as much as the pointer has swung about the symbol's centre.
+        const swing = Math.atan2(p.y - n.visual.y, p.x - n.visual.x) - d.from;
+        const raw = d.base + (swing * 180) / Math.PI;
+        const step = e.shiftKey ? 1 : 15;
+        const deg = (((Math.round(raw / step) * step) % 360) + 360) % 360;
+        if (deg === (n.visual.rotation ?? 0)) break;
+        this.emit({
+          model: updateNode(m, d.id, (x) => {
+            if (deg === 0) delete x.visual.rotation;
+            else x.visual.rotation = deg;
+          }),
+          label: `Turn ${d.id}`,
+          coalesce: d.key,
+        });
+        break;
+      }
+      case 'scale': {
+        const n = findNode(m, d.id);
+        if (!n) break;
+        // The corner handle sits 8 units past the box's corner; this is where it sits at size 1.
+        const { w, h } = boxOf({ type: n.type, visual: { ...n.visual, scale: 1 } });
+        const k = Math.hypot(p.x - n.visual.x, p.y - n.visual.y) / Math.hypot(w + 8, h + 8);
+        const { min, max, step } = SYMBOL_SCALE;
+        const scale = Math.min(max, Math.max(min, Math.round(k / step) * step));
+        const rounded = Math.round(scale * 100) / 100;
+        if (rounded === (n.visual.scale ?? 1)) break;
+        this.emit({
+          model: updateNode(m, d.id, (x) => {
+            if (rounded === 1) delete x.visual.scale;
+            else x.visual.scale = rounded;
+          }),
+          label: `Resize ${d.id}`,
+          coalesce: d.key,
+        });
+        break;
+      }
       case 'ctrl': {
         const edge = m.edges.find((x) => x.id === d.edgeId);
         const c = edge && this.curveOf(m, edge);

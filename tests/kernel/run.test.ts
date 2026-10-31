@@ -73,6 +73,25 @@ describe('running models (FR-SIM-001)', () => {
     }
   });
 
+  it('runs parallel flows between the same two symbols as separate pathways (FR-EDIT-003)', async () => {
+    const m: StudioModel = {
+      metadata: { schema_version: 4, name: 'Parallel pathways' },
+      config: { t_start: 0, t_end: 1, dt: 0.1, method: 'rk4' },
+      nodes: [
+        { id: 'a', type: 'storage', value: 100, visual: { x: 0, y: 0 } },
+        { id: 'b', type: 'storage', value: 0, visual: { x: 200, y: 0 } },
+      ],
+      edges: [
+        { id: 'f1', origin: 'a', target: 'b', logic: 'constant', params: { k: 1 } },
+        { id: 'f2', origin: 'a', target: 'b', logic: 'constant', params: { k: 2 } },
+      ],
+      _diagram: { boundaries: [] },
+    };
+    const r = await runModel(kernel, m);
+    expect(r.final.b).toBeCloseTo(3, 6);
+    expect(r.flows.find((f) => f.id === 'f2')?.values.at(-1)).toBeCloseTo(2, 6);
+  });
+
   it('records flows per edge, signed, refreshed each step', async () => {
     const r = await runModel(kernel, EXAMPLES[3]!.model);
     const pay = r.flows.find((f) => f.id === 'pay');
