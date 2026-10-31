@@ -187,3 +187,43 @@
 :host .warn-text {
   color: var(--critical);
 }
+/* What the kernel runs (SPEC §7.1) */
+:host dialog.kernel-json {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-2);
+  padding: 16px 18px;
+}
+:host dialog.kernel-json::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+:host dialog.kernel-json header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:host dialog.kernel-json h2 {
+  margin: 0;
+  font-size: 15px;
+}
+:host dialog.kernel-json .spacer {
+  flex: 1;
+}
+:host dialog.kernel-json pre.json {
+  max-height: 60vh;
+  overflow: auto;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: 12px/1.45 var(--font-mono);
+  white-space: pre;
+}
+:host .crossing td.inner {
+  font-weight: 600;
+}

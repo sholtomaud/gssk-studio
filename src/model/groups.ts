@@ -92,7 +92,19 @@ export function groupCentre(m: StudioModel, groupId: string): Point {
 export interface End {
   kind: 'node' | 'group';
   id: string;
+  /**
+   * For a packed group that shows its ports: the symbol inside the flows
+   * really reach, drawn small inside the group's box (Odum's inset).
+   */
+  port?: string;
 }
+
+/**
+ * A packed group shows, inside its box, each symbol inside that a flow
+ * across its edge reaches, so the wiring stays visible packed (FR-GRP-001),
+ * as Odum draws a bank inside a city. Past this many it is one box.
+ */
+export const MAX_PORTS = 3;
 
 /** Flows between the same two visible ends, at least one a packed group, drawn as one. */
 export interface Bundle {
@@ -113,9 +125,11 @@ export interface DiagramView {
   /** Flows drawn as themselves: both ends visible as nodes. */
   edges: ModelEdge[];
   bundles: Bundle[];
+  /** Per packed group showing its ports, the symbols inside that flows reach, in model order. */
+  ports: Map<string, string[]>;
 }
 
-const endKey = (e: End) => `${e.kind}:${e.id}`;
+const endKey = (e: End) => `${e.kind}:${e.id}${e.port ? `@${e.port}` : ''}`;
 
 export function bundleId(origin: End, target: End): string {
   return `${endKey(origin)}>${endKey(target)}`;
@@ -129,10 +143,38 @@ export function diagramView(m: StudioModel): DiagramView {
   const nodes = new Set(m.nodes.filter((n) => owner.get(n.id)?.kind === 'node').map((n) => n.id));
   const edges: ModelEdge[] = [];
   const bundles = new Map<string, Bundle>();
+  // The symbols inside each packed group that flows across its edge reach.
+  const reached = new Map<string, Set<string>>();
   for (const e of m.edges) {
     const o = owner.get(e.origin);
     const t = owner.get(e.target);
-    if (!o || !t) continue;
+    if (!o || !t || (o.kind === t.kind && o.id === t.id)) continue;
+    for (const [end, node] of [
+      [o, e.origin],
+      [t, e.target],
+    ] as const) {
+      if (end.kind !== 'group') continue;
+      const set = reached.get(end.id) ?? new Set<string>();
+      set.add(node);
+      reached.set(end.id, set);
+    }
+  }
+  const ports = new Map<string, string[]>();
+  for (const [g, set] of reached) {
+    if (set.size <= MAX_PORTS)
+      ports.set(
+        g,
+        m.nodes.filter((n) => set.has(n.id)).map((n) => n.id)
+      );
+  }
+  const withPort = (end: End, node: string): End =>
+    end.kind === 'group' && ports.has(end.id) ? { ...end, port: node } : end;
+  for (const e of m.edges) {
+    const o0 = owner.get(e.origin);
+    const t0 = owner.get(e.target);
+    if (!o0 || !t0) continue;
+    const o = withPort(o0, e.origin);
+    const t = withPort(t0, e.target);
     if (o.kind === 'node' && t.kind === 'node') {
       edges.push(e);
       continue;
@@ -150,6 +192,7 @@ export function diagramView(m: StudioModel): DiagramView {
     frames: shown.filter((g) => !g.collapsed),
     edges,
     bundles: [...bundles.values()],
+    ports,
   };
 }
 

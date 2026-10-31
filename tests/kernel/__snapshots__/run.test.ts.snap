@@ -87,3 +87,15 @@ exports[`running models (FR-SIM-001) > runs the seasonal example cleanly and rep
   "wetland": 37.723807,
 }
 `;
+
+exports[`running models (FR-SIM-001) > runs the water example cleanly and reproducibly 1`] = `
+{
+  "bank": 7620,
+  "dam": 14240,
+  "rain": 400,
+  "revenue": 1080,
+  "tank": 2,
+  "use": 360,
+  "wages": 300,
+}
+`;

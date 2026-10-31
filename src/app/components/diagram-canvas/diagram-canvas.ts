@@ -33,6 +33,7 @@ import {
 import {
   addNode,
   connect,
+  findEdge,
   findNode,
   removeSelection,
   setControl,
@@ -106,6 +107,10 @@ function storeFlag(key: string, on: boolean): void {
 }
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
+/** A packed group's ports: the symbols inside it that flows reach, drawn this small (FR-GRP-001). */
+const PORT_SCALE = 0.38;
+/** Ports sit this far apart: wider for two, which then have room for a short label each. */
+const portStep = (count: number) => (count <= 2 ? 56 : 38);
 /** How far above a selected symbol its turn knob sits. */
 const ROTATE_REACH = 30;
 
@@ -172,6 +177,8 @@ export class DiagramCanvas extends BaseComponent {
   private world!: SVGGElement;
   private layers!: {
     boundaries: SVGGElement;
+    /** Packed groups, beneath the flows, so a flow reaching a port inside one is seen to. */
+    groups: SVGGElement;
     edges: SVGGElement;
     nodes: SVGGElement;
     overlay: SVGGElement;
@@ -210,6 +217,7 @@ export class DiagramCanvas extends BaseComponent {
     });
     this.layers = {
       boundaries: svg('g', { class: 'boundaries' }),
+      groups: svg('g', { class: 'groups' }),
       edges: svg('g', { class: 'edges' }),
       nodes: svg('g', { class: 'nodes' }),
       overlay: svg('g', { class: 'overlay' }),
@@ -217,6 +225,7 @@ export class DiagramCanvas extends BaseComponent {
     this.world.append(
       bg,
       this.layers.boundaries,
+      this.layers.groups,
       this.layers.edges,
       this.layers.nodes,
       this.layers.overlay
@@ -845,8 +854,20 @@ export class DiagramCanvas extends BaseComponent {
     }
   }
 
-  /** Where a flow end is drawn, and its outline: a symbol, or a packed group's box. */
+  /** Where a packed group draws the small copy of a symbol inside it that flows reach. */
+  private portAt(m: StudioModel, groupId: string, nodeId: string): Point | undefined {
+    const ports = this.view_?.ports.get(groupId);
+    const i = ports?.indexOf(nodeId) ?? -1;
+    if (!ports || i < 0) return undefined;
+    const c = groupCentre(m, groupId);
+    return { x: c.x + (i - (ports.length - 1) / 2) * portStep(ports.length), y: c.y + 4 };
+  }
+
+  /** Where a flow end is drawn, and its outline: a symbol, a packed group's box, or a port in it. */
   private shapeOf(m: StudioModel, end: End): Shape {
+    const port = end.port ? findNode(m, end.port) : undefined;
+    const at = port && this.portAt(m, end.id, port.id);
+    if (port && at) return { type: port.type, visual: { ...at, scale: PORT_SCALE } };
     if (end.kind === 'group') return { type: 'group', visual: groupCentre(m, end.id) };
     const n = findNode(m, end.id);
     return n ? { type: n.type, visual: n.visual } : { type: 'group', visual: { x: 0, y: 0 } };
@@ -935,7 +956,8 @@ export class DiagramCanvas extends BaseComponent {
     });
     const label = svg('text', { class: 'label', y: h + 18 });
     label.textContent = grp.label;
-    const n = svg('text', { class: 'group-count', y: 4 });
+    const ports = this.view_?.ports.get(grp.id) ?? [];
+    const n = svg('text', { class: 'group-count', y: ports.length ? -h + 13 : 4 });
     n.textContent = `${count} symbol${count === 1 ? '' : 's'}`;
     const unpack = svg('g', {
       class: 'group-toggle',
@@ -973,10 +995,47 @@ export class DiagramCanvas extends BaseComponent {
       unpack,
       title
     );
+    // Odum's inset: what the flows across the edge reach inside, drawn small; wire onto one.
+    for (const id of ports) {
+      const inner = findNode(m, id);
+      const at = this.portAt(m, grp.id, id);
+      if (!inner || !at) continue;
+      const pg = svg('g', {
+        class: 'inner-port',
+        'data-inner': id,
+        transform: `translate(${at.x - c.x} ${at.y - c.y}) scale(${PORT_SCALE})`,
+      });
+      const pt = svg('title');
+      pt.textContent = `${inner.visual.label ?? id} (${id}), inside “${grp.label}”: flows across the edge reach it`;
+      pg.append(
+        svg('rect', {
+          class: 'inner-hit',
+          x: -SIZE / 2,
+          y: -SIZE / 2,
+          width: SIZE,
+          height: SIZE,
+        }),
+        svg('use', {
+          href: `#${symbolFor(inner.type).symbol}`,
+          x: -SIZE / 2,
+          y: -SIZE / 2,
+          width: SIZE,
+          height: SIZE,
+        }),
+        pt
+      );
+      g.append(pg);
+      if (ports.length <= 2) {
+        const name = inner.visual.label ?? id;
+        const tag = svg('text', { class: 'inner-label', x: at.x - c.x, y: at.y - c.y + 21 });
+        tag.textContent = name.length > 9 ? `${name.slice(0, 8)}…` : name;
+        g.append(tag);
+      }
+    }
     const badge = this.badgeFor(mark, -w - 2, -h - 2);
     if (badge) g.append(badge);
     this.groupEls.set(grp.id, g);
-    this.layers.nodes.append(g);
+    this.layers.groups.append(g);
   }
 
   /** Flows across a packed group's edge between the same two ends, drawn as one. */
@@ -1003,6 +1062,10 @@ export class DiagramCanvas extends BaseComponent {
     const title = svg('title');
     title.textContent = `${b.edges.length} flow${b.edges.length === 1 ? '' : 's'} combined: ${b.edges.join(', ')}`;
     if (mark) g.append(svg('path', { class: 'glow', d }));
+    // One flow drawn to a port is that flow: dashed for money, with its transaction diamond.
+    const only = b.edges.length === 1 ? findEdge(m, b.edges[0] ?? '') : undefined;
+    const kind = only ? kindOfCarrierId(m, only.carrier) : undefined;
+    if (kind) g.classList.add(`kind-${kind}`);
     g.append(
       svg('path', { class: 'hit', d }),
       svg('path', { class: 'line', d, 'marker-end': 'url(#arrow)' }),
@@ -1010,6 +1073,20 @@ export class DiagramCanvas extends BaseComponent {
       svg('text', { class: 'sensor-reading bundle-reading', x: mid.x, y: mid.y + 18 }),
       title
     );
+    const trx = only && transactionOf(m, only);
+    if (trx) {
+      const size = trx.marked === only ? 44 : 28;
+      g.append(
+        svg('use', {
+          class: `transaction${trx.marked === only ? '' : ' counter'}`,
+          href: '#odum-transaction',
+          x: mid.x - size / 2,
+          y: mid.y - size / 2,
+          width: size,
+          height: size,
+        })
+      );
+    }
     const badge = this.badgeFor(mark, mid.x + 18, mid.y);
     if (badge) {
       badge.setAttribute('data-bundle', b.id);
@@ -1372,12 +1449,18 @@ export class DiagramCanvas extends BaseComponent {
 
   /** The node or flow under the pointer during a wire drag. */
   private dropTarget(e: { clientX: number; clientY: number }): Element | null {
-    const hit = document.elementFromPoint(e.clientX, e.clientY);
-    if (!hit || !this.root.contains(hit)) return null;
-    const n = hit.closest('[data-node]');
-    if (n && n.getAttribute('data-node') !== (this.drag?.kind === 'wire' ? this.drag.from : ''))
-      return n;
-    return hit.closest('.node.group') ?? hit.closest('[data-edge]');
+    const from = this.drag?.kind === 'wire' ? this.drag.from : '';
+    let fallback: Element | null = null;
+    // A symbol wins over a flow; a port in a packed group (the symbol inside it
+    // stands for) wins over the flows drawn to it, which lie above the group.
+    for (const hit of document.elementsFromPoint(e.clientX, e.clientY)) {
+      if (!this.root.contains(hit)) continue;
+      const n = hit.closest('[data-node]') ?? hit.closest('[data-inner]');
+      const id = n?.getAttribute('data-node') ?? n?.getAttribute('data-inner');
+      if (n && id !== from) return n;
+      fallback ??= hit.closest('.node.group') ?? hit.closest('[data-edge]');
+    }
+    return fallback;
   }
 
   private onPointerUp(e: PointerEvent): void {
@@ -1385,7 +1468,7 @@ export class DiagramCanvas extends BaseComponent {
     const m = this._model;
     if (d?.kind === 'wire' && m) {
       const target = this.dropTarget(e);
-      const nodeId = target?.getAttribute('data-node');
+      const nodeId = target?.getAttribute('data-node') ?? target?.getAttribute('data-inner');
       const edgeId = target?.getAttribute('data-edge');
       const groupId = target?.classList.contains('group')
         ? target.getAttribute('data-group')

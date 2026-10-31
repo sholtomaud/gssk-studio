@@ -15,10 +15,9 @@ import { el, toast } from '../../ui.ts';
 import { toProblem, type Problem } from '../../../code/diagnostics.ts';
 import { SCRIPT, toAbsolute } from '../../../code/project.ts';
 import { normaliseModel } from '../../../model/io.ts';
-import { canonicalJson, toKernelModel } from '../../../model/kernel-json.ts';
+import { kernelHash } from '../../../model/kernel-json.ts';
 import type { StudioModel } from '../../../model/types.ts';
 import { toEnergese } from '../../../sdk/energese/codegen.ts';
-import { sha256Hex } from '../../../sim/gssk.ts';
 import type { CompileResult } from '../../../workers/compiler.worker.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import style from './code-view.css?raw';
@@ -27,7 +26,7 @@ const CHECK_DELAY_MS = 400;
 
 /** The run manifest's model hash (FR-SIM-003): layout and editor data excluded. */
 export function modelHash(m: StudioModel): Promise<string> {
-  return sha256Hex(canonicalJson(toKernelModel(m)));
+  return kernelHash(m);
 }
 
 /** What the editor holds: generated code, the current script, or a script the model has outgrown. */

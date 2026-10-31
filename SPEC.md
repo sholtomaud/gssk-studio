@@ -292,7 +292,21 @@ Odum's diagrams zoom: a storage drawn once at one scale is many storages at the 
   error. A combined flow carries its flows' problems.
 - **Ungroup** removes a group and keeps its contents, moved up a level. Deleting a group deletes
   what it holds. Groups follow renames and deletions, and a group left empty goes.
-- You cannot wire to a packed group: unpack it to connect to a symbol inside.
+- **Ports** (Odum's inset, as he draws a bank inside a city): when the flows across a packed
+  group's edge reach at most three symbols inside it, the group draws a small copy of each inside
+  its box, and each combined flow ends on the copy of the symbol it really reaches; flows to
+  different symbols inside are not combined. Two ports are labelled; three show their names on
+  hover. A combined flow of one flow draws as that flow (dashed for money, with its transaction
+  diamond). Past three, the group is one box, as before.
+- Wiring onto a port connects to the symbol inside. Otherwise you cannot wire to a packed group:
+  unpack it to connect to a symbol inside.
+- A group, selected, lists every flow **across its edge**: the flow, the symbol outside, and the
+  symbol inside it reaches. **See this group in the kernel model** shows the kernel JSON of the
+  symbols inside and every flow touching them (§7.1), so the wiring can be checked against the
+  diagram.
+- The **Buying water for a home** example packs a home's water tank and bank account: water runs
+  in from a utility's dam to the tank, and the water bill out of the bank account, each to its
+  own port.
 - Packing and moving are layout: neither marks a run "Model changed since this run" (FR-RES-005).
 - The **Household budget** example packs eleven bills and renewals into Expenses, with Housing,
   Phone and internet, Living and Renewals inside it. Bills are constant flows; renewals are
@@ -306,6 +320,10 @@ Odum's diagrams zoom: a storage drawn once at one scale is many storages at the 
 
 `toKernelModel` strips everything the kernel does not read. A control reference to a composite is
 rewritten to the composite's state member (`{id}__body`, `{id}__box`), working around K-1 (§17).
+
+**See what the kernel runs** (the model's inspector, with nothing selected) shows this JSON as
+the kernel is given it, with the model hash every run's manifest carries, and copies it. Groups,
+boundaries and layout are not in it.
 
 ### 7.2 Runs
 

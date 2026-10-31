@@ -92,6 +92,7 @@ import { el, formatNumber, icon, iconButton, svg, toast } from '../../ui.ts';
 import { observationsFromCsv, observationTargets } from '../../../fit/observations.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import { SYMBOL_SCALE } from '../../../diagram/geometry.ts';
+import { kernelHash, toKernelModel } from '../../../model/kernel-json.ts';
 import style from './inspector-panel.css?raw';
 
 type NodeParam = keyof NonNullable<ModelNode['params']>;
@@ -411,7 +412,68 @@ export class InspectorPanel extends BaseComponent {
           text: `${internal.length} flows inside; ${flowsIn.length} in and ${flowsOut.length} out across its edge.`,
         }),
         el('div', { class: 'actions' }, del)
-      )
+      ),
+      this.crossingSection(m, [...flowsIn, ...flowsOut], inside)
+    );
+  }
+
+  /**
+   * Every flow across a group's edge, and the symbol inside it really
+   * reaches (FR-GRP-001): the wiring the kernel runs, whatever the packing.
+   */
+  private crossingSection(
+    m: StudioModel,
+    flows: readonly ModelEdge[],
+    inside: ReadonlySet<string>
+  ): HTMLElement {
+    const cur = () => this._model ?? m;
+    const name = (id: string) => findNode(m, id)?.visual.label ?? id;
+    const rows = flows.map((e) => {
+      const into = inside.has(e.target);
+      const show = el('button', { type: 'button', text: e.id, title: 'Unpack to this flow' });
+      show.onclick = () => {
+        const next = revealNode(revealNode(cur(), e.origin), e.target);
+        this.emit(next, `Show ${e.id}`, undefined, { kind: 'edge', id: e.id });
+      };
+      return el(
+        'tr',
+        { 'data-flow': e.id },
+        el('td', {}, show),
+        el('td', { text: into ? `in from ${name(e.origin)}` : `out to ${name(e.target)}` }),
+        el('td', {
+          class: 'inner',
+          text: `${into ? '→' : '←'} ${name(into ? e.target : e.origin)}`,
+          title: into ? e.target : e.origin,
+        })
+      );
+    });
+    return el(
+      'section',
+      { class: 'crossing' },
+      el('h3', { text: 'Across its edge' }),
+      flows.length
+        ? el(
+            'table',
+            { class: 'bundle-flows' },
+            el(
+              'thead',
+              {},
+              el(
+                'tr',
+                {},
+                el('th', { text: 'Flow' }),
+                el('th', { text: 'Outside' }),
+                el('th', { text: 'Inside' })
+              )
+            ),
+            el('tbody', {}, ...rows)
+          )
+        : el('p', { class: 'hint', text: 'No flow crosses its edge.' }),
+      el('p', {
+        class: 'hint',
+        text: 'Each flow runs between these two symbols in the model the kernel is given; the group is only how it is drawn.',
+      }),
+      this.kernelButton(m, 'See this group in the kernel model', inside)
     );
   }
 
@@ -480,6 +542,61 @@ export class InspectorPanel extends BaseComponent {
         )
       )
     );
+  }
+
+  /**
+   * A button that shows the JSON the kernel is given for a run (SPEC §7.1),
+   * so the wiring can be checked against the diagram: the whole model, or
+   * the part about some symbols (`focus`) and every flow touching them.
+   */
+  private kernelButton(m: StudioModel, label: string, focus?: ReadonlySet<string>): HTMLElement {
+    const b = el('button', { type: 'button', name: 'kernel-json', text: label });
+    b.onclick = () => {
+      const all = toKernelModel(m);
+      const shown = focus
+        ? {
+            nodes: all.nodes.filter((n) => focus.has(String(n.id))),
+            edges: all.edges.filter(
+              (e) => focus.has(String(e.origin)) || focus.has(String(e.target))
+            ),
+          }
+        : all;
+      const text = JSON.stringify(shown, null, 2);
+      const hash = el('code', { class: 'hash', text: '…' });
+      void kernelHash(m).then((h) => (hash.textContent = h.slice(0, 16)));
+      const copy = el('button', { type: 'button', text: 'Copy' });
+      copy.onclick = () =>
+        void navigator.clipboard?.writeText(text).then(
+          () => toast('Copied the kernel JSON.'),
+          () => toast('Could not copy; select the text instead.')
+        );
+      const close = iconButton('x', 'Close');
+      const dialog = el(
+        'dialog',
+        { class: 'kernel-json', 'aria-label': 'What the kernel runs' },
+        el(
+          'header',
+          {},
+          el('h2', { text: 'What the kernel runs' }),
+          el('span', { class: 'spacer' }),
+          copy,
+          close
+        ),
+        el('p', {
+          class: 'hint',
+          text: focus
+            ? `The ${shown.nodes.length} symbols in this group and the ${shown.edges.length} flows that touch them, exactly as the kernel is given them. A run is given the whole model; the group itself is not in it, only how it is drawn.`
+            : 'The model exactly as the kernel is given it for a run. Groups, boundaries and layout are not in it: they are how the diagram is drawn, so they never change a result.',
+        }),
+        el('p', { class: 'hint' }, 'Model hash (in every run’s manifest): ', hash),
+        el('pre', { class: 'json', tabindex: '0', text })
+      );
+      close.onclick = () => dialog.close();
+      dialog.addEventListener('close', () => dialog.remove());
+      this.form.append(dialog);
+      dialog.showModal();
+    };
+    return el('div', { class: 'actions' }, b);
   }
 
   /** Several symbols: align, distribute, delete (FR-EDIT-011, FR-EDIT-012). */
@@ -616,7 +733,8 @@ export class InspectorPanel extends BaseComponent {
         el('p', {
           class: 'hint',
           text: `${m.nodes.length} symbols · ${m.edges.length} flows. Select a symbol or flow to edit it.`,
-        })
+        }),
+        this.kernelButton(m, 'See what the kernel runs')
       ),
       el(
         'section',

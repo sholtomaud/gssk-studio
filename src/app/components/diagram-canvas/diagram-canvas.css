@@ -330,6 +330,23 @@
   text-anchor: middle;
   pointer-events: none;
 }
+:host .node.group .inner-port {
+  color: var(--ink);
+  cursor: crosshair;
+}
+:host .node.group .inner-hit {
+  fill: transparent;
+  stroke: none;
+}
+:host .node.group .inner-label {
+  fill: var(--text-secondary);
+  font: 8px var(--font-sans);
+  text-anchor: middle;
+  pointer-events: none;
+}
+:host .node.group .inner-port.drop-target {
+  color: var(--good);
+}
 :host .edge.bundle .line {
   stroke-width: 3.2;
 }

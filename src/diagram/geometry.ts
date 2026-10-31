@@ -13,7 +13,7 @@ export const SCALE = SIZE / 100;
 type Outline = 'ellipse' | 'rect' | 'diamond' | 'port-top';
 
 /** A packed zoom group draws as a box of this half-size (FR-GRP-001). */
-export const GROUP_HALF = { w: 48, h: 32 };
+export const GROUP_HALF = { w: 64, h: 34 };
 
 /** Something a flow can end on: a symbol, or a packed group (`type: 'group'`). */
 export interface Shape {

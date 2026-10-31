@@ -346,6 +346,48 @@ const purchases: StudioModel = {
   _diagram: { boundaries: [] },
 };
 
+const water: StudioModel = {
+  metadata: {
+    schema_version: 4,
+    name: 'Buying water for a home',
+    description:
+      'A utility sells water to a home, which pays from its bank account; the home is packed into one symbol that still shows which store each flow reaches (FR-GRP-001, FR-TRX-001).',
+  },
+  // Months.
+  config: { t_start: 0, t_end: 24, dt: 0.05, method: 'rk4' },
+  nodes: [
+    { ...n('rain', 'source', 400, 100, 140, 'Catchment rain'), carrier: 'water' },
+    { ...n('dam', 'storage', 5000, 280, 140, 'Utility dam', 20000), carrier: 'water' },
+    { ...n('revenue', 'storage', 0, 280, 340, 'Utility revenue', 2000), carrier: 'aud' },
+    { ...n('tank', 'storage', 2, 640, 140, 'Water tank', 10), carrier: 'water' },
+    { ...n('use', 'sink', 0, 820, 140, 'Household use'), carrier: 'water' },
+    { ...n('bank', 'storage', 1500, 640, 340, 'Bank account', 5000), carrier: 'aud' },
+    { ...n('wages', 'source', 300, 900, 340, 'Wages'), carrier: 'aud' },
+  ],
+  edges: [
+    { ...f('inflow', 'rain', 'dam', 1), carrier: 'water' },
+    {
+      ...paid('supply', 'dam', 'tank', 15, 'water'),
+      coupled_edge: 'water_bill',
+      visual: { transaction: { purpose: '04', tags: ['utilities'] } },
+    },
+    { ...f('drink', 'tank', 'use', 7.5), carrier: 'water' },
+    { ...paid('water_bill', 'bank', 'revenue', 45, 'aud'), coupled_edge: 'supply' },
+    { ...f('earn', 'wages', 'bank', 1), carrier: 'aud' },
+  ],
+  carriers: [
+    { id: 'water', unit: 'kL', _label: 'Water' },
+    { id: 'aud', _label: 'Australian dollar', _currency: 'AUD' },
+  ],
+  _diagram: {
+    boundaries: [],
+    groups: [
+      { id: 'home', label: 'Home', nodes: ['tank', 'use', 'bank'], collapsed: true },
+      { id: 'utility', label: 'Water utility', nodes: ['dam', 'revenue'], collapsed: false },
+    ],
+  },
+};
+
 export const EXAMPLES: readonly Example[] = [
   {
     id: 'grassland',
@@ -394,6 +436,12 @@ export const EXAMPLES: readonly Example[] = [
     title: purchases.metadata.name,
     summary: purchases.metadata.description ?? '',
     model: purchases,
+  },
+  {
+    id: 'water',
+    title: water.metadata.name,
+    summary: water.metadata.description ?? '',
+    model: water,
   },
 ];
 
