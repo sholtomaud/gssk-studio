@@ -253,3 +253,257 @@ describe('figures in a reply (NFR-HON-002)', () => {
     expect(checkFigures('All 3 run.', []).some((p) => p.flagged)).toBe(false);
   });
 });
+
+describe('Sign in with OpenRouter (PKCE, ADR 0016)', () => {
+  it('makes a 43-character verifier and its S256 challenge, and asks for a key with them', async () => {
+    const { authUrl, challengeOf, keyFrom, keyRequest, newVerifier } =
+      await import('../../src/assistant/openrouter.ts');
+    const { createHash } = await import('node:crypto');
+    const v = newVerifier();
+    expect(v).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(newVerifier()).not.toBe(v);
+    const expected = createHash('sha256').update(v).digest('base64url');
+    expect(await challengeOf(v)).toBe(expected);
+    const url = new URL(authUrl('https://example.org/app/', 'abc'));
+    expect(url.origin + url.pathname).toBe('https://openrouter.ai/auth');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      callback_url: 'https://example.org/app/',
+      code_challenge: 'abc',
+      code_challenge_method: 'S256',
+    });
+    const req = keyRequest('code1', v);
+    expect(req.url).toBe('https://openrouter.ai/api/v1/auth/keys');
+    expect(req.body).toEqual({ code: 'code1', code_verifier: v, code_challenge_method: 'S256' });
+    expect(keyFrom({ key: ' sk-or-1 ' })).toBe('sk-or-1');
+    expect(keyFrom({})).toBeUndefined();
+    expect(isAllowedUrl(req.url)).toBe(true);
+  });
+
+  it('chats with OpenRouter through its OpenAI-compatible API', () => {
+    const r = chatRequest(
+      { kind: 'openrouter', endpoint: 'https://openrouter.ai/api', model: 'openrouter/auto' },
+      { system: 'S', turns, tools: [] }
+    );
+    expect(r.url).toBe('https://openrouter.ai/api/v1/chat/completions');
+  });
+});
+
+describe('streamed replies (ADR 0016)', () => {
+  const sse = (events: unknown[]) =>
+    events.map((e) => `data: ${typeof e === 'string' ? e : JSON.stringify(e)}\n\n`).join('');
+
+  it('rebuilds an OpenAI-compatible tool call from its pieces, keeping Gemini’s signature', async () => {
+    const { streamReader } = await import('../../src/assistant/providers.ts');
+    const r = streamReader({
+      kind: 'gemini',
+      endpoint: 'https://generativelanguage.googleapis.com',
+      model: 'g',
+    });
+    const pieces = [
+      { choices: [{ delta: { content: 'Adding ' } }] },
+      { choices: [{ delta: { content: 'a loss.' } }] },
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 't1',
+                  type: 'function',
+                  function: { name: 'add_loss', arguments: '{"from":' },
+                  extra_content: { google: { thought_signature: 'sig' } },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        choices: [
+          {
+            delta: { tool_calls: [{ index: 0, function: { arguments: '"dam"}' } }] },
+            finish_reason: 'tool_calls',
+          },
+        ],
+      },
+    ];
+    const text = pieces.map((p) => r.push(JSON.stringify(p))).join('');
+    expect(text).toBe('Adding a loss.');
+    const reply = r.reply();
+    expect(reply.calls).toEqual([{ id: 't1', name: 'add_loss', input: { from: 'dam' } }]);
+    expect(reply.stop).toBe('tool');
+    const raw = reply.raw as {
+      tool_calls: { extra_content: unknown; function: { arguments: string } }[];
+    };
+    expect(raw.tool_calls[0]?.extra_content).toEqual({ google: { thought_signature: 'sig' } });
+    expect(raw.tool_calls[0]?.function.arguments).toBe('{"from":"dam"}');
+  });
+
+  it('rebuilds a Claude reply with its thinking block and signature for replay', async () => {
+    const { streamReader } = await import('../../src/assistant/providers.ts');
+    const r = streamReader(claude);
+    const events = [
+      { type: 'message_start', message: { model: 'claude-opus-5-5' } },
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'thinking', thinking: '', signature: '' },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'thinking_delta', thinking: 'Dam needs a loss.' },
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'signature_delta', signature: 'SIG' },
+      },
+      { type: 'content_block_stop', index: 0 },
+      { type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } },
+      { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Adding it.' } },
+      { type: 'content_block_stop', index: 1 },
+      {
+        type: 'content_block_start',
+        index: 2,
+        content_block: { type: 'tool_use', id: 'u1', name: 'add_loss', input: {} },
+      },
+      {
+        type: 'content_block_delta',
+        index: 2,
+        delta: { type: 'input_json_delta', partial_json: '{"from":"dam",' },
+      },
+      {
+        type: 'content_block_delta',
+        index: 2,
+        delta: {
+          type: 'input_json_delta',
+          partial_json: '"sink":null,"k":0.02,"why":"evaporation"}',
+        },
+      },
+      { type: 'content_block_stop', index: 2 },
+      { type: 'message_delta', delta: { stop_reason: 'tool_use' } },
+      { type: 'message_stop' },
+    ];
+    expect(events.map((e) => r.push(JSON.stringify(e))).join('')).toBe('Adding it.');
+    const reply = r.reply();
+    expect(reply.stop).toBe('tool');
+    expect(reply.calls[0]).toEqual({
+      id: 'u1',
+      name: 'add_loss',
+      input: { from: 'dam', sink: null, k: 0.02, why: 'evaporation' },
+    });
+    expect((reply.raw as unknown[])[0]).toEqual({
+      type: 'thinking',
+      thinking: 'Dam needs a loss.',
+      signature: 'SIG',
+    });
+    expect(() =>
+      r.push(JSON.stringify({ type: 'error', error: { message: 'overloaded' } }))
+    ).toThrow(/overloaded/);
+  });
+
+  it('streams words as they come across tool rounds, through the gate', async () => {
+    const replies = [
+      sse([
+        { choices: [{ delta: { content: 'Adding a loss to the tank.' } }] },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c1',
+                    type: 'function',
+                    function: {
+                      name: 'add_loss',
+                      arguments: '{"from":"tank","sink":null,"k":0.01,"why":"leaks"}',
+                    },
+                  },
+                ],
+              },
+              finish_reason: 'tool_calls',
+            },
+          ],
+        },
+        '[DONE]',
+      ]),
+      sse([{ choices: [{ delta: { content: 'Done.' }, finish_reason: 'stop' }] }, '[DONE]']),
+    ];
+    const fetch = (async () =>
+      new Response(replies.shift(), {
+        headers: { 'content-type': 'text/event-stream' },
+      })) as unknown as typeof globalThis.fetch;
+    const gate = createGate({ fetch, consent: async () => 'send' });
+    const m = emptyModel();
+    m.nodes.push({
+      id: 'tank',
+      type: 'storage',
+      value: 5,
+      visual: { x: 0, y: 0, label: 'Tank', capacity: 10 },
+    });
+    const ctx: ToolContext = { draft: m, steps: [], author: { provider: 'local', model: 'local' } };
+    const pieces: string[] = [];
+    const history: Turn[] = [];
+    const out = await runTurn({
+      cfg: local,
+      key: undefined,
+      gate,
+      history,
+      userText: 'Add a loss',
+      ctx,
+      onText: (p) => pieces.push(p),
+    });
+    expect(pieces.join('')).toBe('Adding a loss to the tank.\n\nDone.');
+    expect(out.text).toBe('Adding a loss to the tank.\n\nDone.');
+    expect(ctx.steps).toEqual(['Add loss: “Tank” → heat sink (k = 0.01)']);
+    // The message carried the model as it was, storages without a loss named.
+    expect((history[0] as { text: string }).text).toMatch(
+      /Storages with no loss to a heat sink: tank\./
+    );
+  });
+});
+
+describe('add_loss and the model brief (Odum: every storage loses)', () => {
+  it('drains a storage to a new heat sink below it, carrying its carrier, and marks k', async () => {
+    const { callTool, modelBrief } = await import('../../src/assistant/tools.ts');
+    const m = emptyModel();
+    m.carriers = [{ id: 'water', unit: 'kL' }];
+    m.nodes.push({
+      id: 'dam',
+      type: 'storage',
+      value: 100,
+      carrier: 'water',
+      visual: { x: 100, y: 100, label: 'Dam', capacity: 200 },
+    });
+    expect(modelBrief(m)).toMatch(/Storages with no loss to a heat sink: dam\./);
+    const ctx: ToolContext = { draft: m, steps: [], author: { provider: 'local', model: 'x' } };
+    const r = await callTool(ctx, 'add_loss', {
+      from: 'dam',
+      sink: null,
+      k: 0.02,
+      why: 'evaporation',
+    });
+    expect(r.ok).toBe(true);
+    const sink = ctx.draft.nodes.find((x) => x.type === 'sink')!;
+    expect(sink).toMatchObject({ id: 'dam_loss', carrier: 'water', visual: { x: 100, y: 250 } });
+    expect(ctx.draft.edges[0]).toMatchObject({
+      origin: 'dam',
+      target: 'dam_loss',
+      logic: 'linear',
+      carrier: 'water',
+      params: { k: 0.02 },
+    });
+    expect(assumedCount(ctx.draft)).toBe(1);
+    expect(modelBrief(ctx.draft)).not.toMatch(/no loss/);
+    const bad = await callTool(ctx, 'add_loss', {
+      from: 'dam_loss',
+      sink: null,
+      k: null,
+      why: null,
+    });
+    expect(JSON.stringify(bad.result)).toMatch(/holds nothing to lose/);
+  });
+});

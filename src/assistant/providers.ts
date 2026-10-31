@@ -7,7 +7,7 @@
  */
 import type { ToolSpec } from './tools.ts';
 
-export type ProviderKind = 'local' | 'anthropic' | 'openai' | 'gemini';
+export type ProviderKind = 'local' | 'openrouter' | 'anthropic' | 'openai' | 'gemini';
 
 export interface ProviderConfig {
   kind: ProviderKind;
@@ -38,6 +38,15 @@ export const PROVIDERS: readonly ProviderInfo[] = [
       'An OpenAI-compatible server on this computer. Nothing leaves the machine. Start a llamafile with --server, or llama-server, on port 8080 (Ollama: http://127.0.0.1:11434).',
   },
   {
+    kind: 'openrouter',
+    label: 'OpenRouter (sign in, no key to copy)',
+    endpoint: 'https://openrouter.ai/api',
+    model: 'openrouter/auto',
+    needsKey: true,
+    about:
+      'Many models through one account. openrouter/auto may pick a model without tool calls: if the assistant’s tools fail, name one that has them.',
+  },
+  {
     kind: 'anthropic',
     label: 'Anthropic (Claude)',
     endpoint: 'https://api.anthropic.com',
@@ -49,17 +58,17 @@ export const PROVIDERS: readonly ProviderInfo[] = [
     kind: 'openai',
     label: 'OpenAI',
     endpoint: 'https://api.openai.com',
-    model: '',
+    model: 'gpt-4.1',
     needsKey: true,
-    about: 'OpenAI chat completions, called from this browser with your key. Name the model.',
+    about: 'OpenAI chat completions, called from this browser with your key.',
   },
   {
     kind: 'gemini',
     label: 'Google Gemini',
     endpoint: 'https://generativelanguage.googleapis.com',
-    model: '',
+    model: 'gemini-3.8-flash',
     needsKey: true,
-    about: 'Gemini through its OpenAI-compatible endpoint, with your key. Name the model.',
+    about: 'Gemini through its OpenAI-compatible endpoint, with your key.',
   },
 ];
 
@@ -135,7 +144,14 @@ function openaiMessages(system: string, turns: readonly Turn[]): unknown[] {
 /** A tool-using chat request. */
 export function chatRequest(
   cfg: ProviderConfig,
-  opts: { system: string; turns: readonly Turn[]; tools: readonly ToolSpec[]; maxTokens?: number }
+  opts: {
+    system: string;
+    turns: readonly Turn[];
+    tools: readonly ToolSpec[];
+    maxTokens?: number;
+    /** Ask for server-sent events, read by `streamReader`. */
+    stream?: boolean;
+  }
 ): HttpRequest {
   const maxTokens = opts.maxTokens ?? 16_000;
   if (cfg.kind === 'anthropic') {
@@ -159,6 +175,7 @@ export function chatRequest(
         strict: true,
       })),
       tool_choice: { type: 'auto' },
+      ...(opts.stream ? { stream: true } : {}),
     };
     if (usesFallback(cfg.model)) {
       headers['anthropic-beta'] = FALLBACK_BETA;
@@ -184,6 +201,7 @@ export function chatRequest(
         },
       })),
       tool_choice: 'auto',
+      ...(opts.stream ? { stream: true } : {}),
     },
   };
 }
@@ -274,4 +292,135 @@ export function parseReply(cfg: ProviderConfig, json: unknown): Reply {
       : {}),
   };
   return { text: msg.content ?? '', calls, raw, stop, model: r.model ?? cfg.model };
+}
+
+/**
+ * Reads a streamed reply event by event, handing back each piece of text as
+ * it arrives, then rebuilds the provider's own message from the pieces, so it
+ * replays unchanged: Gemini's thought signatures and Anthropic's thinking
+ * blocks with their signatures included. `push` throws on an error event.
+ */
+export interface StreamReader {
+  /** One event's data; returns the text it adds, if any. */
+  push(data: string): string;
+  /** The whole reply, once the stream has ended. */
+  reply(): Reply;
+}
+
+export function streamReader(cfg: ProviderConfig): StreamReader {
+  return cfg.kind === 'anthropic' ? anthropicStream(cfg) : openaiStream(cfg);
+}
+
+type Json = Record<string, unknown>;
+
+function parseEvent(data: string): Json {
+  try {
+    const v: unknown = JSON.parse(data);
+    return v && typeof v === 'object' ? (v as Json) : {};
+  } catch {
+    return {};
+  }
+}
+
+function openaiStream(cfg: ProviderConfig): StreamReader {
+  let text = '';
+  let model = cfg.model;
+  let finish: string | undefined;
+  const calls: Json[] = [];
+  return {
+    push(data) {
+      const e = parseEvent(data);
+      if (e.error)
+        throw new Error(`The provider sent an error: ${JSON.stringify(e.error).slice(0, 300)}`);
+      if (typeof e.model === 'string') model = e.model;
+      const choice = (e.choices as Json[] | undefined)?.[0];
+      if (!choice) return '';
+      if (typeof choice.finish_reason === 'string') finish = choice.finish_reason;
+      const delta = (choice.delta ?? {}) as Json;
+      for (const d of (delta.tool_calls as Json[] | undefined) ?? []) {
+        const i = typeof d.index === 'number' ? d.index : calls.length;
+        const slot = (calls[i] ??= { function: { name: '', arguments: '' } });
+        // Everything but the index and the pieces of the function is kept as sent (extra_content).
+        for (const [k, v] of Object.entries(d))
+          if (k !== 'index' && k !== 'function' && v != null) slot[k] = v;
+        const fn = slot.function as { name: string; arguments: string };
+        const part = (d.function ?? {}) as { name?: string; arguments?: string };
+        if (part.name) fn.name += part.name;
+        if (part.arguments) fn.arguments += part.arguments;
+      }
+      const piece = typeof delta.content === 'string' ? delta.content : '';
+      text += piece;
+      return piece;
+    },
+    reply() {
+      const message: Json = { role: 'assistant', content: text || null };
+      if (calls.length) message.tool_calls = calls.filter(Boolean);
+      return parseReply(cfg, { model, choices: [{ message, finish_reason: finish }] });
+    },
+  };
+}
+
+function anthropicStream(cfg: ProviderConfig): StreamReader {
+  const blocks: Json[] = [];
+  const partialJson: string[] = [];
+  let stop: string | undefined;
+  let model = cfg.model;
+  return {
+    push(data) {
+      const e = parseEvent(data);
+      switch (e.type) {
+        case 'error':
+          throw new Error(`The provider sent an error: ${JSON.stringify(e.error).slice(0, 300)}`);
+        case 'message_start': {
+          const m = (e.message ?? {}) as Json;
+          if (typeof m.model === 'string') model = m.model;
+          return '';
+        }
+        case 'content_block_start': {
+          const i = e.index as number;
+          blocks[i] = { ...((e.content_block ?? {}) as Json) };
+          partialJson[i] = '';
+          return '';
+        }
+        case 'content_block_delta': {
+          const i = e.index as number;
+          const b = (blocks[i] ??= {});
+          const d = (e.delta ?? {}) as Json;
+          if (d.type === 'text_delta' && typeof d.text === 'string') {
+            b.text = `${(b.text as string | undefined) ?? ''}${d.text}`;
+            return d.text;
+          }
+          if (d.type === 'input_json_delta' && typeof d.partial_json === 'string')
+            partialJson[i] = (partialJson[i] ?? '') + d.partial_json;
+          else if (d.type === 'thinking_delta' && typeof d.thinking === 'string')
+            b.thinking = `${(b.thinking as string | undefined) ?? ''}${d.thinking}`;
+          else if (d.type === 'signature_delta' && typeof d.signature === 'string')
+            b.signature = `${(b.signature as string | undefined) ?? ''}${d.signature}`;
+          return '';
+        }
+        case 'content_block_stop': {
+          const i = e.index as number;
+          const b = blocks[i];
+          if (b?.type === 'tool_use' && partialJson[i]) {
+            try {
+              b.input = JSON.parse(partialJson[i]!);
+            } catch {
+              b.input = {};
+            }
+          }
+          return '';
+        }
+        case 'message_delta': {
+          const d = (e.delta ?? {}) as Json;
+          if (typeof d.stop_reason === 'string') stop = d.stop_reason;
+          return '';
+        }
+        default:
+          return '';
+      }
+    },
+    reply() {
+      return parseReply(cfg, { content: blocks.filter(Boolean), stop_reason: stop, model });
+    },
+  };
 }

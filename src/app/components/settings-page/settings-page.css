@@ -1,0 +1,71 @@
+:host {
+  display: block;
+  overflow: auto;
+  flex: 1;
+}
+:host .lede {
+  color: var(--text-secondary);
+  margin: 8px 0 24px;
+  max-width: 70ch;
+}
+:host .card {
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+}
+:host .card > p {
+  color: var(--text-secondary);
+  margin: 0;
+}
+:host .provider-form {
+  display: grid;
+  gap: 12px;
+}
+:host .fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+:host .fields .field {
+  flex: 1 1 220px;
+}
+:host .hint {
+  margin: 0;
+}
+:host .openrouter p {
+  margin: 0 0 6px;
+}
+:host .msg:empty {
+  display: none;
+}
+:host .msg {
+  margin: 0;
+  font-weight: 500;
+}
+:host .msg.bad {
+  color: var(--critical-text);
+}
+:host .msg.good {
+  color: var(--good-text);
+}
+:host table.calls {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+:host table.calls th,
+:host table.calls td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+:host table.calls .num {
+  text-align: right;
+}
+:host table.calls code {
+  font-size: 11px;
+}

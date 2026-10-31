@@ -3,12 +3,15 @@ import { Router } from './app/core/router.ts';
 import { screens } from './app/screens.ts';
 import { applyStoredTheme } from './app/theme.ts';
 import './app/components/app-nav/app-nav.ts';
+import { routeSignInReturn } from './app/openrouter.ts';
 
 applyStoredTheme();
 
 const outlet = document.querySelector<HTMLElement>('#router-outlet');
 if (!outlet) throw new Error('index.html has no #router-outlet');
 
+// Back from signing in at OpenRouter? Open Settings, which finishes it.
+routeSignInReturn();
 const router = new Router(outlet, import.meta.env.BASE_URL, 'GSSK Studio').register(screens);
 void router.render();
 

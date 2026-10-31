@@ -31,5 +31,6 @@ test('the CSP lists only its own origin and the assistant’s providers', async 
     'https://api.anthropic.com',
     'https://api.openai.com',
     'https://generativelanguage.googleapis.com',
+    'https://openrouter.ai',
   ]);
 });

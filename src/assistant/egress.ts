@@ -19,6 +19,7 @@ export const ALLOWED_ORIGINS = [
   'https://api.anthropic.com',
   'https://api.openai.com',
   'https://generativelanguage.googleapis.com',
+  'https://openrouter.ai',
 ] as const;
 
 /** Whether a URL's origin is on the list; a `:*` entry allows any port. */
@@ -37,6 +38,8 @@ export function isAllowedUrl(url: string): boolean {
 export interface LogEntry {
   at: string;
   provider: string;
+  /** What the call was for: a chat turn, or signing in. */
+  purpose: string;
   origin: string;
   bodySha256: string;
   bytes: number;
@@ -46,6 +49,8 @@ export interface LogEntry {
 /** What the person is asked before a call. */
 export interface PendingCall {
   provider: string;
+  /** What the call is for, in words. */
+  purpose: string;
   url: string;
   /** The body exactly as it will be sent, formatted. */
   body: string;
@@ -55,9 +60,50 @@ export type Consent = 'send' | 'send-always' | 'cancel';
 
 export class EgressRefused extends Error {}
 
+/** What `send` returns when the reply streamed: its events went to `onEvent` instead. */
+export const STREAMED = Symbol('streamed');
+
 export interface Gate {
-  send(cfg: ProviderConfig, key: string | undefined, req: HttpRequest): Promise<unknown>;
+  /**
+   * Send a request. A JSON reply is returned parsed. A reply of server-sent
+   * events, when `onEvent` is given, is passed on event by event (each
+   * `data:` payload) and `STREAMED` returned.
+   */
+  send(
+    cfg: ProviderConfig,
+    key: string | undefined,
+    req: HttpRequest,
+    purpose?: string,
+    onEvent?: (data: string) => void
+  ): Promise<unknown>;
   readonly log: readonly LogEntry[];
+}
+
+/** Read a server-sent event stream, handing on each event's data. */
+async function readEvents(res: Response, onEvent: (data: string) => void): Promise<void> {
+  const reader = res.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  const flush = (block: string) => {
+    const data = block
+      .split(/\r?\n/)
+      .filter((l) => l.startsWith('data:'))
+      .map((l) => l.slice(5).replace(/^ /, ''))
+      .join('\n');
+    if (data && data !== '[DONE]') onEvent(data);
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let at: number;
+    while ((at = buffer.search(/\r?\n\r?\n/)) >= 0) {
+      flush(buffer.slice(0, at));
+      buffer = buffer.slice(at).replace(/^\r?\n\r?\n/, '');
+    }
+  }
+  if (buffer.trim()) flush(buffer);
 }
 
 async function sha256(text: string): Promise<string> {
@@ -76,7 +122,7 @@ export function createGate(deps: {
   const now = deps.now ?? (() => new Date().toISOString());
   return {
     log,
-    async send(cfg, key, req) {
+    async send(cfg, key, req, purpose = 'A message to the assistant', onEvent) {
       if (!isAllowedUrl(req.url)) {
         throw new EgressRefused(
           `${new URL(req.url).origin} is not an origin the assistant may call. Use a local server, or Anthropic, OpenAI or Gemini.`
@@ -86,6 +132,7 @@ export function createGate(deps: {
       const entry: LogEntry = {
         at: now(),
         provider: cfg.kind,
+        purpose,
         origin: new URL(req.url).origin,
         bodySha256: await sha256(body),
         bytes: new TextEncoder().encode(body).length,
@@ -94,6 +141,7 @@ export function createGate(deps: {
       if (!always) {
         const answer = await deps.consent({
           provider: cfg.kind,
+          purpose,
           url: req.url,
           body: JSON.stringify(req.body, null, 2),
         });
@@ -117,6 +165,10 @@ export function createGate(deps: {
         );
       }
       log.push({ ...entry, status: res.status });
+      if (res.ok && onEvent && res.headers.get('content-type')?.includes('text/event-stream')) {
+        await readEvents(res, onEvent);
+        return STREAMED;
+      }
       const text = await res.text();
       if (!res.ok) throw new Error(`${entry.origin} answered ${res.status}: ${text.slice(0, 300)}`);
       try {
