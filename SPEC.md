@@ -517,8 +517,11 @@ GSSK is a general kernel and Energese is one language over it (ADR 0012). See
 
 ## 13. External services (M6, opt-in, planned)
 
-- **NFR-PRIV-003** No silent network. v1 makes no request outside its own origin; the build's CSP
-  is `connect-src 'self'`, and an e2e test asserts no foreign request.
+- **NFR-PRIV-003** No silent network. Nothing leaves the app's origin unless the person turns the
+  assistant on and agrees to the call (§13.1). The build's CSP `connect-src` is `'self'` plus the
+  assistant's providers (`ALLOWED_ORIGINS`): localhost on any port, the Anthropic, OpenAI and
+  Gemini APIs. E2e tests assert that list, that building and running send nothing foreign, and
+  that an Energese script reaches nothing, localhost included (ADR 0013).
 - A future service (a live data source, an AI write-up of a run) must be enabled by the user,
   consented per call, listed in the CSP at build time, and its key held in memory or encrypted at
   rest — never in plain `localStorage`.

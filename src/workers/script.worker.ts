@@ -4,10 +4,12 @@
  * so a runaway script ends with it.
  *
  * In the production build the worker is started from a Blob URL, so it
- * inherits the page's Content-Security-Policy: `connect-src 'self'` stops a
- * script reaching the network, and `script-src` stops it importing code from
- * anywhere else. The stubs below say so plainly in development, where there
- * is no policy.
+ * inherits the page's Content-Security-Policy: `script-src` stops a script
+ * importing code from anywhere else. The page's `connect-src` also lists the
+ * assistant's providers (ADR 0016), localhost among them, so a script's way
+ * out is closed here: every network API is replaced, before the script loads,
+ * by a stub it cannot put back, and it cannot start a worker of its own (which
+ * would get fresh ones).
  */
 import { executeScript, type ExecuteRequest } from '../code/execute.ts';
 import type { StudioModel } from '../model/types.ts';
@@ -16,9 +18,14 @@ import { expose, type Endpoint } from './rpc.ts';
 const offline = (what: string) => () => {
   throw new Error(`${what}: a script has no network (ADR 0013).`);
 };
-const scope = globalThis as Record<string, unknown>;
-scope.fetch = () => Promise.reject(new Error('fetch: a script has no network (ADR 0013).'));
-for (const name of ['XMLHttpRequest', 'WebSocket', 'EventSource']) scope[name] = offline(name);
+const seal = (target: object, name: string, value: unknown) =>
+  Object.defineProperty(target, name, { value, writable: false, configurable: false });
+seal(globalThis, 'fetch', () =>
+  Promise.reject(new Error('fetch: a script has no network (ADR 0013).'))
+);
+for (const name of ['XMLHttpRequest', 'WebSocket', 'EventSource', 'Worker', 'SharedWorker'])
+  seal(globalThis, name, offline(name));
+if ('sendBeacon' in navigator) seal(navigator, 'sendBeacon', offline('sendBeacon'));
 
 export interface ScriptLog {
   level: 'log' | 'info' | 'warn' | 'error';

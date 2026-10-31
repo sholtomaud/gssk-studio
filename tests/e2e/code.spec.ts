@@ -170,4 +170,34 @@ test.describe('the sandbox', () => {
     expect(blocked).toEqual(['https://example.com/leak.js']);
     expect(served).toEqual([]);
   });
+
+  test('a script cannot reach this computer, which the assistant may (ADR 0013, ADR 0016)', async ({
+    page,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL!).origin;
+    const served: string[] = [];
+    await page.route(
+      (url) => url.origin !== origin,
+      (route) => {
+        served.push(route.request().url());
+        return route.abort();
+      }
+    );
+    await openExample(page, 'grassland');
+    await openCode(page);
+    await setScript(
+      page,
+      [
+        "import * as ener from 'energese';",
+        'const net = globalThis as unknown as { fetch(url: string): Promise<unknown> };',
+        "await net.fetch('http://127.0.0.1:8080/v1/models');",
+        "export default new ener.Model('Never');",
+      ].join('\n')
+    );
+    await expect(page.locator('code-view .check')).toHaveText('No problems', CHECKED);
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    await expect(page.locator('code-view .output .error')).toContainText('a script has no network');
+    expect(served).toEqual([]);
+  });
 });

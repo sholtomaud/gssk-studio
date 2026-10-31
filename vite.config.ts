@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { defineConfig, type Plugin } from 'vitest/config';
+import { ALLOWED_ORIGINS } from './src/assistant/egress.ts';
 
 /**
  * The code view (ADR 0013) — Monaco, tsrs and their workers — loads on demand.
@@ -25,10 +26,11 @@ const output = {
 };
 
 /**
- * NFR-PRIV-003: the built page talks only to its own origin. A meta CSP
- * cannot be widened at runtime, so a future opt-in API (SPEC §13) must add
- * its origin here, in review. Dev builds skip the policy because Vite's dev
- * client needs a websocket.
+ * NFR-PRIV-003: the built page talks only to its own origin, and to the
+ * assistant's providers (ADR 0016), which it calls only once the person has
+ * turned the assistant on and agreed to each call. A meta CSP cannot be
+ * widened at runtime, so a new origin is added to ALLOWED_ORIGINS, in review.
+ * Dev builds skip the policy because Vite's dev client needs a websocket.
  */
 const CSP = [
   "default-src 'self'",
@@ -37,7 +39,7 @@ const CSP = [
   "script-src 'self' 'wasm-unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
-  "connect-src 'self'",
+  `connect-src 'self' ${ALLOWED_ORIGINS.join(' ')}`,
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
