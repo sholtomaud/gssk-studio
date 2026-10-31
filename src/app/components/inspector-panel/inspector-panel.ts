@@ -91,6 +91,17 @@ import { symbolIcon } from '../../symbol-icon.ts';
 import { el, formatNumber, icon, iconButton, svg, toast } from '../../ui.ts';
 import { observationsFromCsv, observationTargets } from '../../../fit/observations.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
+import { SYMBOL_SCALE } from '../../../diagram/geometry.ts';
+import { kernelHash, toKernelModel } from '../../../model/kernel-json.ts';
+import { BUILTIN_ICONS, builtinIcon, DEFAULT_ICON } from '../../../diagram/icons.ts';
+import {
+  addIcon,
+  iconsOf,
+  isIconHref,
+  MAX_ICON_CHARS,
+  removeIcon,
+  setNodeIcon,
+} from '../../../model/icons.ts';
 import style from './inspector-panel.css?raw';
 
 type NodeParam = keyof NonNullable<ModelNode['params']>;
@@ -410,7 +421,68 @@ export class InspectorPanel extends BaseComponent {
           text: `${internal.length} flows inside; ${flowsIn.length} in and ${flowsOut.length} out across its edge.`,
         }),
         el('div', { class: 'actions' }, del)
-      )
+      ),
+      this.crossingSection(m, [...flowsIn, ...flowsOut], inside)
+    );
+  }
+
+  /**
+   * Every flow across a group's edge, and the symbol inside it really
+   * reaches (FR-GRP-001): the wiring the kernel runs, whatever the packing.
+   */
+  private crossingSection(
+    m: StudioModel,
+    flows: readonly ModelEdge[],
+    inside: ReadonlySet<string>
+  ): HTMLElement {
+    const cur = () => this._model ?? m;
+    const name = (id: string) => findNode(m, id)?.visual.label ?? id;
+    const rows = flows.map((e) => {
+      const into = inside.has(e.target);
+      const show = el('button', { type: 'button', text: e.id, title: 'Unpack to this flow' });
+      show.onclick = () => {
+        const next = revealNode(revealNode(cur(), e.origin), e.target);
+        this.emit(next, `Show ${e.id}`, undefined, { kind: 'edge', id: e.id });
+      };
+      return el(
+        'tr',
+        { 'data-flow': e.id },
+        el('td', {}, show),
+        el('td', { text: into ? `in from ${name(e.origin)}` : `out to ${name(e.target)}` }),
+        el('td', {
+          class: 'inner',
+          text: `${into ? '→' : '←'} ${name(into ? e.target : e.origin)}`,
+          title: into ? e.target : e.origin,
+        })
+      );
+    });
+    return el(
+      'section',
+      { class: 'crossing' },
+      el('h3', { text: 'Across its edge' }),
+      flows.length
+        ? el(
+            'table',
+            { class: 'bundle-flows' },
+            el(
+              'thead',
+              {},
+              el(
+                'tr',
+                {},
+                el('th', { text: 'Flow' }),
+                el('th', { text: 'Outside' }),
+                el('th', { text: 'Inside' })
+              )
+            ),
+            el('tbody', {}, ...rows)
+          )
+        : el('p', { class: 'hint', text: 'No flow crosses its edge.' }),
+      el('p', {
+        class: 'hint',
+        text: 'Each flow runs between these two symbols in the model the kernel is given; the group is only how it is drawn.',
+      }),
+      this.kernelButton(m, 'See this group in the kernel model', inside)
     );
   }
 
@@ -479,6 +551,61 @@ export class InspectorPanel extends BaseComponent {
         )
       )
     );
+  }
+
+  /**
+   * A button that shows the JSON the kernel is given for a run (SPEC §7.1),
+   * so the wiring can be checked against the diagram: the whole model, or
+   * the part about some symbols (`focus`) and every flow touching them.
+   */
+  private kernelButton(m: StudioModel, label: string, focus?: ReadonlySet<string>): HTMLElement {
+    const b = el('button', { type: 'button', name: 'kernel-json', text: label });
+    b.onclick = () => {
+      const all = toKernelModel(m);
+      const shown = focus
+        ? {
+            nodes: all.nodes.filter((n) => focus.has(String(n.id))),
+            edges: all.edges.filter(
+              (e) => focus.has(String(e.origin)) || focus.has(String(e.target))
+            ),
+          }
+        : all;
+      const text = JSON.stringify(shown, null, 2);
+      const hash = el('code', { class: 'hash', text: '…' });
+      void kernelHash(m).then((h) => (hash.textContent = h.slice(0, 16)));
+      const copy = el('button', { type: 'button', text: 'Copy' });
+      copy.onclick = () =>
+        void navigator.clipboard?.writeText(text).then(
+          () => toast('Copied the kernel JSON.'),
+          () => toast('Could not copy; select the text instead.')
+        );
+      const close = iconButton('x', 'Close');
+      const dialog = el(
+        'dialog',
+        { class: 'kernel-json', 'aria-label': 'What the kernel runs' },
+        el(
+          'header',
+          {},
+          el('h2', { text: 'What the kernel runs' }),
+          el('span', { class: 'spacer' }),
+          copy,
+          close
+        ),
+        el('p', {
+          class: 'hint',
+          text: focus
+            ? `The ${shown.nodes.length} symbols in this group and the ${shown.edges.length} flows that touch them, exactly as the kernel is given them. A run is given the whole model; the group itself is not in it, only how it is drawn.`
+            : 'The model exactly as the kernel is given it for a run. Groups, boundaries and layout are not in it: they are how the diagram is drawn, so they never change a result.',
+        }),
+        el('p', { class: 'hint' }, 'Model hash (in every run’s manifest): ', hash),
+        el('pre', { class: 'json', tabindex: '0', text })
+      );
+      close.onclick = () => dialog.close();
+      dialog.addEventListener('close', () => dialog.remove());
+      this.form.append(dialog);
+      dialog.showModal();
+    };
+    return el('div', { class: 'actions' }, b);
   }
 
   /** Several symbols: align, distribute, delete (FR-EDIT-011, FR-EDIT-012). */
@@ -615,7 +742,8 @@ export class InspectorPanel extends BaseComponent {
         el('p', {
           class: 'hint',
           text: `${m.nodes.length} symbols · ${m.edges.length} flows. Select a symbol or flow to edit it.`,
-        })
+        }),
+        this.kernelButton(m, 'See what the kernel runs')
       ),
       el(
         'section',
@@ -661,7 +789,8 @@ export class InspectorPanel extends BaseComponent {
         })
       ),
       this.carriersSection(m),
-      this.observationsSection(m)
+      this.observationsSection(m),
+      ...(iconsOf(m).length ? [this.iconsSection(m)] : [])
     );
   }
 
@@ -1078,6 +1207,116 @@ export class InspectorPanel extends BaseComponent {
     );
   }
 
+  /**
+   * Read a picture file as a data URL the icon view will draw (FR-EDIT-014),
+   * or say why not. Nothing leaves the browser.
+   */
+  private async readIcon(f: File): Promise<string | null> {
+    const ext = f.name.toLowerCase().split('.').pop() ?? '';
+    const types: Record<string, string> = {
+      svg: 'image/svg+xml',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      webp: 'image/webp',
+      gif: 'image/gif',
+    };
+    const type = Object.values(types).includes(f.type) ? f.type : types[ext];
+    if (!type) {
+      toast(`${f.name} is not an SVG, PNG, JPEG, WebP or GIF picture.`);
+      return null;
+    }
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000)
+      bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    const href = `data:${type};base64,${btoa(bin)}`;
+    if (!isIconHref(href)) {
+      toast(
+        `${f.name} is too large for an icon (at most ${Math.floor((MAX_ICON_CHARS * 3) / 4 / 1024)} KB).`
+      );
+      return null;
+    }
+    return href;
+  }
+
+  /** What a symbol is drawn as in the icon view (FR-EDIT-014): a built-in, the model's own, or a new one. */
+  private iconField(m: StudioModel, n: ModelNode): HTMLElement {
+    const cur = () => this._model ?? m;
+    const own = iconsOf(m);
+    const def = builtinIcon(DEFAULT_ICON[n.type]);
+    const file = el('input', {
+      type: 'file',
+      accept:
+        'image/svg+xml,image/png,image/jpeg,image/webp,image/gif,.svg,.png,.jpg,.jpeg,.webp,.gif',
+      hidden: '',
+      name: 'icon-file',
+    });
+    file.onchange = async () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) return;
+      const href = await this.readIcon(f);
+      if (!href) return;
+      const { model, id } = addIcon(cur(), f.name, href, n.id);
+      if (id) {
+        this.emit(model, `Icon for ${n.id}`);
+        this.renderForm(true);
+      }
+    };
+    const field = this.selectField(
+      'Icon (in the icon view)',
+      n.visual.icon ?? '',
+      [
+        { value: '', label: `Its symbol’s own (${def?.label ?? n.type})` },
+        ...own.map((i) => ({ value: i.id, label: `${i.label} (this model’s)` })),
+        ...BUILTIN_ICONS.map((i) => ({ value: `builtin:${i.name}`, label: i.label })),
+        { value: '+', label: 'Add your own picture…' },
+      ],
+      (v) => {
+        if (v === '+') {
+          file.click();
+          this.renderForm(true);
+          return;
+        }
+        this.emit(setNodeIcon(cur(), n.id, v || undefined), `Icon for ${n.id}`, 'icon');
+      },
+      'icon'
+    );
+    return el('div', {}, field, file);
+  }
+
+  /** The model's own pictures for the icon view (FR-EDIT-014). */
+  private iconsSection(m: StudioModel): HTMLElement {
+    const own = iconsOf(m);
+    const cur = () => this._model ?? m;
+    const rows = own.map((i) => {
+      const used = m.nodes.filter((n) => n.visual.icon === i.id).length;
+      const del = iconButton('trash', `Remove ${i.label}`, 'ghost icon danger');
+      del.onclick = () => {
+        this.emit(removeIcon(cur(), i.id), `Remove icon ${i.label}`);
+        this.renderForm(true);
+      };
+      return el(
+        'li',
+        { class: 'own-icon', 'data-icon': i.id },
+        el('img', { src: i.href, alt: '', width: '28', height: '28' }),
+        el('span', { text: `${i.label} · ${used} symbol${used === 1 ? '' : 's'}` }),
+        del
+      );
+    });
+    return el(
+      'section',
+      {},
+      el('h3', { text: 'Icons' }),
+      el('p', {
+        class: 'hint',
+        text: 'Pictures this model’s symbols are drawn as in the icon view. They are saved in the model file.',
+      }),
+      el('ul', { class: 'own-icons' }, ...rows)
+    );
+  }
+
   /** Observed data to fit runs against (FR-OBS-001). */
   private observationsSection(m: StudioModel): HTMLElement {
     const cur = () => this._model ?? m;
@@ -1258,7 +1497,36 @@ export class InspectorPanel extends BaseComponent {
             this.renderForm(true);
           },
           'type'
-        )
+        ),
+        // Layout only: the kernel never sees a symbol's size or turn (FR-EDIT-013).
+        el(
+          'div',
+          { class: 'row2' },
+          this.numberField(
+            'Size (%)',
+            Math.round((n.visual.scale ?? 1) * 100),
+            (v) => {
+              const { min, max } = SYMBOL_SCALE;
+              const k = Math.min(max, Math.max(min, (v ?? 100) / 100));
+              patch('Size', 'scale', (x) =>
+                k === 1 ? delete x.visual.scale : (x.visual.scale = k)
+              );
+            },
+            { optional: true, step: '5', name: 'scale' }
+          ),
+          this.numberField(
+            'Turn (°)',
+            n.visual.rotation ?? 0,
+            (v) => {
+              const deg = (((v ?? 0) % 360) + 360) % 360;
+              patch('Turn', 'rotation', (x) =>
+                deg === 0 ? delete x.visual.rotation : (x.visual.rotation = deg)
+              );
+            },
+            { optional: true, step: '15', name: 'rotation' }
+          )
+        ),
+        this.iconField(m, n)
       ),
       el(
         'section',

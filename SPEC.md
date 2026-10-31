@@ -40,7 +40,7 @@ Studio makes it dependable.
 - A server. There is no account, no backend and no telemetry.
 - Editing the kernel. Kernel gaps are worked around in the app and filed upstream (§17).
 - Collaborative real-time editing.
-- An LLM that writes model numbers (NFR-HON-002).
+- An LLM that produces results, or sets an input without marking it (NFR-HON-002, ADR 0016).
 
 ## 2. Principles
 
@@ -202,8 +202,13 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
   proposes or new ones.
 - The pair is stored as the kernel's reciprocal `coupled_edge`; the marking, with its purpose
   (COICOP 2018, a division or a finer code) and tags, is `visual.transaction` on the flow it was
-  placed on. The marked flow draws Odum's transaction diamond, its counter-flow a smaller one,
-  and a faint line joins the two. Taking the transaction off unpairs the flows; deleting either
+  placed on.
+- **Drawing** (Odum's convention): the transaction symbol is a plain diamond. The counter-flow
+  runs back alongside the marked flow, the opposite way, and one diamond sits across both,
+  wherever the counter-flow's ends lie back the way the marked flow came (their directions more
+  than about 107° apart). Otherwise, or once its curve is shaped by hand, the counter-flow is
+  drawn on its own with a small diamond; **Straighten curve** brings it back alongside. Layout
+  only: the kernel model is the same. Taking the transaction off unpairs the flows; deleting either
   flow unpairs the other, whose marking (if any) is invalid again; a copy keeps its pairing only
   when both flows are copied.
 - **Add counter-flow** (in the flow's inspector) draws a `constant` money flow, k per unit
@@ -230,7 +235,10 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
 - **FR-EDIT-002** Select, move (grid 10), delete (Delete/Backspace), nudge (arrows, Shift ×5).
 - **FR-EDIT-003** Wire: drag from a node's port onto another node to add a flow; onto a flow to
   make the node that flow's control, turning it into an interaction with a drawn work gate.
-  Self-loops and duplicate flows are refused.
+  Self-loops are refused. A symbol takes any number of flows in and out, and a second flow
+  between the same two symbols is a parallel pathway, as Odum draws them: its own logic and
+  rate, added by the kernel. Each further parallel flow bows 24 units further out, so all can be
+  seen and picked.
 - **FR-EDIT-004** Shape: a selected flow shows two Bézier handles; "Straighten curve" removes them.
 - **FR-EDIT-005** Inspector: properties of the selection or, with nothing selected, of the model
   and its run settings. Renaming an id rewrites every reference to it.
@@ -252,6 +260,24 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
   under fresh ids; a control outside the copy keeps pointing at the original while it exists.
 - **FR-EDIT-012** Align (left, centre, right, top, middle, bottom) and distribute (horizontally,
   vertically) several symbols from the inspector.
+- **FR-EDIT-013** Turn and size a symbol, as Odum turns an interaction toward its heat sink. A
+  single selected symbol shows a knob above it, which turns it in 15° steps (Shift: 1°), and a
+  corner square, which sizes it from 50 % to 300 % in 5 % steps; the inspector's **Turn (°)** and
+  **Size (%)** fields do the same. Flows attach to the outline as turned and sized (a turned heat
+  sink is still entered at its top); labels, gauge and port stay upright. Stored as
+  `visual.rotation` (degrees, clockwise) and `visual.scale`, omitted at 0° and 100 %; layout
+  only, so neither marks a run out of date, and both round-trip through files and Energese code.
+- **FR-EDIT-014** Icon view, as Odum and Odum set EXTEND's icons beside the energy diagram of a
+  pond. An **Icons** toggle on the canvas (off by default, remembered) draws each symbol as a
+  picture instead of its Energese symbol; flows, labels, gauges and checks are unchanged. Each
+  symbol type has a built-in line icon (source a sun, storage a tank, producer a plant…), and the
+  symbol's inspector picks another from the built-in set (bank, house, water, electricity,
+  factory, people…) or **adds your own picture**: an SVG, PNG, JPEG, WebP or GIF of at most about
+  146 KB, read in the browser and kept in the model file as a base64 data URL
+  (`_diagram.icons`, `visual.icon`). A picture is drawn as an image, never as markup, so it
+  cannot run script or load anything; loading a file drops anything that is not such an image.
+  The model's inspector lists its own icons and removes them. Layout only: the kernel never sees
+  them. In the icon view a storage's level shows as a gauge.
 
 ### 6.1 Packing and unpacking (M7a, FR-GRP-001)
 
@@ -277,7 +303,21 @@ Odum's diagrams zoom: a storage drawn once at one scale is many storages at the 
   error. A combined flow carries its flows' problems.
 - **Ungroup** removes a group and keeps its contents, moved up a level. Deleting a group deletes
   what it holds. Groups follow renames and deletions, and a group left empty goes.
-- You cannot wire to a packed group: unpack it to connect to a symbol inside.
+- **Ports** (Odum's inset, as he draws a bank inside a city): when the flows across a packed
+  group's edge reach at most three symbols inside it, the group draws a small copy of each inside
+  its box, and each combined flow ends on the copy of the symbol it really reaches; flows to
+  different symbols inside are not combined. Two ports are labelled; three show their names on
+  hover. A combined flow of one flow draws as that flow (dashed for money, with its transaction
+  diamond). Past three, the group is one box, as before.
+- Wiring onto a port connects to the symbol inside. Otherwise you cannot wire to a packed group:
+  unpack it to connect to a symbol inside.
+- A group, selected, lists every flow **across its edge**: the flow, the symbol outside, and the
+  symbol inside it reaches. **See this group in the kernel model** shows the kernel JSON of the
+  symbols inside and every flow touching them (§7.1), so the wiring can be checked against the
+  diagram.
+- The **Buying water for a home** example packs a home's water tank and bank account: water runs
+  in from a utility's dam to the tank, and the water bill out of the bank account, each to its
+  own port.
 - Packing and moving are layout: neither marks a run "Model changed since this run" (FR-RES-005).
 - The **Household budget** example packs eleven bills and renewals into Expenses, with Housing,
   Phone and internet, Living and Renewals inside it. Bills are constant flows; renewals are
@@ -291,6 +331,10 @@ Odum's diagrams zoom: a storage drawn once at one scale is many storages at the 
 
 `toKernelModel` strips everything the kernel does not read. A control reference to a composite is
 rewritten to the composite's state member (`{id}__body`, `{id}__box`), working around K-1 (§17).
+
+**See what the kernel runs** (the model's inspector, with nothing selected) shows this JSON as
+the kernel is given it, with the model hash every run's manifest carries, and copies it. Groups,
+boundaries and layout are not in it.
 
 ### 7.2 Runs
 
@@ -313,8 +357,12 @@ rewritten to the composite's state member (`{id}__body`, `{id}__box`), working a
 - **FR-RES-002** Hover crosshair with a tooltip of every charted value; direct end labels when four
   or fewer series are drawn; a table view of the same numbers.
 - **FR-RES-003** Playback: a time scrubber and play button drive the diagram — readings under each
-  label and storage gauges. A **Flow widths** toggle (off by default, remembered) also draws each
-  flow as wide as |J| relative to the run's largest flow, a Sankey-style reading.
+  label and each storage's level against its reference level. A **Flow widths** toggle (off by
+  default, remembered) also draws each flow as wide as |J| relative to the run's largest flow, a
+  Sankey-style reading. Two more toggles, remembered, show the level: **Level gauges** (on by
+  default), a bar beside the symbol, and **Level fill** (off by default), the symbol itself
+  filled from the bottom up to its level. A symbol with no closed outline to fill (a heat sink)
+  keeps its gauge.
 - **FR-RES-004** CSV download of every sample, node and flow.
 - **FR-RES-005** A result older than the model is marked "Model changed since this run": when
   the model the kernel would be given differs, not when only layout, packing or notes changed.
@@ -457,7 +505,10 @@ GSSK is a general kernel and Energese is one language over it (ADR 0012). See
 - A future service (a live data source, an AI write-up of a run) must be enabled by the user,
   consented per call, listed in the CSP at build time, and its key held in memory or encrypted at
   rest — never in plain `localStorage`.
-- **NFR-HON-002** An LLM may describe a run; it never produces or alters a number.
+- **NFR-HON-002** An LLM never produces a result: every outcome shown comes from a kernel run
+  with its run id. It may propose structure and set inputs (a rate, an initial value, a
+  capacity), each marked as an assumption with its provenance until a person or calibration
+  replaces it, and counted in every run's manifest (ADR 0016).
 
 ## 14. Storage and security
 
@@ -554,23 +605,23 @@ See [AGENTS.md](AGENTS.md#layout).
 
 ## 19. Milestones
 
-| ID  | Scope                                                                                                    | Status                     |
-| --- | -------------------------------------------------------------------------------------------------------- | -------------------------- |
-| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                           | done                       |
-| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback          | done                       |
-| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done                       |
-| M3  | Observations and fitness (§11)                                                                           | done                       |
-| M4  | Calibration and sensitivity (§12)                                                                        | done                       |
-| M5  | Forcing functions and ensembles (§12)                                                                    | done                       |
-| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned                    |
-| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                 | done                       |
-| M7b | Reusable group symbols (kernel `archetypes`), unpacking built-in composites                              | exploratory                |
-| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)              | done                       |
-| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                | planned                    |
-| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                           | planned                    |
-| M11 | Article editing: LaTeX in the browser, figures bound to runs                                             | planned                    |
-| M12 | Assistant: chat over the app's methods; it never produces a number (NFR-HON-002)                         | planned                    |
-| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9             | done; pricing waits on K-9 |
+| ID  | Scope                                                                                                                                              | Status                     |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                                                                     | done                       |
+| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback                                                    | done                       |
+| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor                                           | done                       |
+| M3  | Observations and fitness (§11)                                                                                                                     | done                       |
+| M4  | Calibration and sensitivity (§12)                                                                                                                  | done                       |
+| M5  | Forcing functions and ensembles (§12)                                                                                                              | done                       |
+| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                                                                       | planned                    |
+| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                                                           | done                       |
+| M7b | Building blocks: packed groups saved as cited, tested blocks with typed ports, from a library repository (ADR 0017); unpacking built-in composites | proposed                   |
+| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)                                                        | done                       |
+| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                                                          | planned                    |
+| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                                                                     | planned                    |
+| M11 | Article editing: LaTeX in the browser, figures bound to runs                                                                                       | planned                    |
+| M12 | Assistant: chat that edits through the app's operations as cards to apply; local model first; inputs it sets are marked (ADR 0016)                 | proposed                   |
+| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9                                                       | done; pricing waits on K-9 |
 
 ## 20. Open questions
 

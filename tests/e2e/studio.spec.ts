@@ -25,6 +25,36 @@ test('flow widths are off by default and toggle on', async ({ page }) => {
   await expect.poll(width).toMatch(/^[\d.]+px$/);
 });
 
+test('a storage shows its level as a gauge, a fill of its symbol, or both (FR-RES-003)', async ({
+  page,
+}) => {
+  await openExample(page, 'purchases');
+  const bank = page.locator('[data-node="bank"]');
+  const gauges = page.getByRole('button', { name: /Level gauges/ });
+  const fill = page.getByRole('button', { name: /Level fill/ });
+  await expect(gauges).toHaveAttribute('aria-pressed', 'true');
+  await expect(fill).toHaveAttribute('aria-pressed', 'false');
+  await expect(bank.locator('.gauge')).toHaveCount(1);
+  await expect(bank.locator('.level-fill')).toHaveCount(0);
+
+  await fill.click();
+  await gauges.click();
+  await expect(bank.locator('.gauge')).toHaveCount(0);
+  await expect(bank.locator('.level-fill')).toHaveCount(1);
+  // 1,000 of a 30,000 reference level, filled from the bottom up.
+  await expect(bank.locator('.level-on')).toHaveAttribute('offset', /^0\.033/);
+  await run(page);
+  await page.locator('results-panel input[type="range"]').fill('0');
+  await expect(bank.locator('.level-on')).toHaveAttribute('offset', /^0\.033/);
+
+  // Remembered across a reload.
+  await page.reload();
+  await expect(page.getByRole('button', { name: /Level fill/ })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+});
+
 test('build a model from the palette, wire it, run it, undo it', async ({ page }) => {
   await page.goto('./');
   await page.getByRole('button', { name: 'New model' }).click();
@@ -55,6 +85,63 @@ test('build a model from the palette, wire it, run it, undo it', async ({ page }
   await page.keyboard.press('Control+z');
   await expect(page.locator('[data-edge="storage_to_heat_sink"] .gate')).toHaveCount(0);
   await expect(page.locator('results-panel .status')).toContainText('Model changed since this run');
+});
+
+test('two flows between the same symbols are parallel pathways (FR-EDIT-003)', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'New model' }).click();
+  await page.getByRole('button', { name: 'Add Source' }).click();
+  await page.getByRole('button', { name: 'Add Storage' }).click();
+  await wire(page, 'source', 'node:storage');
+  await page.keyboard.press('Escape');
+  await wire(page, 'source', 'node:storage');
+  await expect(page.locator('diagram-canvas g.edge[data-edge]')).toHaveCount(2);
+  const mid = (id: string) =>
+    page
+      .locator(`[data-edge="${id}"] .line`)
+      .evaluate(
+        (el) =>
+          (el as SVGPathElement).getPointAtLength((el as SVGPathElement).getTotalLength() / 2).y
+      );
+  // The second bows further out, so both can be seen and picked.
+  expect(
+    Math.abs((await mid('source_to_storage_2')) - (await mid('source_to_storage')))
+  ).toBeGreaterThan(18);
+});
+
+test('turn and size a symbol by its handles or the inspector (FR-EDIT-013)', async ({ page }) => {
+  await openExample(page, 'grassland');
+  const grass = page.locator('[data-node="grass"]');
+  await grass.locator('.shape').click();
+  await expect(page.locator('diagram-canvas .rotate-handle')).toHaveCount(1);
+
+  // Swing the knob a quarter turn clockwise about the symbol's centre.
+  const c = await grass.locator('.shape').boundingBox();
+  const k = await page.locator('diagram-canvas .rotate-handle').boundingBox();
+  const cx = c!.x + c!.width / 2;
+  const cy = c!.y + c!.height / 2;
+  await page.mouse.move(k!.x + k!.width / 2, k!.y + k!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cx + 50, cy - 50, { steps: 4 });
+  await page.mouse.move(cx + 70, cy, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.locator('inspector-panel input[name="rotation"]')).toHaveValue('90');
+  await expect(grass.locator('.shape')).toHaveAttribute('transform', /rotate\(90\)/);
+
+  // Drag the corner outwards to grow it, in 5 % steps.
+  const s = await page.locator('diagram-canvas .size-handle').boundingBox();
+  await page.mouse.move(s!.x + s!.width / 2, s!.y + s!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(s!.x + 40, s!.y + 40, { steps: 5 });
+  await page.mouse.up();
+  const size = Number(await page.locator('inspector-panel input[name="scale"]').inputValue());
+  expect(size).toBeGreaterThan(100);
+  expect(size % 5).toBe(0);
+
+  // The inspector sets them too; 0° and 100 % store nothing.
+  await page.locator('inspector-panel input[name="rotation"]').fill('0');
+  await page.locator('inspector-panel input[name="scale"]').fill('100');
+  await expect(grass.locator('.shape')).toHaveAttribute('transform', 'rotate(0) scale(1)');
 });
 
 test('a sensor on a flow shows its rate and charts it (FR-EDIT-010)', async ({ page }) => {
@@ -127,4 +214,47 @@ test('a model with a problem lists it and will not run', async ({ page }) => {
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.locator('.toast')).toContainText('Fix the problems');
   await expect(page.locator('results-panel .series-line')).toHaveCount(0);
+});
+
+test('the icon view draws symbols as pictures: built-in, picked, or your own (FR-EDIT-014)', async ({
+  page,
+}) => {
+  await openExample(page, 'grassland');
+  const toggle = page.getByRole('button', { name: /^Icons/ });
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-node="sun"] .picture')).toHaveCount(0);
+  await toggle.click();
+  // Each symbol type has a default picture.
+  await expect(page.locator('[data-node="sun"] use.picture')).toHaveAttribute('href', '#icon-sun');
+  await expect(page.locator('[data-node="grass"] use.picture')).toHaveAttribute(
+    'href',
+    '#icon-leaf'
+  );
+
+  // Pick another built-in for one symbol.
+  await page.locator('[data-node="grazers"] .shape').click();
+  await page.locator('inspector-panel select[name="icon"]').selectOption('builtin:people');
+  await expect(page.locator('[data-node="grazers"] use.picture')).toHaveAttribute(
+    'href',
+    '#icon-people'
+  );
+
+  // Or add your own picture, which the model keeps.
+  await page.locator('inspector-panel input[name="icon-file"]').setInputFiles({
+    name: 'cow.svg',
+    mimeType: 'image/svg+xml',
+    buffer: Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>'
+    ),
+  });
+  await expect(page.locator('[data-node="grazers"] image.picture')).toHaveAttribute(
+    'href',
+    /^data:image\/svg\+xml;base64,/
+  );
+  await expect(page.locator('inspector-panel select[name="icon"]')).toHaveValue('icon_cow');
+  await page.keyboard.press('Escape');
+  await page.locator('diagram-canvas svg.canvas').click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('inspector-panel .own-icon[data-icon="icon_cow"]')).toContainText(
+    '1 symbol'
+  );
 });

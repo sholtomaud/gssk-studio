@@ -312,14 +312,16 @@ const purchases: StudioModel = {
   // Months.
   config: { t_start: 0, t_end: 12, dt: 0.05, method: 'rk4' },
   nodes: [
+    // Sellers on the left, the household on the right: each money flow runs back
+    // alongside what it pays for, under one transaction diamond (Odum's convention).
     { ...n('grid', 'source', 1, 100, 140, 'Electricity grid'), carrier: 'electricity' },
-    { ...n('appliances', 'sink', 0, 640, 140, 'Appliances'), carrier: 'electricity' },
-    { ...n('streaming', 'source', 1, 100, 280, 'Streaming service'), carrier: 'video' },
-    { ...n('screen', 'sink', 0, 640, 280, 'Screen time'), carrier: 'video' },
-    { ...n('salary', 'source', 300, 100, 460, 'Salary'), carrier: 'aud' },
-    { ...n('bank', 'storage', 1000, 360, 460, 'Bank account', 30000), carrier: 'aud' },
-    { ...n('retailer', 'storage', 0, 640, 420, 'Power retailer', 2000), carrier: 'aud' },
-    { ...n('streamer', 'storage', 0, 640, 560, 'Streaming company', 500), carrier: 'aud' },
+    { ...n('appliances', 'sink', 0, 660, 140, 'Appliances'), carrier: 'electricity' },
+    { ...n('streaming', 'source', 1, 100, 540, 'Streaming service'), carrier: 'video' },
+    { ...n('screen', 'sink', 0, 660, 540, 'Screen time'), carrier: 'video' },
+    { ...n('salary', 'source', 300, 880, 340, 'Salary'), carrier: 'aud' },
+    { ...n('bank', 'storage', 1000, 660, 340, 'Bank account', 30000), carrier: 'aud' },
+    { ...n('retailer', 'storage', 0, 100, 280, 'Power retailer', 2000), carrier: 'aud' },
+    { ...n('streamer', 'storage', 0, 100, 400, 'Streaming company', 500), carrier: 'aud' },
   ],
   edges: [
     {
@@ -342,6 +344,63 @@ const purchases: StudioModel = {
     { id: 'aud', _label: 'Australian dollar', _currency: 'AUD' },
   ],
   _diagram: { boundaries: [] },
+};
+
+/** A symbol drawn as one of the built-in icons in the icon view (FR-EDIT-014). */
+const withIcon = (node: ModelNode, icon: string): ModelNode => ({
+  ...node,
+  visual: { ...node.visual, icon: `builtin:${icon}` },
+});
+
+const water: StudioModel = {
+  metadata: {
+    schema_version: 4,
+    name: 'Buying water for a home',
+    description:
+      'A utility sells water to a home, which pays from its bank account; the home is packed into one symbol that still shows which store each flow reaches (FR-GRP-001, FR-TRX-001).',
+  },
+  // Months.
+  config: { t_start: 0, t_end: 24, dt: 0.05, method: 'rk4' },
+  nodes: [
+    withIcon({ ...n('rain', 'source', 400, 100, 140, 'Catchment rain'), carrier: 'water' }, 'rain'),
+    withIcon(
+      { ...n('dam', 'storage', 5000, 280, 140, 'Utility dam', 20000), carrier: 'water' },
+      'water'
+    ),
+    withIcon(
+      { ...n('revenue', 'storage', 0, 280, 340, 'Utility revenue', 2000), carrier: 'aud' },
+      'bank'
+    ),
+    withIcon({ ...n('tank', 'storage', 2, 640, 140, 'Water tank', 10), carrier: 'water' }, 'tank'),
+    withIcon({ ...n('use', 'sink', 0, 820, 140, 'Household use'), carrier: 'water' }, 'house'),
+    withIcon(
+      { ...n('bank', 'storage', 1500, 640, 340, 'Bank account', 5000), carrier: 'aud' },
+      'bank'
+    ),
+    withIcon({ ...n('wages', 'source', 300, 900, 340, 'Wages'), carrier: 'aud' }, 'money'),
+  ],
+  edges: [
+    { ...f('inflow', 'rain', 'dam', 1), carrier: 'water' },
+    {
+      ...paid('supply', 'dam', 'tank', 15, 'water'),
+      coupled_edge: 'water_bill',
+      visual: { transaction: { purpose: '04', tags: ['utilities'] } },
+    },
+    { ...f('drink', 'tank', 'use', 7.5), carrier: 'water' },
+    { ...paid('water_bill', 'bank', 'revenue', 45, 'aud'), coupled_edge: 'supply' },
+    { ...f('earn', 'wages', 'bank', 1), carrier: 'aud' },
+  ],
+  carriers: [
+    { id: 'water', unit: 'kL', _label: 'Water' },
+    { id: 'aud', _label: 'Australian dollar', _currency: 'AUD' },
+  ],
+  _diagram: {
+    boundaries: [],
+    groups: [
+      { id: 'home', label: 'Home', nodes: ['tank', 'use', 'bank'], collapsed: true },
+      { id: 'utility', label: 'Water utility', nodes: ['dam', 'revenue'], collapsed: false },
+    ],
+  },
 };
 
 export const EXAMPLES: readonly Example[] = [
@@ -392,6 +451,12 @@ export const EXAMPLES: readonly Example[] = [
     title: purchases.metadata.name,
     summary: purchases.metadata.description ?? '',
     model: purchases,
+  },
+  {
+    id: 'water',
+    title: water.metadata.name,
+    summary: water.metadata.description ?? '',
+    model: water,
   },
 ];
 

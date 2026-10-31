@@ -13,7 +13,8 @@ the requirements document. Cite its IDs (`FR-…`, `NFR-…`, `K-…`) in commit
 3. **GSSK is pinned and unmodified** (NFR-KER-001). Never edit `vendor/gssk/`. Upgrade with
    `npm run gssk:update -- <dist-commit>` in its own PR.
 4. **Every number has a provenance** (NFR-HON-001): a run's manifest says which kernel, which
-   model hash, which method and step. **An LLM never produces a number** (NFR-HON-002).
+   model hash, which method and step. **An LLM never produces a result** (NFR-HON-002): an
+   input it sets is marked as an assumption with its provenance (ADR 0016).
 5. **Deterministic** (NFR-DET-001): every stochastic step takes an explicit seed.
 6. **No real data in the repository** (NFR-PRIV-002). Fixtures are synthetic.
 7. **Spec deviations are ADRs** in `docs/adr/`.

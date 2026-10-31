@@ -7,6 +7,7 @@
 import { isNodeType } from './catalogue.ts';
 import { parseForcing } from './forcing.ts';
 import { tidyGroups } from './groups.ts';
+import { isIconHref } from './icons.ts';
 import { uniqueId } from './ids.ts';
 import {
   DEFAULT_CONFIG,
@@ -18,6 +19,7 @@ import {
   type CarrierKind,
   type Transaction,
   type Group,
+  type Icon,
   type EdgeLogic,
   type Method,
   type ModelEdge,
@@ -108,6 +110,12 @@ export function normaliseModel(raw: unknown): ParseResult {
     };
     const cap = num(v.capacity);
     if (cap !== undefined) node.visual.capacity = cap;
+    const scale = num(v.scale);
+    if (scale !== undefined && scale > 0 && scale !== 1) node.visual.scale = scale;
+    const rotation = num(v.rotation);
+    if (rotation !== undefined && rotation % 360 !== 0) node.visual.rotation = rotation;
+    const icon = str(v.icon);
+    if (icon) node.visual.icon = icon;
     if (x === undefined || y === undefined)
       notes.push(`“${id}” had no position; placed on a grid.`);
     const carrier = str(rn.carrier);
@@ -259,6 +267,23 @@ export function normaliseModel(raw: unknown): ParseResult {
     });
   }
 
+  // The model's own icons (FR-EDIT-014): images as data URLs, nothing else.
+  const icons: Icon[] = [];
+  for (const ri of Array.isArray(diagram.icons) ? diagram.icons : []) {
+    if (!isObj(ri)) continue;
+    const href = str(ri.href);
+    if (!href || !isIconHref(href)) {
+      notes.push(
+        `Icon “${String(ri.label ?? ri.id)}” was not an image this app draws and was left out.`
+      );
+      continue;
+    }
+    const id =
+      str(ri.id) && !taken.has(ri.id as string) ? (ri.id as string) : uniqueId('icon', taken);
+    taken.add(id);
+    icons.push({ id, label: str(ri.label) ?? id, href });
+  }
+
   const observations: ObservationSeries[] = [];
   const known = new Set([...nodes.map((n) => n.id), ...edges.map((e) => `flow:${e.id}`)]);
   for (const ro of Array.isArray(raw._observations) ? raw._observations : []) {
@@ -292,7 +317,11 @@ export function normaliseModel(raw: unknown): ParseResult {
     nodes,
     edges,
     ...(carriers.length ? { carriers } : {}),
-    _diagram: { boundaries, ...(groups.length ? { groups } : {}) },
+    _diagram: {
+      boundaries,
+      ...(groups.length ? { groups } : {}),
+      ...(icons.length ? { icons } : {}),
+    },
     ...(observations.length ? { _observations: observations } : {}),
     ...(script && scriptHash ? { _energese: { source: script, modelHash: scriptHash } } : {}),
   };

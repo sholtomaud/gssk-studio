@@ -88,6 +88,13 @@ export function toKernelModel(m: StudioModel): KernelModel {
   };
 }
 
+/** The run manifest's model hash (FR-SIM-003): SHA-256 of the canonical kernel JSON. */
+export async function kernelHash(m: StudioModel): Promise<string> {
+  const bytes = new TextEncoder().encode(canonicalJson(toKernelModel(m)));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 /** Canonical JSON: keys sorted, so equal models give equal strings and hashes. */
 export function canonicalJson(value: unknown): string {
   return JSON.stringify(value, (_k, v: unknown) =>

@@ -29,7 +29,9 @@ test('drag a transaction onto a flow; it is invalid until its money counter-flow
   await expect(page.locator('g.edge[data-edge="stream"]')).not.toHaveClass(/invalid/);
   await expect(page.locator('studio-page .badge').filter({ hasText: 'Checks pass' })).toBeVisible();
   await expect(page.locator('g.edge[data-edge="stream_payment"]')).toHaveClass(/kind-monetary/);
-  await expect(page.locator('diagram-canvas .pair-link')).toHaveCount(2);
+  // Odum's convention: the money runs alongside what it buys, under one diamond.
+  await expect(page.locator('[data-edge="stream"] .transaction')).toHaveCount(1);
+  await expect(page.locator('[data-edge="stream_payment"] .transaction')).toHaveCount(0);
 
   await run(page);
   await expect(page.locator('[data-edge="stream"] .price-reading')).toHaveText('0.44 AUD/GBy');

@@ -5,6 +5,7 @@ import {
   groupCentre,
   groupNodes,
   groupTotal,
+  MAX_PORTS,
   nodesIn,
   ownerOf,
   revealNode,
@@ -35,9 +36,27 @@ describe('zoom groups (FR-GRP-001)', () => {
     const v = diagramView(setCollapsed(budget(), 'expenses', false));
     expect(v.frames.map((g) => g.id).sort()).toEqual(['comms', 'expenses', 'housing', 'living']);
     expect(v.packed.map((g) => g.id)).toEqual(['renewals']);
-    const renewals = v.bundles.find((b) => b.target.id === 'renewals');
-    expect(renewals?.edges.sort()).toEqual(['car_insurance_bill', 'computer_bill']);
+    // Renewals holds two symbols that flows reach, so it shows both, each with its own flow.
+    expect(v.ports.get('renewals')).toEqual(['car_insurance', 'computer']);
+    const renewals = v.bundles.filter((b) => b.target.id === 'renewals');
+    expect(renewals.map((b) => [b.target.port, b.edges])).toEqual([
+      ['car_insurance', ['car_insurance_bill']],
+      ['computer', ['computer_bill']],
+    ]);
     expect(v.edges.map((e) => e.id)).toContain('rent_bill');
+  });
+
+  it('a packed group shows the symbols inside that flows reach, up to MAX_PORTS (Odum’s inset)', () => {
+    const v = diagramView(cloneModel(exampleById('water')!.model));
+    // Water into the tank; wages in and the water bill out of the bank account.
+    expect(v.ports.get('home')).toEqual(['tank', 'bank']);
+    const into = (port: string) =>
+      v.bundles.filter((b) => b.target.port === port || b.origin.port === port).map((b) => b.edges);
+    expect(into('tank')).toEqual([['supply']]);
+    expect(into('bank').sort()).toEqual([['earn'], ['water_bill']]);
+    // Past MAX_PORTS it is one box: Expenses reaches eleven bills.
+    expect(diagramView(budget()).ports.has('expenses')).toBe(false);
+    expect(MAX_PORTS).toBe(3);
   });
 
   it('never changes what the kernel runs, so the model hash is the same', () => {

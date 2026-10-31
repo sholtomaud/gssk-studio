@@ -54,7 +54,8 @@ function kitchenSink(): StudioModel {
         type: 'producer',
         value: 20,
         params: { k_production: 0.1, k_respiration: 0.02 },
-        visual: { x: 7, y: 8, label: 'Grass' },
+        // Sized and turned (FR-EDIT-013): layout the code keeps.
+        visual: { x: 7, y: 8, label: 'Grass', scale: 1.5, rotation: 90 },
       },
       {
         id: 'cow',

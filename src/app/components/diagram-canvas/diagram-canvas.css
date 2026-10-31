@@ -69,6 +69,17 @@
 :host .node .gauge {
   fill: var(--fill-level);
 }
+:host .node .level-on {
+  stop-color: var(--fill-level);
+}
+:host .node .level-off {
+  stop-color: var(--fill-level);
+  stop-opacity: 0;
+}
+:host .node .level-fill {
+  stroke: none;
+  pointer-events: none;
+}
 :host .node .port {
   fill: var(--surface-2);
   stroke: var(--select);
@@ -319,6 +330,23 @@
   text-anchor: middle;
   pointer-events: none;
 }
+:host .node.group .inner-port {
+  color: var(--ink);
+  cursor: crosshair;
+}
+:host .node.group .inner-hit {
+  fill: transparent;
+  stroke: none;
+}
+:host .node.group .inner-label {
+  fill: var(--text-secondary);
+  font: 8px var(--font-sans);
+  text-anchor: middle;
+  pointer-events: none;
+}
+:host .node.group .inner-port.drop-target {
+  color: var(--good);
+}
 :host .edge.bundle .line {
   stroke-width: 3.2;
 }
@@ -396,9 +424,10 @@
   text-anchor: middle;
   pointer-events: none;
 }
-:host .pair-link {
-  stroke: var(--border-strong);
-  stroke-width: 1;
-  stroke-dasharray: 2 4;
-  pointer-events: none;
+/* Turning and sizing a symbol (FR-EDIT-013) */
+:host .rotate-handle {
+  cursor: grab;
+}
+:host .size-handle {
+  cursor: nwse-resize;
 }

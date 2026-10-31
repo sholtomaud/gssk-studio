@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   anchor,
   bounds,
+  boxOf,
+  COUPLE_GAP,
+  LANE_GAP,
+  couplePoint,
+  coupledCurve,
   edgeCurve,
   halfExtent,
   pathData,
   pointAt,
+  tangentAt,
 } from '../../src/diagram/geometry.ts';
 import type { ModelEdge, ModelNode } from '../../src/model/types.ts';
 
@@ -55,6 +61,31 @@ describe('diagram geometry (SPEC §6.2)', () => {
     expect(c.c2.y).toBeCloseTo(c.p1.y - 100);
   });
 
+  it('anchors on a symbol as sized and turned (FR-EDIT-013)', () => {
+    const big = { ...node('a', 'source', 0, 0), visual: { x: 0, y: 0, scale: 2 } };
+    expect(anchor(big, { x: 100, y: 0 }).x).toBeCloseTo(2 * halfExtent('source').w);
+    // A heat sink turned a quarter clockwise is entered at its top, now on its right.
+    const sink = { ...node('s', 'sink', 0, 0), visual: { x: 0, y: 0, rotation: 90 } };
+    const p = anchor(sink, { x: 0, y: 1000 });
+    expect(p.x).toBeCloseTo(halfExtent('sink').h);
+    expect(p.y).toBeCloseTo(0);
+    // A turned box swaps its width and height.
+    const turned = { ...node('t', 'storage', 0, 0), visual: { x: 0, y: 0, rotation: 90 } };
+    expect(boxOf(turned).w).toBeCloseTo(halfExtent('storage').h);
+    expect(boxOf(turned).h).toBeCloseTo(halfExtent('storage').w);
+  });
+
+  it('bows each parallel flow between the same two symbols further out (FR-EDIT-003)', () => {
+    const a = node('a', 'source', 0, 0);
+    const b = node('b', 'source', 300, 0);
+    const y = (lane: number) => pointAt(edgeCurve(edge, a, b, lane), 0.5).y;
+    // About LANE_GAP apart: their ends also slide round the outlines.
+    for (const gap of [y(1) - y(0), y(2) - y(1)]) {
+      expect(Math.abs(gap)).toBeGreaterThan(LANE_GAP - 3);
+      expect(Math.abs(gap)).toBeLessThan(LANE_GAP + 3);
+    }
+  });
+
   it('bounds points with padding, and a default view when empty', () => {
     expect(
       bounds(
@@ -66,5 +97,37 @@ describe('diagram geometry (SPEC §6.2)', () => {
       )
     ).toEqual({ x: -5, y: -5, w: 20, h: 30 });
     expect(bounds([]).w).toBeGreaterThan(0);
+  });
+
+  describe('a transaction’s counter-flow (FR-TRX-001)', () => {
+    // Goods left to right along y = 0; money from below the buyer back to below the seller.
+    const goods = edgeCurve(edge, node('a', 'storage', 0, 0), node('b', 'storage', 400, 0));
+    const payer = node('p', 'storage', 400, 160);
+    const payee = node('q', 'storage', 0, 160);
+
+    it('passes the marked flow’s diamond a small gap away, on the side of its own ends', () => {
+      const at = pointAt(goods, 0.5);
+      const pass = couplePoint(goods, 0.5, payer, payee);
+      expect(Math.hypot(pass.x - at.x, pass.y - at.y)).toBeCloseTo(COUPLE_GAP);
+      expect(pass.y).toBeGreaterThan(at.y);
+      const c = coupledCurve(goods, 0.5, payer, payee);
+      const mid = pointAt(c, 0.5);
+      expect(mid.x).toBeCloseTo(pass.x);
+      expect(mid.y).toBeCloseTo(pass.y);
+    });
+
+    it('runs the opposite way to the marked flow where they meet', () => {
+      const c = coupledCurve(goods, 0.5, payer, payee);
+      const a = tangentAt(goods, 0.5);
+      const b = tangentAt(c, 0.5);
+      const cos = (a.x * b.x + a.y * b.y) / (Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y));
+      expect(cos).toBeCloseTo(-1);
+    });
+
+    it('starts and ends on its own symbols’ outlines', () => {
+      const c = coupledCurve(goods, 0.5, payer, payee);
+      expect(Math.hypot(c.p0.x - 400, c.p0.y - 160)).toBeLessThan(60);
+      expect(Math.hypot(c.p1.x, c.p1.y - 160)).toBeLessThan(60);
+    });
   });
 });

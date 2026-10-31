@@ -13,12 +13,49 @@ export const SCALE = SIZE / 100;
 type Outline = 'ellipse' | 'rect' | 'diamond' | 'port-top';
 
 /** A packed zoom group draws as a box of this half-size (FR-GRP-001). */
-export const GROUP_HALF = { w: 48, h: 32 };
+export const GROUP_HALF = { w: 64, h: 34 };
 
 /** Something a flow can end on: a symbol, or a packed group (`type: 'group'`). */
 export interface Shape {
   type: NodeType | 'group';
-  visual: Point;
+  /** Where it is, and for a symbol its size (1 = as drawn) and rotation in degrees (FR-EDIT-013). */
+  visual: Point & { scale?: number; rotation?: number };
+}
+
+/** The sizes a symbol may be drawn at, as a fraction of its own (FR-EDIT-013). */
+export const SYMBOL_SCALE = { min: 0.5, max: 3, step: 0.05 };
+
+/** A symbol's size: 1 as drawn; a packed group is always drawn as is. */
+export function scaleOf(s: Shape): number {
+  return s.type === 'group' ? 1 : (s.visual.scale ?? 1);
+}
+
+/** A symbol's rotation in radians, clockwise on screen. */
+function turnOf(s: Shape): number {
+  return s.type === 'group' ? 0 : ((s.visual.rotation ?? 0) * Math.PI) / 180;
+}
+
+/** Half-extents of a shape's outline at its size, before it is turned. */
+export function extentOf(s: Shape): { w: number; h: number } {
+  const { w, h } = halfExtent(s.type);
+  const k = scaleOf(s);
+  return { w: w * k, h: h * k };
+}
+
+/** Half-extents of the upright box around a shape, sized and turned: where its labels go. */
+export function boxOf(s: Shape): { w: number; h: number } {
+  const { w, h } = extentOf(s);
+  const a = turnOf(s);
+  const c = Math.abs(Math.cos(a));
+  const n = Math.abs(Math.sin(a));
+  return { w: w * c + h * n, h: w * n + h * c };
+}
+
+/** `p` turned by `a` radians about the origin. */
+export function rotate(p: Point, a: number): Point {
+  const c = Math.cos(a);
+  const n = Math.sin(a);
+  return { x: p.x * c - p.y * n, y: p.x * n + p.y * c };
 }
 
 const OUTLINE: Record<NodeType | 'group', Outline> = {
@@ -44,15 +81,28 @@ export function halfExtent(type: NodeType | 'group'): { w: number; h: number } {
   return { w: h.w * SCALE, h: h.h * SCALE };
 }
 
-/** The point on a node's outline in the direction of `toward`. */
+/**
+ * The point on a node's outline in the direction of `toward`, on the outline
+ * as sized and turned: a turned heat sink is still entered at its top.
+ */
 export function anchor(node: Shape, toward: Point): Point {
   const { x: cx, y: cy } = node.visual;
-  const { w, h } = halfExtent(node.type);
-  const dx = toward.x - cx;
-  const dy = toward.y - cy;
-  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  const turn = turnOf(node);
+  const local = localAnchor(node, toward, turn);
+  const at = rotate(local, turn);
+  return { x: cx + at.x, y: cy + at.y };
+}
+
+/** The outline point toward `toward`, in the shape's own unturned frame about its centre. */
+function localAnchor(node: Shape, toward: Point, turn: number): Point {
+  const { w, h } = extentOf(node);
+  const { x: dx, y: dy } = rotate(
+    { x: toward.x - node.visual.x, y: toward.y - node.visual.y },
+    -turn
+  );
+  if (dx === 0 && dy === 0) return { x: 0, y: 0 };
   const outline = OUTLINE[node.type];
-  if (outline === 'port-top') return { x: cx, y: cy - h };
+  if (outline === 'port-top') return { x: 0, y: -h };
   const angle = Math.atan2(dy, dx);
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
@@ -67,8 +117,11 @@ export function anchor(node: Shape, toward: Point): Point {
       Math.abs(sin) > 1e-9 ? h / Math.abs(sin) : Infinity
     );
   }
-  return { x: cx + r * cos, y: cy + r * sin };
+  return { x: r * cos, y: r * sin };
 }
+
+/** How far apart parallel flows between the same two symbols run, at their middles. */
+export const LANE_GAP = 24;
 
 export interface Curve {
   p0: Point;
@@ -79,18 +132,20 @@ export interface Curve {
 
 /**
  * The cubic Bézier for a flow. Without stored control points the curve bows
- * slightly, so a pair of opposite flows between two nodes never overlap.
+ * slightly, so a pair of opposite flows between two nodes never overlap;
+ * parallel flows between the same two nodes (`lane` 1, 2, …) bow further.
  */
 export function edgeCurve(
   edge: Pick<ModelEdge, 'origin' | 'target' | 'visual'>,
   origin: Shape,
-  target: Shape
+  target: Shape,
+  lane = 0
 ): Curve {
   const a = { x: origin.visual.x, y: origin.visual.y };
   const b = { x: target.visual.x, y: target.visual.y };
   if (edge.origin === edge.target) {
     // Self-loop: a lobe above the node.
-    const { h } = halfExtent(origin.type);
+    const { h } = extentOf(origin);
     const p0 = { x: a.x - 12, y: a.y - h };
     const p1 = { x: a.x + 12, y: a.y - h };
     return { p0, c1: { x: a.x - 60, y: a.y - h - 70 }, c2: { x: a.x + 60, y: a.y - h - 70 }, p1 };
@@ -100,12 +155,22 @@ export function edgeCurve(
   const dist = Math.hypot(dx, dy);
   const angle = Math.atan2(dy, dx);
   const bow = 0.2;
+  // Each further lane moves both guides out to the bow's side, LANE_GAP apart at the middle.
+  const out = (lane * LANE_GAP * 4) / 3;
+  const nx = Math.sin(angle) * out;
+  const ny = -Math.cos(angle) * out;
   const guide1 = edge.visual?.ctrl1
     ? { x: a.x + edge.visual.ctrl1.x, y: a.y + edge.visual.ctrl1.y }
-    : { x: a.x + (Math.cos(angle - bow) * dist) / 3, y: a.y + (Math.sin(angle - bow) * dist) / 3 };
+    : {
+        x: a.x + (Math.cos(angle - bow) * dist) / 3 + nx,
+        y: a.y + (Math.sin(angle - bow) * dist) / 3 + ny,
+      };
   const guide2 = edge.visual?.ctrl2
     ? { x: b.x + edge.visual.ctrl2.x, y: b.y + edge.visual.ctrl2.y }
-    : { x: b.x - (Math.cos(angle + bow) * dist) / 3, y: b.y - (Math.sin(angle + bow) * dist) / 3 };
+    : {
+        x: b.x - (Math.cos(angle + bow) * dist) / 3 + nx,
+        y: b.y - (Math.sin(angle + bow) * dist) / 3 + ny,
+      };
   const p0 = anchor(origin, guide1);
   const p1 = anchor(target, guide2);
   const c1 = edge.visual?.ctrl1
@@ -115,6 +180,68 @@ export function edgeCurve(
     ? { x: p1.x + edge.visual.ctrl2.x, y: p1.y + edge.visual.ctrl2.y }
     : guide2;
   return { p0, c1, c2, p1 };
+}
+
+/**
+ * Where a transaction's counter-flow passes its marked flow (FR-TRX-001):
+ * beside the marked flow's point at `t`, `COUPLE_GAP` to the side where the
+ * counter-flow's own ends lie, so the pair never cross to reach it.
+ */
+export const COUPLE_GAP = 12;
+
+export function couplePoint(base: Curve, t: number, origin: Shape, target: Shape): Point {
+  const at = pointAt(base, t);
+  const tan = unit(tangentAt(base, t), base);
+  const normal = { x: -tan.y, y: tan.x };
+  const mid = {
+    x: (origin.visual.x + target.visual.x) / 2,
+    y: (origin.visual.y + target.visual.y) / 2,
+  };
+  const side = (mid.x - at.x) * normal.x + (mid.y - at.y) * normal.y < 0 ? -1 : 1;
+  return { x: at.x + normal.x * COUPLE_GAP * side, y: at.y + normal.y * COUPLE_GAP * side };
+}
+
+/**
+ * A transaction's counter-flow drawn as Odum draws it: alongside its marked
+ * flow, the opposite way, passing it at the transaction diamond. A single
+ * cubic through the pass point at t = ½ with the reversed tangent there.
+ */
+export function coupledCurve(base: Curve, t: number, origin: Shape, target: Shape): Curve {
+  const m = couplePoint(base, t, origin, target);
+  const tan = unit(tangentAt(base, t), base);
+  const p0 = anchor(origin, m);
+  const p1 = anchor(target, m);
+  const len = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+  // B(½) = (p0 + 3c1 + 3c2 + p1) / 8 = m, and B'(½) = ¾ (p1 − p0 + c2 − c1) ∥ −tan.
+  const sum = { x: (8 * m.x - p0.x - p1.x) / 3, y: (8 * m.y - p0.y - p1.y) / 3 };
+  const diff = { x: -tan.x * len - (p1.x - p0.x), y: -tan.y * len - (p1.y - p0.y) };
+  return {
+    p0,
+    c1: { x: (sum.x - diff.x) / 2, y: (sum.y - diff.y) / 2 },
+    c2: { x: (sum.x + diff.x) / 2, y: (sum.y + diff.y) / 2 },
+    p1,
+  };
+}
+
+export function tangentAt(c: Curve, t: number): Point {
+  const u = 1 - t;
+  const a = 3 * u * u;
+  const b = 6 * u * t;
+  const d = 3 * t * t;
+  return {
+    x: a * (c.c1.x - c.p0.x) + b * (c.c2.x - c.c1.x) + d * (c.p1.x - c.c2.x),
+    y: a * (c.c1.y - c.p0.y) + b * (c.c2.y - c.c1.y) + d * (c.p1.y - c.c2.y),
+  };
+}
+
+/** A unit vector along `v`, or along the curve's chord when `v` vanishes. */
+function unit(v: Point, c: Curve): Point {
+  let l = Math.hypot(v.x, v.y);
+  if (l < 1e-9) {
+    v = { x: c.p1.x - c.p0.x, y: c.p1.y - c.p0.y };
+    l = Math.hypot(v.x, v.y);
+  }
+  return l < 1e-9 ? { x: 1, y: 0 } : { x: v.x / l, y: v.y / l };
 }
 
 export function pointAt(c: Curve, t: number): Point {
