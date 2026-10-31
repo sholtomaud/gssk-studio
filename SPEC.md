@@ -40,7 +40,7 @@ Studio makes it dependable.
 - A server. There is no account, no backend and no telemetry.
 - Editing the kernel. Kernel gaps are worked around in the app and filed upstream (§17).
 - Collaborative real-time editing.
-- An LLM that writes model numbers (NFR-HON-002).
+- An LLM that produces results, or sets an input without marking it (NFR-HON-002, ADR 0016).
 
 ## 2. Principles
 
@@ -505,7 +505,10 @@ GSSK is a general kernel and Energese is one language over it (ADR 0012). See
 - A future service (a live data source, an AI write-up of a run) must be enabled by the user,
   consented per call, listed in the CSP at build time, and its key held in memory or encrypted at
   rest — never in plain `localStorage`.
-- **NFR-HON-002** An LLM may describe a run; it never produces or alters a number.
+- **NFR-HON-002** An LLM never produces a result: every outcome shown comes from a kernel run
+  with its run id. It may propose structure and set inputs (a rate, an initial value, a
+  capacity), each marked as an assumption with its provenance until a person or calibration
+  replaces it, and counted in every run's manifest (ADR 0016).
 
 ## 14. Storage and security
 
@@ -602,23 +605,23 @@ See [AGENTS.md](AGENTS.md#layout).
 
 ## 19. Milestones
 
-| ID  | Scope                                                                                                    | Status                     |
-| --- | -------------------------------------------------------------------------------------------------------- | -------------------------- |
-| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                           | done                       |
-| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback          | done                       |
-| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor | done                       |
-| M3  | Observations and fitness (§11)                                                                           | done                       |
-| M4  | Calibration and sensitivity (§12)                                                                        | done                       |
-| M5  | Forcing functions and ensembles (§12)                                                                    | done                       |
-| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                             | planned                    |
-| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                 | done                       |
-| M7b | Reusable group symbols (kernel `archetypes`), unpacking built-in composites                              | exploratory                |
-| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)              | done                       |
-| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                | planned                    |
-| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                           | planned                    |
-| M11 | Article editing: LaTeX in the browser, figures bound to runs                                             | planned                    |
-| M12 | Assistant: chat over the app's methods; it never produces a number (NFR-HON-002)                         | planned                    |
-| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9             | done; pricing waits on K-9 |
+| ID  | Scope                                                                                                                                              | Status                     |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                                                                     | done                       |
+| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback                                                    | done                       |
+| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor                                           | done                       |
+| M3  | Observations and fitness (§11)                                                                                                                     | done                       |
+| M4  | Calibration and sensitivity (§12)                                                                                                                  | done                       |
+| M5  | Forcing functions and ensembles (§12)                                                                                                              | done                       |
+| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                                                                       | planned                    |
+| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                                                           | done                       |
+| M7b | Building blocks: packed groups saved as cited, tested blocks with typed ports, from a library repository (ADR 0017); unpacking built-in composites | proposed                   |
+| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)                                                        | done                       |
+| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                                                          | planned                    |
+| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                                                                     | planned                    |
+| M11 | Article editing: LaTeX in the browser, figures bound to runs                                                                                       | planned                    |
+| M12 | Assistant: chat that edits through the app's operations as cards to apply; local model first; inputs it sets are marked (ADR 0016)                 | proposed                   |
+| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9                                                       | done; pricing waits on K-9 |
 
 ## 20. Open questions
 
