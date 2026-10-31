@@ -431,3 +431,10 @@
 :host .size-handle {
   cursor: nwse-resize;
 }
+/* An input the assistant set (ADR 0016) */
+:host .assumed {
+  fill: var(--accent-strong);
+  font: 700 15px var(--font-sans);
+  text-anchor: middle;
+  cursor: help;
+}

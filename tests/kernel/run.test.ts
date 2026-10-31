@@ -92,6 +92,20 @@ describe('running models (FR-SIM-001)', () => {
     expect(r.flows.find((f) => f.id === 'f2')?.values.at(-1)).toBeCloseTo(2, 6);
   });
 
+  it('counts the inputs the assistant set in the manifest, without changing the run (ADR 0016)', async () => {
+    const plain = EXAMPLES[0]!.model;
+    const guessed = cloneModel(plain);
+    guessed._provenance = {
+      [`edge:${guessed.edges[0]!.id}:params.k`]: { by: 'assistant', at: '2026-10-31T00:00:00Z' },
+    };
+    const a = await runModel(kernel, plain);
+    const b = await runModel(kernel, guessed);
+    expect(a.manifest.assumedInputs).toBe(0);
+    expect(b.manifest.assumedInputs).toBe(1);
+    expect(b.manifest.modelHash).toBe(a.manifest.modelHash);
+    expect(b.final).toEqual(a.final);
+  });
+
   it('records flows per edge, signed, refreshed each step', async () => {
     const r = await runModel(kernel, EXAMPLES[3]!.model);
     const pay = r.flows.find((f) => f.id === 'pay');

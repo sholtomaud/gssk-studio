@@ -5,6 +5,7 @@
  * the DOM, so it runs the same in a worker, in Node and in tests.
  */
 import { symbolFor } from '../model/catalogue.ts';
+import { assumedCount } from '../model/provenance.ts';
 import { canonicalJson, toKernelModel } from '../model/kernel-json.ts';
 import type { NodeType, StudioModel } from '../model/types.ts';
 import { sha256Hex, type GsskInstance, type GsskKernel } from './gssk.ts';
@@ -44,6 +45,8 @@ export interface RunManifest {
   samples: number;
   /** The kernel RNG seed: jitter forcing draws from it, so it is part of the run's identity. */
   seed: string;
+  /** Inputs the assistant set that nobody has replaced: how much of the result rests on guesses (ADR 0016). */
+  assumedInputs: number;
 }
 
 export interface RunDiagnostics {
@@ -237,6 +240,7 @@ export class RunSession {
         steps: this.steps,
         samples: n,
         seed: this.seed,
+        assumedInputs: assumedCount(this.model),
       },
       times: this.times.subarray(0, n),
       nodes: this.nodes.map((x) => ({ ...x, values: x.values.subarray(0, n) })),

@@ -23,6 +23,7 @@ import {
 import { revealNode } from '../../../model/groups.ts';
 import { toggleTransaction, transactionOf } from '../../../model/transactions.ts';
 import { canonicalJson, toKernelModel } from '../../../model/kernel-json.ts';
+import { reconcileMarks } from '../../../model/provenance.ts';
 import { emptyModel, type StudioModel } from '../../../model/types.ts';
 import { hasErrors, validate, type Issue } from '../../../model/validate.ts';
 import type { RunResult } from '../../../sim/run.ts';
@@ -443,7 +444,7 @@ export class StudioPage extends BaseComponent {
       this.append(dlg);
     }
     dlg.onApply = (model) => {
-      this.commit({ model, label: 'Calibrate rates' });
+      this.commit({ model, label: 'Calibrate rates', by: 'calibration' });
       toast('Calibrated rates applied. Run to see the new fit; undo to go back.');
     };
     dlg.open(m);
@@ -512,7 +513,9 @@ export class StudioPage extends BaseComponent {
     if (!this.model || d.model === this.model) return;
     if (!d.coalesce || d.coalesce !== this.lastCoalesce) this.history.push(this.model);
     this.lastCoalesce = d.coalesce;
-    this.model = d.model;
+    // A marked input someone else changes is theirs now (NFR-HON-002, ADR 0016).
+    this.model =
+      d.by === 'assistant' ? d.model : reconcileMarks(this.model, d.model, d.by ?? 'user');
     if (d.select !== undefined) this.selection = d.select;
     this.update();
     this.scheduleSave();
@@ -550,7 +553,7 @@ export class StudioPage extends BaseComponent {
     this.selection = pruneSelection(m, this.selection);
     this.issues = validate(m);
     const errors = this.issues.filter((i) => i.severity === 'error').length;
-    const warnings = this.issues.length - errors;
+    const warnings = this.issues.filter((i) => i.severity === 'warning').length;
     this.checksBadge.className = `badge hide-narrow ${errors ? 'critical' : warnings ? 'warning' : 'good'}`;
     this.checksBadge.replaceChildren(
       icon(errors || warnings ? 'alert' : 'check'),
@@ -562,7 +565,7 @@ export class StudioPage extends BaseComponent {
     );
     const marks = new Map<string, Marked>();
     for (const i of this.issues) {
-      if (!i.ref || i.ref.kind === 'config') continue;
+      if (!i.ref || i.ref.kind === 'config' || i.severity === 'info') continue;
       const m = marks.get(i.ref.id) ?? { severity: 'warning', messages: [] };
       if (i.severity === 'error') m.severity = 'error';
       m.messages.push(i.message);

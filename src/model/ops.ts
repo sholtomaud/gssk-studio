@@ -6,6 +6,7 @@
 import { symbolFor } from './catalogue.ts';
 import { diagramView, findGroup, nodesIn, tidyGroups } from './groups.ts';
 import { uniqueId } from './ids.ts';
+import { renameMarks } from './provenance.ts';
 import {
   cloneModel,
   type Boundary,
@@ -204,6 +205,7 @@ export function renameNode(m: StudioModel, from: string, to: string): StudioMode
     if (e.params.numerator_node === from) e.params.numerator_node = to;
   }
   tidyGroups(next, { from, to });
+  renameMarks(next, from, to);
   return next;
 }
 

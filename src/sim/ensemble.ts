@@ -6,6 +6,7 @@
  * what made it (NFR-HON-001).
  */
 import { canonicalJson, toKernelModel } from '../model/kernel-json.ts';
+import { assumedCount } from '../model/provenance.ts';
 import type { StudioModel } from '../model/types.ts';
 import { sha256Hex, type GsskKernel } from './gssk.ts';
 import { columnsFor, MAX_SAMPLES, type RunManifest } from './run.ts';
@@ -101,6 +102,7 @@ export async function ensembleModel(
         kernelSha256: kernel.info.sha256,
         modelHash,
         method: model.config.method,
+        assumedInputs: assumedCount(model),
         t_start: t0,
         t_end: inst.tEnd,
         dt,

@@ -20,6 +20,7 @@ import {
   type Transaction,
   type Group,
   type Icon,
+  type Provenance,
   type EdgeLogic,
   type Method,
   type ModelEdge,
@@ -306,6 +307,24 @@ export function normaliseModel(raw: unknown): ParseResult {
     });
   }
 
+  // Who set each input (ADR 0016): kept as written, for inputs that exist.
+  const provenance: Record<string, Provenance> = {};
+  if (isObj(raw._provenance)) {
+    for (const [k, rp] of Object.entries(raw._provenance)) {
+      if (!isObj(rp) || !/^(node|edge):[^:]+:.+$/.test(k)) continue;
+      const by = rp.by;
+      const at = str(rp.at);
+      if ((by !== 'assistant' && by !== 'user' && by !== 'calibration') || !at) continue;
+      provenance[k] = {
+        by,
+        at,
+        ...(str(rp.provider) ? { provider: str(rp.provider) } : {}),
+        ...(str(rp.model) ? { model: str(rp.model) } : {}),
+        ...(str(rp.why) ? { why: str(rp.why) } : {}),
+      };
+    }
+  }
+
   const rs = isObj(raw._energese) ? raw._energese : {};
   const script = str(rs.source);
   const scriptHash = str(rs.modelHash);
@@ -324,6 +343,7 @@ export function normaliseModel(raw: unknown): ParseResult {
     },
     ...(observations.length ? { _observations: observations } : {}),
     ...(script && scriptHash ? { _energese: { source: script, modelHash: scriptHash } } : {}),
+    ...(Object.keys(provenance).length ? { _provenance: provenance } : {}),
   };
   tidyGroups(model);
   return { model, notes };

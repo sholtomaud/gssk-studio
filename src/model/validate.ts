@@ -9,10 +9,12 @@ import pin from '../../vendor/gssk/GSSK_PIN.json' with { type: 'json' };
 import { carrierProblems } from './carriers.ts';
 import { logicFor, symbolFor } from './catalogue.ts';
 import { transactionProblems } from './transactions.ts';
+import { assumedCount } from './provenance.ts';
 import { canForceNode, forcingProblems } from './forcing.ts';
 import type { StudioModel } from './types.ts';
 
-export type Severity = 'error' | 'warning';
+/** An info item is neither wrong nor risky, only worth knowing (an assumed value, ADR 0016). */
+export type Severity = 'error' | 'warning' | 'info';
 
 export interface Issue {
   severity: Severity;
@@ -212,6 +214,15 @@ export function validate(m: StudioModel): Issue[] {
       'Forced models disagree with the auto method’s solver check on nearly every step: choose rk4.',
       cref
     );
+  }
+  // NFR-HON-002: say how much of the model rests on the assistant's guesses.
+  const assumed = assumedCount(m);
+  if (assumed) {
+    issues.push({
+      severity: 'info',
+      code: 'assumed',
+      message: `${assumed} value${assumed === 1 ? ' was' : 's were'} set by the assistant and ${assumed === 1 ? 'is' : 'are'} not from data: edit ${assumed === 1 ? 'it' : 'them'} or calibrate to replace ${assumed === 1 ? 'it' : 'them'}.`,
+    });
   }
   return issues;
 }

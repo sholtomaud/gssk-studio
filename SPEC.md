@@ -227,6 +227,23 @@ non-monetary one way, money the other (Odum's ecological-economic convention).
   money flow takes `logic: "price"` with a constant, a price node or a forced price, and payer
   exhaustion stops the purchase.
 
+### 5.7 Who set an input (M12, FR-PROV-001, ADR 0016)
+
+An LLM never produces a result (NFR-HON-002), but the assistant may set an input: a node's
+value or capacity, or a node's or flow's parameter. Every input it sets is marked.
+
+- **Stored** in `_provenance`, keyed `node:<id>:<field>` or `edge:<id>:<field>` (`value`,
+  `capacity`, `params.k`…), as `{ by, at, provider?, model?, why? }`, with `by` one of
+  `assistant`, `user` or `calibration`. The kernel never sees it, so the model hash is unchanged.
+- **Shown**: a ≈ mark on the symbol or flow, with which inputs and why on hover; a note in its
+  inspector; an info item in the checks ("2 values were set by the assistant and are not from
+  data").
+- **Counted**: every run's manifest carries `assumedInputs`, the assistant's marks nobody has
+  replaced, shown beside the model hash.
+- **Replaced, never cleared silently**: an edit that changes a marked value marks it `user`;
+  calibration marks it `calibration`. Undo restores the mark. Renames follow; marks on inputs
+  that are gone are dropped. Rebuilding the model from Energese code keeps them.
+
 ## 6. Editor (FR-EDIT)
 
 - **FR-EDIT-001** Palette: every palette symbol, plus Boundary and Sensor. Click places the symbol
