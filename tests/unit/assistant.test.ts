@@ -100,6 +100,55 @@ describe('providers (ADR 0016)', () => {
     expect(o.calls).toEqual([{ id: 'c1', name: 'describe_model', input: {} }]);
     expect(parseReply(local, openaiText('Done.')).stop).toBe('end');
   });
+
+  it('replays a tool call exactly as sent, keeping Gemini’s thought signature', () => {
+    const gemini: ProviderConfig = {
+      kind: 'gemini',
+      endpoint: 'https://generativelanguage.googleapis.com',
+      model: 'gemini-test',
+    };
+    const call = {
+      id: 'g1',
+      type: 'function',
+      function: { name: 'describe_model', arguments: '{}' },
+      extra_content: { google: { thought_signature: 'sig==' } },
+    };
+    const reply = parseReply(gemini, {
+      choices: [
+        {
+          message: { role: 'assistant', content: null, tool_calls: [call] },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    });
+    const next = chatRequest(gemini, {
+      system: 'S',
+      turns: [
+        { role: 'user', text: 'Hi' },
+        { role: 'assistant', text: reply.text, calls: reply.calls, raw: reply.raw },
+        { role: 'tool', results: [{ id: 'g1', content: '{}' }] },
+      ],
+      tools: [],
+    });
+    const sent = (next.body.messages as { tool_calls?: unknown[] }[])[2];
+    expect(sent?.tool_calls).toEqual([call]);
+    // A server that leaves out the id still gets one its tool result can name.
+    const bare = parseReply(local, {
+      choices: [
+        {
+          message: {
+            content: null,
+            tool_calls: [{ function: { name: 'get_checks', arguments: '' } }],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    });
+    expect(
+      (bare.raw as { tool_calls: { id: string; type: string }[] }).tool_calls[0]
+    ).toMatchObject({ id: 'call_0', type: 'function' });
+    expect(bare.calls[0]?.id).toBe('call_0');
+  });
 });
 
 describe('the egress gate (NFR-PRIV-003, ADR 0016)', () => {
