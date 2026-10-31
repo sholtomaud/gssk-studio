@@ -1,0 +1,77 @@
+<section class="screen">
+  <h1>Settings</h1>
+  <p class="lede">
+    GSSK Studio is complete without any of this. Settings live in this browser; nothing here is sent
+    anywhere.
+  </p>
+
+  <article class="card providers">
+    <h2>Assistant (optional)</h2>
+    <p>
+      Off by default. When on, the assistant explains energy systems diagrams and builds or changes
+      your model with you: its changes come as cards to apply or discard, every number it sets is
+      marked as its assumption, and results come only from runs. Every call shows you exactly what
+      will be sent first.
+    </p>
+    <form class="provider-form" aria-label="Assistant provider">
+      <div class="fields">
+        <label class="field"
+          >Provider
+          <select name="active">
+            <option value="">Off</option>
+          </select>
+        </label>
+      </div>
+      <p class="about hint"></p>
+      <div class="fields detail">
+        <label class="field">Endpoint <input name="endpoint" type="url" /></label>
+        <label class="field">Model <input name="model" type="text" /></label>
+      </div>
+      <div class="openrouter detail" hidden>
+        <p>
+          <button type="button" class="primary openrouter-signin">Sign in with OpenRouter</button>
+        </p>
+        <p class="hint">
+          No key to find or copy: sign in (or sign up) at OpenRouter, approve GSSK Studio, and you
+          come back here with a key for this session. You pay OpenRouter for what you use, and can
+          set a limit or revoke the key there. Like any key here, it is forgotten when the page
+          reloads: sign in again then.
+        </p>
+      </div>
+      <div class="fields key-row detail">
+        <label class="field"
+          >API key, for this session only
+          <input
+            name="key"
+            type="password"
+            autocomplete="off"
+            placeholder="Not stored"
+            spellcheck="false"
+        /></label>
+        <button type="button" class="forget-key">Forget key</button>
+      </div>
+      <p class="hint key-note detail">
+        Your key stays in memory until the page reloads. It is never written to this device or put
+        in a model file, and it is sent only to this provider. Use a dedicated key with a low
+        spending limit, which you can revoke at any time in the provider's console.
+      </p>
+    </form>
+    <p class="msg" role="status" aria-live="polite"></p>
+    <details class="log">
+      <summary>Calls made this session</summary>
+      <table class="calls">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Provider</th>
+            <th scope="col">What for</th>
+            <th scope="col" class="num">Bytes sent</th>
+            <th scope="col">Status</th>
+            <th scope="col">Body SHA-256</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </details>
+  </article>
+</section>

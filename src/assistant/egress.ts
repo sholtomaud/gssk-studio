@@ -19,6 +19,7 @@ export const ALLOWED_ORIGINS = [
   'https://api.anthropic.com',
   'https://api.openai.com',
   'https://generativelanguage.googleapis.com',
+  'https://openrouter.ai',
 ] as const;
 
 /** Whether a URL's origin is on the list; a `:*` entry allows any port. */
@@ -37,6 +38,8 @@ export function isAllowedUrl(url: string): boolean {
 export interface LogEntry {
   at: string;
   provider: string;
+  /** What the call was for: a chat turn, or signing in. */
+  purpose: string;
   origin: string;
   bodySha256: string;
   bytes: number;
@@ -46,6 +49,8 @@ export interface LogEntry {
 /** What the person is asked before a call. */
 export interface PendingCall {
   provider: string;
+  /** What the call is for, in words. */
+  purpose: string;
   url: string;
   /** The body exactly as it will be sent, formatted. */
   body: string;
@@ -56,7 +61,12 @@ export type Consent = 'send' | 'send-always' | 'cancel';
 export class EgressRefused extends Error {}
 
 export interface Gate {
-  send(cfg: ProviderConfig, key: string | undefined, req: HttpRequest): Promise<unknown>;
+  send(
+    cfg: ProviderConfig,
+    key: string | undefined,
+    req: HttpRequest,
+    purpose?: string
+  ): Promise<unknown>;
   readonly log: readonly LogEntry[];
 }
 
@@ -76,7 +86,7 @@ export function createGate(deps: {
   const now = deps.now ?? (() => new Date().toISOString());
   return {
     log,
-    async send(cfg, key, req) {
+    async send(cfg, key, req, purpose = 'A message to the assistant') {
       if (!isAllowedUrl(req.url)) {
         throw new EgressRefused(
           `${new URL(req.url).origin} is not an origin the assistant may call. Use a local server, or Anthropic, OpenAI or Gemini.`
@@ -86,6 +96,7 @@ export function createGate(deps: {
       const entry: LogEntry = {
         at: now(),
         provider: cfg.kind,
+        purpose,
         origin: new URL(req.url).origin,
         bodySha256: await sha256(body),
         bytes: new TextEncoder().encode(body).length,
@@ -94,6 +105,7 @@ export function createGate(deps: {
       if (!always) {
         const answer = await deps.consent({
           provider: cfg.kind,
+          purpose,
           url: req.url,
           body: JSON.stringify(req.body, null, 2),
         });

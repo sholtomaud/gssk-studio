@@ -253,3 +253,37 @@ describe('figures in a reply (NFR-HON-002)', () => {
     expect(checkFigures('All 3 run.', []).some((p) => p.flagged)).toBe(false);
   });
 });
+
+describe('Sign in with OpenRouter (PKCE, ADR 0016)', () => {
+  it('makes a 43-character verifier and its S256 challenge, and asks for a key with them', async () => {
+    const { authUrl, challengeOf, keyFrom, keyRequest, newVerifier } =
+      await import('../../src/assistant/openrouter.ts');
+    const { createHash } = await import('node:crypto');
+    const v = newVerifier();
+    expect(v).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(newVerifier()).not.toBe(v);
+    const expected = createHash('sha256').update(v).digest('base64url');
+    expect(await challengeOf(v)).toBe(expected);
+    const url = new URL(authUrl('https://example.org/app/', 'abc'));
+    expect(url.origin + url.pathname).toBe('https://openrouter.ai/auth');
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      callback_url: 'https://example.org/app/',
+      code_challenge: 'abc',
+      code_challenge_method: 'S256',
+    });
+    const req = keyRequest('code1', v);
+    expect(req.url).toBe('https://openrouter.ai/api/v1/auth/keys');
+    expect(req.body).toEqual({ code: 'code1', code_verifier: v, code_challenge_method: 'S256' });
+    expect(keyFrom({ key: ' sk-or-1 ' })).toBe('sk-or-1');
+    expect(keyFrom({})).toBeUndefined();
+    expect(isAllowedUrl(req.url)).toBe(true);
+  });
+
+  it('chats with OpenRouter through its OpenAI-compatible API', () => {
+    const r = chatRequest(
+      { kind: 'openrouter', endpoint: 'https://openrouter.ai/api', model: 'openrouter/auto' },
+      { system: 'S', turns, tools: [] }
+    );
+    expect(r.url).toBe('https://openrouter.ai/api/v1/chat/completions');
+  });
+});

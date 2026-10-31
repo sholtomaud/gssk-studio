@@ -86,6 +86,12 @@ The assistant is off until the person turns it on.
 - **Sent:** the model's structure and the person's message. Observations are sent only when the
   person attaches them.
 - **Log:** each call goes to a local log (time, provider, purpose, body hash, status).
+- **Settings and OpenRouter** (added after first use, following budget-app's ADR 0047): the
+  provider is chosen on a Settings page, which also holds a session-only key with Forget key and
+  the call log. **Sign in with OpenRouter** gets a key for the session by OAuth PKCE, with no key
+  to copy and no server of ours; `https://openrouter.ai` joins the allow-list. Like every key, it
+  is never stored and is gone on reload. Not yet verified against the live OpenRouter service:
+  the e2e test mocks its sign-in page and key exchange.
 
 ### Teaching
 

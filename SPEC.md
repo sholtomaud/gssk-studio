@@ -520,7 +520,7 @@ GSSK is a general kernel and Energese is one language over it (ADR 0012). See
 - **NFR-PRIV-003** No silent network. Nothing leaves the app's origin unless the person turns the
   assistant on and agrees to the call (§13.1). The build's CSP `connect-src` is `'self'` plus the
   assistant's providers (`ALLOWED_ORIGINS`): localhost on any port, the Anthropic, OpenAI and
-  Gemini APIs. E2e tests assert that list, that building and running send nothing foreign, and
+  Gemini APIs, and OpenRouter. E2e tests assert that list, that building and running send nothing foreign, and
   that an Energese script reaches nothing, localhost included (ADR 0013).
 - A future service (a live data source, an AI write-up of a run) must be enabled by the user,
   consented per call, listed in the CSP at build time, and its key held in memory or encrypted at
@@ -535,16 +535,27 @@ GSSK is a general kernel and Energese is one language over it (ADR 0012). See
 A chat beside the inspector (**Assistant** in the toolbar) that explains energy systems diagrams
 and builds or changes the model with the person.
 
-- **Off until turned on.** The person picks a provider: a local OpenAI-compatible server
-  (llamafile, llama-server or Ollama on localhost; no key, nothing leaves the machine), Anthropic
-  (`claude-opus-5-5` by default), OpenAI, or Gemini through its OpenAI-compatible endpoint.
-  Provider, endpoint and model are remembered in this browser; a key is held in memory for the
-  page only.
+- **Off until chosen on Settings** (`/settings`, after budget-app's). The **Assistant
+  (optional)** card picks a provider, Off by default:
+  - a local OpenAI-compatible server (llamafile, llama-server or Ollama on localhost; no key,
+    nothing leaves the machine);
+  - **OpenRouter**, with **Sign in with OpenRouter**: OAuth PKCE (S256), so the person signs in
+    at OpenRouter and comes back with a key for the session, with nothing to copy and no server
+    of ours. The callback is the app's root; the verifier is kept in the tab's sessionStorage for
+    the round trip only, and the exchange goes through the consent dialog like any call;
+  - Anthropic (`claude-opus-5-5` by default), OpenAI, or Gemini through its OpenAI-compatible
+    endpoint, with the person's own key.
+
+  Provider, endpoint and model are remembered in this browser. A key, pasted or from signing in,
+  is held in memory for the page only, sent only to its provider, and removed by **Forget key**
+  or a reload; the card advises a dedicated key with a low spending limit. The chat panel shows
+  which provider it uses, or what it needs first, with a link to Settings.
+
 - **Consent per call** (`src/assistant/egress.ts`): every request is shown, exactly as sent,
   before it goes; **Don't send** sends nothing, and "Send without asking" lasts until the page
   reloads. Only origins in `ALLOWED_ORIGINS` (the CSP's `connect-src`) can be called. Each call is
-  logged for the session (time, provider, origin, bytes, status, SHA-256 of the body) under the
-  panel's settings.
+  logged for the session (time, provider, purpose, bytes, status, SHA-256 of the body) in the
+  table on Settings. One consent dialog serves the whole app.
 - **Tools** (`src/assistant/tools.ts`) are the app's own operations, with strict JSON Schemas:
   describe the model, read the checks and the kernel JSON, add symbols, connect, set a control,
   set values, declare and set carriers, move, remove, group and pack, add a transaction and its

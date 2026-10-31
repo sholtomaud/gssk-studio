@@ -1,0 +1,38 @@
+:host dialog.consent {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-2);
+  padding: 16px 18px;
+}
+:host dialog.consent::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+:host dialog.consent h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+:host dialog.consent .purpose {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+:host dialog.consent pre.payload {
+  max-height: 50vh;
+  overflow: auto;
+  margin: 8px 0 12px;
+  padding: 10px 12px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: 11.5px/1.45 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+:host dialog.consent .actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}

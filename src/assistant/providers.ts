@@ -7,7 +7,7 @@
  */
 import type { ToolSpec } from './tools.ts';
 
-export type ProviderKind = 'local' | 'anthropic' | 'openai' | 'gemini';
+export type ProviderKind = 'local' | 'openrouter' | 'anthropic' | 'openai' | 'gemini';
 
 export interface ProviderConfig {
   kind: ProviderKind;
@@ -38,6 +38,15 @@ export const PROVIDERS: readonly ProviderInfo[] = [
       'An OpenAI-compatible server on this computer. Nothing leaves the machine. Start a llamafile with --server, or llama-server, on port 8080 (Ollama: http://127.0.0.1:11434).',
   },
   {
+    kind: 'openrouter',
+    label: 'OpenRouter (sign in, no key to copy)',
+    endpoint: 'https://openrouter.ai/api',
+    model: 'openrouter/auto',
+    needsKey: true,
+    about:
+      'Many models through one account. openrouter/auto may pick a model without tool calls: if the assistant’s tools fail, name one that has them.',
+  },
+  {
     kind: 'anthropic',
     label: 'Anthropic (Claude)',
     endpoint: 'https://api.anthropic.com',
@@ -49,17 +58,17 @@ export const PROVIDERS: readonly ProviderInfo[] = [
     kind: 'openai',
     label: 'OpenAI',
     endpoint: 'https://api.openai.com',
-    model: '',
+    model: 'gpt-4.1',
     needsKey: true,
-    about: 'OpenAI chat completions, called from this browser with your key. Name the model.',
+    about: 'OpenAI chat completions, called from this browser with your key.',
   },
   {
     kind: 'gemini',
     label: 'Google Gemini',
     endpoint: 'https://generativelanguage.googleapis.com',
-    model: '',
+    model: 'gemini-3.8-flash',
     needsKey: true,
-    about: 'Gemini through its OpenAI-compatible endpoint, with your key. Name the model.',
+    about: 'Gemini through its OpenAI-compatible endpoint, with your key.',
   },
 ];
 
