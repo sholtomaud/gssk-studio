@@ -183,7 +183,16 @@ export function normaliseModel(raw: unknown): ParseResult {
     }
     const edge: ModelEdge = { id, origin, target, logic, params: { k } };
     const control = str(rp.control_node) ?? str(re.control_node);
-    if (control) edge.params.control_node = control;
+    const controls = Array.isArray(rp.control_nodes)
+      ? rp.control_nodes.filter((c): c is string => typeof c === 'string' && c.length > 0)
+      : [];
+    if (controls.length) {
+      // The kernel refuses both; several controls win, as the more specific.
+      if (control)
+        notes.push(`Flow “${id}” named control_node and control_nodes; kept control_nodes.`);
+      if (controls.length === 1) edge.params.control_node = controls[0]!;
+      else edge.params.control_nodes = controls;
+    } else if (control) edge.params.control_node = control;
     const threshold = num(rp.threshold);
     if (threshold !== undefined) edge.params.threshold = threshold;
     const numerator = str(rp.numerator_node);

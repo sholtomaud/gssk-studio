@@ -11,7 +11,7 @@ import { logicFor, symbolFor } from './catalogue.ts';
 import { transactionProblems } from './transactions.ts';
 import { assumedCount } from './provenance.ts';
 import { canForceNode, forcingProblems } from './forcing.ts';
-import type { StudioModel } from './types.ts';
+import { controlsOf, type StudioModel } from './types.ts';
 
 /** An info item is neither wrong nor risky, only worth knowing (an assumed value, ADR 0016). */
 export type Severity = 'error' | 'warning' | 'info';
@@ -86,13 +86,28 @@ export function validate(m: StudioModel): Issue[] {
       for (const p of forcingProblems(e.forcing)) err('forcing', `Flow “${e.id}”: ${p}.`, ref);
 
     const spec = logicFor(e.logic);
-    const control = e.params.control_node;
-    if (control !== undefined) {
-      touched.add(control);
-      if (!nodeIds.has(control)) {
-        err('control-missing', `Flow “${e.id}” is controlled by a missing node “${control}”.`, ref);
+    const controls = controlsOf(e);
+    const control = controls[0];
+    for (const c of controls) {
+      touched.add(c);
+      if (!nodeIds.has(c)) {
+        err('control-missing', `Flow “${e.id}” is controlled by a missing node “${c}”.`, ref);
       }
     }
+    if (e.params.control_node !== undefined && e.params.control_nodes !== undefined)
+      err('controls-both', `Flow “${e.id}” names both control_node and control_nodes.`, ref);
+    if (controls.length > 1 && e.logic !== 'interaction')
+      err(
+        'controls-many',
+        `Only an interaction multiplies several controls; ${spec.label.toLowerCase()} flow “${e.id}” takes one.`,
+        ref
+      );
+    if (controls.length > 8)
+      err(
+        'controls-many',
+        `Flow “${e.id}” multiplies more than eight controls, the kernel's limit.`,
+        ref
+      );
     const threshold = e.params.threshold;
     for (const need of spec.needs) {
       if (need === 'control_node' && control === undefined) {

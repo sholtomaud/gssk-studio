@@ -91,6 +91,8 @@ export interface EdgeInput {
   id?: string;
   k: number;
   control?: NodeLike;
+  /** Several controls, multiplied (interaction logic only). */
+  controls?: readonly NodeLike[];
   threshold?: number;
   numerator?: NodeLike;
   carrier?: string;
@@ -253,6 +255,11 @@ export class GsskModel {
     const id = this.claim(input.id, `${o}_to_${t}`, 'Flow');
     const edge: ModelEdge = { id, origin: o, target: t, logic, params: { k: input.k } };
     if (input.control !== undefined) edge.params.control_node = this.ref(input.control);
+    if (input.controls !== undefined) {
+      const ids = input.controls.map((c) => this.ref(c));
+      if (ids.length === 1) edge.params.control_node = ids[0]!;
+      else if (ids.length > 1) edge.params.control_nodes = ids;
+    }
     if (input.threshold !== undefined) edge.params.threshold = input.threshold;
     if (input.numerator !== undefined) edge.params.numerator_node = this.ref(input.numerator);
     if (input.carrier) edge.carrier = input.carrier;

@@ -195,6 +195,11 @@ export interface ModelEdge {
   params: {
     k: number;
     control_node?: string;
+    /**
+     * Several controls, multiplied (the kernel's ADR 0008; Odum's three-input
+     * interaction): interaction logic only, and never with control_node.
+     */
+    control_nodes?: string[];
     threshold?: number;
     numerator_node?: string;
   };
@@ -296,6 +301,19 @@ export function emptyModel(name = 'Untitled model'): StudioModel {
     edges: [],
     _diagram: { boundaries: [] },
   };
+}
+
+/** The nodes whose levels a flow reads as controls: its control_node, or its control_nodes. */
+export function controlsOf(e: Pick<ModelEdge, 'params'>): string[] {
+  return e.params.control_nodes ?? (e.params.control_node ? [e.params.control_node] : []);
+}
+
+/** Set a flow's controls: one as control_node, several as control_nodes, none as neither. */
+export function setControls(e: ModelEdge, ids: readonly string[]): void {
+  delete e.params.control_node;
+  delete e.params.control_nodes;
+  if (ids.length === 1) e.params.control_node = ids[0]!;
+  else if (ids.length > 1) e.params.control_nodes = [...ids];
 }
 
 /** A deep copy; models are plain JSON. */

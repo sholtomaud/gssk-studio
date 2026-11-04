@@ -106,6 +106,32 @@ describe('running models (FR-SIM-001)', () => {
     expect(b.final).toEqual(a.final);
   });
 
+  it('multiplies every control of a three-input interaction (control_nodes, Fig. 2.6c)', async () => {
+    const m: StudioModel = {
+      metadata: { schema_version: 4, name: 'Three inputs' },
+      config: { t_start: 0, t_end: 0.1, dt: 0.1, method: 'euler' },
+      nodes: [
+        { id: 'a', type: 'source', value: 2, visual: { x: 0, y: 0 } },
+        { id: 'b', type: 'source', value: 3, visual: { x: 0, y: 0 } },
+        { id: 'c', type: 'source', value: 5, visual: { x: 0, y: 0 } },
+        { id: 'p', type: 'storage', value: 0, visual: { x: 0, y: 0 } },
+      ],
+      edges: [
+        {
+          id: 'make',
+          origin: 'a',
+          target: 'p',
+          logic: 'interaction',
+          params: { k: 0.5, control_nodes: ['b', 'c'] },
+        },
+      ],
+      _diagram: { boundaries: [] },
+    };
+    const r = await runModel(kernel, m);
+    // One Euler step: 0.1 · 0.5 · 2 · 3 · 5.
+    expect(r.final.p).toBeCloseTo(1.5, 9);
+  });
+
   it('records flows per edge, signed, refreshed each step', async () => {
     const r = await runModel(kernel, EXAMPLES[3]!.model);
     const pay = r.flows.find((f) => f.id === 'pay');

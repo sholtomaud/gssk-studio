@@ -19,3 +19,4 @@
 | [0015](0015-energetic-types-follow-standards.md)                | Energetic types use international standards, not house names                       |
 | [0016](0016-assistant-edits-through-the-apps-own-operations.md) | The assistant edits through the app's own operations, marking every number it sets |
 | [0017](0017-a-library-of-building-blocks.md)                    | Proposed: a library of reusable, cited, checked blocks in its own repository       |
+| [0018](0018-interactions-are-production-processes.md)           | An interaction is a production process: one chevron, its pathways as flows         |

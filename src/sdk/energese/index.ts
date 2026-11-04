@@ -230,6 +230,8 @@ export interface FlowLogic {
   logic: EdgeLogic;
   k: number;
   control?: NodeLike;
+  /** Several controls, multiplied: interaction only (Odum's three-input interaction). */
+  controls?: readonly NodeLike[];
   threshold?: number;
   numerator?: NodeLike;
 }
@@ -245,12 +247,17 @@ export const linear = (k: number): FlowLogic => ({ logic: 'linear', k });
 export const constant = (k: number): FlowLogic => ({ logic: 'constant', k });
 /** J = k·(Q₀ − Q₁), signed: Odum's barbless pathway. */
 export const reversible = (k: number): FlowLogic => ({ logic: 'reversible', k });
-/** J = k·Q₀·Qc: a work gate controlled by `control`. */
-export const interaction = (k: number, control: NodeLike): FlowLogic => ({
-  logic: 'interaction',
-  k,
-  control,
-});
+/** J = k·Q₀·Qc: a work gate controlled by `control`; several controls are all multiplied. */
+export const interaction = (k: number, control: NodeLike | readonly NodeLike[]): FlowLogic =>
+  isNodeList(control)
+    ? control.length === 1
+      ? { logic: 'interaction', k, control: control[0]! }
+      : { logic: 'interaction', k, controls: control }
+    : { logic: 'interaction', k, control };
+
+function isNodeList(c: NodeLike | readonly NodeLike[]): c is readonly NodeLike[] {
+  return Array.isArray(c);
+}
 /** J = max(0, k·(Q₀ − Qc)) */
 export const subtract = (k: number, control: NodeLike): FlowLogic => ({
   logic: 'subtract',
@@ -306,6 +313,7 @@ export class Flow implements EdgeRef {
     const ref = scope.addEdge(origin, target, how.logic, {
       k: how.k,
       ...(how.control !== undefined ? { control: how.control } : {}),
+      ...(how.controls !== undefined ? { controls: how.controls } : {}),
       ...(how.threshold !== undefined ? { threshold: how.threshold } : {}),
       ...(how.numerator !== undefined ? { numerator: how.numerator } : {}),
       ...props,

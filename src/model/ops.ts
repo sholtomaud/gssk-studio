@@ -9,6 +9,8 @@ import { uniqueId } from './ids.ts';
 import { renameMarks } from './provenance.ts';
 import {
   cloneModel,
+  controlsOf,
+  setControls,
   type Boundary,
   type EdgeLogic,
   type ModelEdge,
@@ -144,9 +146,14 @@ export function removeNode(m: StudioModel, id: string): StudioModel {
   next.nodes = next.nodes.filter((n) => n.id !== id);
   next.edges = next.edges.filter((e) => e.origin !== id && e.target !== id);
   for (const e of next.edges) {
-    if (e.params.control_node === id) {
-      delete e.params.control_node;
-      if (e.logic === 'interaction' || e.logic === 'ratio' || e.logic === 'subtract') {
+    const controls = controlsOf(e);
+    if (controls.includes(id)) {
+      const left = controls.filter((c) => c !== id);
+      setControls(e, left);
+      if (
+        left.length === 0 &&
+        (e.logic === 'interaction' || e.logic === 'ratio' || e.logic === 'subtract')
+      ) {
         e.logic = 'linear';
       }
     }
@@ -202,6 +209,8 @@ export function renameNode(m: StudioModel, from: string, to: string): StudioMode
     if (e.origin === from) e.origin = to;
     if (e.target === from) e.target = to;
     if (e.params.control_node === from) e.params.control_node = to;
+    if (e.params.control_nodes)
+      e.params.control_nodes = e.params.control_nodes.map((c) => (c === from ? to : c));
     if (e.params.numerator_node === from) e.params.numerator_node = to;
   }
   tidyGroups(next, { from, to });
@@ -382,6 +391,10 @@ export function pasteFragment(
       const r = ref(e.params[key]);
       if (r) e.params[key] = r;
       else delete e.params[key];
+    }
+    if (e.params.control_nodes) {
+      const kept = e.params.control_nodes.map(ref).filter((r): r is string => !!r);
+      setControls(e, kept);
     }
     next.edges.push(e);
     pasted.push(e);
