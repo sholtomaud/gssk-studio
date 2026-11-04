@@ -130,7 +130,6 @@
 :host .edge .control {
   stroke: var(--ink-control);
   stroke-width: 1.4;
-  stroke-dasharray: 3 3;
   fill: none;
 }
 :host .edge .gate {

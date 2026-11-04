@@ -99,15 +99,20 @@ const SYMBOLS: Omit<ReferenceEntry, 'kind'>[] = [
     type: 'interaction',
     title: 'Interaction (work gate)',
     gist: 'Two flows combining multiplicatively: one does work on the other.',
-    text: `An **interaction** (work gate) is where two or more flows combine **multiplicatively** to do work: sunlight and nutrients in photosynthesis, fuel and labour in a factory, rain and soil in erosion. Its output is proportional to the product of its inputs, so neither alone produces anything.
+    text: `An **interaction** (work gate, the chevron) is a **production process**: two or more pathways, each carrying something different and each necessary, combine to make a product of another kind: sunlight and nutrients in photosynthesis, fuel and labour in a factory. It holds nothing: it is arithmetic on its inputs, the **production function**.
 
-- Draw it on the pathway it controls, with the controlling flow coming in from above or the side.
-- Every interaction **degrades energy**: draw its pathway to the heat sink.
-- The higher-quality input (the one with greater transformity, often information, labour or money's purchasing) usually acts as the *control*.
+- **All its flows are in proportion to the production function**, usually the product of the input forces: the product out is k₁·A·B, each ingredient drawn in is its own k·A·B, and the **used energy** goes to the heat sink, k·A·B again. Each pathway has its own coefficient k.
+- **Inputs by quality**: the low-transformity input (most energy) comes in from the left; the highest-transformity input, often a **control feedback** from a unit downstream, comes in from the right or top as a solid curve. The chevron points left to right along the flow.
+- **Variants** (Modeling for All Scales, Fig. 2.6): three or more inputs multiplied; a **divisor** (the left input divided by the control: dilution); a **subtracting** action.
+- A control can be an ingredient that is **used up** (drawn down in proportion), or a force that is only **read** (information, a pressure).
 
-**Here**: drop a symbol's port onto a flow to make it that flow's control: the flow becomes an interaction, J = k·Q₀·Qc, and the app draws the gate. A standalone Interaction symbol is for a gate with its own outputs. You can turn it to face its heat sink.
+**Here**: drop a symbol's port onto a flow to make it that flow's control. The flow becomes an *interaction* flow, J = k·Q₀·Qc, and the app draws the gate on it with the control's feedback curve. The kernel reads the control and never drains it, so:
+- for an ingredient that is **used up**, add its own flow out of it with the same interaction (k₂·A·B);
+- for the **used energy**, add a flow to the heat sink with the same interaction (k₃·A·B).
 
-**Mistakes**: adding the inputs instead of multiplying (that is two separate flows, not an interaction); no heat sink.`,
+The kernel's *ratio* and *subtract* logics are the divisor and subtracting interactions; it multiplies up to eight controls on one flow.
+
+**Mistakes**: adding the inputs instead of multiplying (that is two separate flows); no heat sink; an ingredient that is never drawn down; reading the gate as a coefficient (every pathway has its own k, interaction or not).`,
     see: ['logics', 'producer', 'energy-laws'],
   },
   {
@@ -322,7 +327,7 @@ This app runs energy and material flows; emergy accounting is not computed yet.`
 
 ${LOGICS.map((l) => `- **${l.label}** (\`${l.logic}\`): ${l.formula}${l.needs.length ? `; needs ${l.needs.join(', ').replace(/_/g, ' ')}` : ''}.`).join('\n')}
 
-Most pathways out of a storage are **linear**: a fuller storage pushes harder (a donor-controlled flow). Use **constant** for a fixed rate set from outside (a bill, a quota), **interaction** for a work gate, **limit** for a saturating receptor.`,
+**Every pathway has its own coefficient k**, interaction or not: it says how strongly that pathway draws on the force behind it. Most pathways out of a storage are **linear**: a fuller storage pushes harder (a donor-controlled flow), and every storage needs at least one, its depreciation. Use **constant** for a fixed rate set from outside (a bill, a quota), **interaction** for a work gate, **limit** for a saturating receptor.`,
     see: ['interaction', 'receiver', 'switch', 'storage'],
   },
 ];

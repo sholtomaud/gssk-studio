@@ -258,3 +258,17 @@ test('the icon view draws symbols as pictures: built-in, picked, or your own (FR
     '1 symbol'
   );
 });
+
+test('a control enters its work gate as a solid feedback curve with an arrow, not a dashed line', async ({
+  page,
+}) => {
+  await openExample(page, 'grassland');
+  const control = page.locator('diagram-canvas g.edge .control').first();
+  await expect(control).toHaveAttribute('marker-end', 'url(#control-arrow)');
+  expect(await control.evaluate((el) => getComputedStyle(el).strokeDasharray)).toBe('none');
+  // The gate points along its flow.
+  await expect(page.locator('diagram-canvas g.edge .gate').first()).toHaveAttribute(
+    'transform',
+    /^rotate\(/
+  );
+});

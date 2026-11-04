@@ -71,4 +71,7 @@ export const SYMBOL_DEFS = `
 <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
   <path d="M0,0 L10,5 L0,10 Z" ${SOLID} />
 </marker>
+<marker id="control-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
+  <path d="M0,0 L10,5 L0,10 Z" ${SOLID} />
+</marker>
 `;

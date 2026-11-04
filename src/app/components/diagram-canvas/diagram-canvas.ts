@@ -58,8 +58,10 @@ import {
   GROUP_HALF,
   halfExtent,
   pathData,
+  anchor,
   pointAt,
   SCALE,
+  tangentAt,
   type Curve,
   SIZE,
   SYMBOL_SCALE,
@@ -827,15 +829,27 @@ export class DiagramCanvas extends BaseComponent {
     const control = e.params.control_node ? findNode(m, e.params.control_node) : undefined;
     if (control) {
       const mid = pointAt(curve, 0.5);
-      // A control packed in a group is drawn from the group's symbol.
-      const from = this.shapeOf(m, ownerOf(m, control.id)).visual;
+      // The gate points along its flow, as Odum draws the interaction (left to right).
+      const tan = tangentAt(curve, 0.5);
+      const angle = (Math.atan2(tan.y, tan.x) * 180) / Math.PI;
+      // The control enters the gate from its own side as a solid curve with an arrow,
+      // Odum's feedback pathway; dashes are for money (ADR 0015).
+      const shape = this.shapeOf(m, ownerOf(m, control.id));
+      const len = Math.hypot(tan.x, tan.y) || 1;
+      let nx = -tan.y / len;
+      let ny = tan.x / len;
+      if ((shape.visual.x - mid.x) * nx + (shape.visual.y - mid.y) * ny < 0) {
+        nx = -nx;
+        ny = -ny;
+      }
+      const end = { x: mid.x + nx * 11, y: mid.y + ny * 11 };
+      const bend = { x: mid.x + nx * 55, y: mid.y + ny * 55 };
+      const start = anchor(shape, bend);
       g.append(
-        svg('line', {
+        svg('path', {
           class: 'control',
-          x1: from.x,
-          y1: from.y,
-          x2: mid.x,
-          y2: mid.y,
+          d: `M${start.x},${start.y} Q${bend.x},${bend.y} ${end.x},${end.y}`,
+          'marker-end': 'url(#control-arrow)',
         }),
         svg('use', {
           class: 'gate',
@@ -844,6 +858,7 @@ export class DiagramCanvas extends BaseComponent {
           y: mid.y - 15,
           width: 30,
           height: 30,
+          transform: `rotate(${angle.toFixed(1)} ${mid.x} ${mid.y})`,
         })
       );
     }
