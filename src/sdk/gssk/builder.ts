@@ -10,6 +10,7 @@
  */
 import { parseForcing } from '../../model/forcing.ts';
 import { tidyGroups } from '../../model/groups.ts';
+import { tidyProcesses } from '../../model/processes.ts';
 import { uniqueId } from '../../model/ids.ts';
 import {
   DEFAULT_CONFIG,
@@ -397,12 +398,15 @@ export class GsskModel {
         const ctrl2 = edge.visual?.ctrl2 ?? old.visual.ctrl2;
         const sensor = edge.visual?.sensor;
         const transaction = edge.visual?.transaction;
-        if (ctrl1 || ctrl2 || sensor || transaction) {
+        // A flow that is a process's pathway stays one (ADR 0018): code has no word for it.
+        const process = old.visual.process;
+        if (ctrl1 || ctrl2 || sensor || transaction || process) {
           edge.visual = {
             ...(ctrl1 ? { ctrl1: { ...ctrl1 } } : {}),
             ...(ctrl2 ? { ctrl2: { ...ctrl2 } } : {}),
             ...(sensor ? { sensor: true } : {}),
             ...(transaction ? { transaction } : {}),
+            ...(process ? { process: { ...process } } : {}),
           };
         }
       }
@@ -449,6 +453,10 @@ export class GsskModel {
         ...(groups.length ? { groups } : {}),
         // Pictures are data, not structure: kept from the model this replaces, like observations.
         ...(prev?._diagram.icons?.length ? { icons: structuredClone(prev._diagram.icons) } : {}),
+        // Processes are diagram structure over the flows, kept like icons and checked below.
+        ...(prev?._diagram.processes?.length
+          ? { processes: structuredClone(prev._diagram.processes) }
+          : {}),
       },
       ...(observations.length ? { _observations: observations } : {}),
       // Who set each input (ADR 0016) is data, like observations: kept from the model this
@@ -457,6 +465,7 @@ export class GsskModel {
     };
     // As loading a file does: drop members that are not nodes, and empty groups.
     tidyGroups(model);
+    tidyProcesses(model);
     return model;
   }
 }

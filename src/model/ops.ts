@@ -7,6 +7,7 @@ import { symbolFor } from './catalogue.ts';
 import { diagramView, findGroup, nodesIn, tidyGroups } from './groups.ts';
 import { uniqueId } from './ids.ts';
 import { renameMarks } from './provenance.ts';
+import { findProcess, removeProcess, renameInProcesses, tidyProcesses } from './processes.ts';
 import {
   cloneModel,
   controlsOf,
@@ -23,6 +24,8 @@ import {
 /** What the editor has selected. */
 export type Selection =
   | { kind: 'node'; id: string }
+  /** An interaction process's chevron (ADR 0018). */
+  | { kind: 'process'; id: string }
   /** Two or more nodes (FR-EDIT-011). */
   | { kind: 'nodes'; ids: string[] }
   | { kind: 'edge'; id: string }
@@ -162,6 +165,7 @@ export function removeNode(m: StudioModel, id: string): StudioModel {
   for (const n of next.nodes) if (n.params?.price_node === id) delete n.params.price_node;
   unpair(next);
   tidyGroups(next);
+  tidyProcesses(next);
   return next;
 }
 
@@ -187,10 +191,14 @@ export function removeSelection(m: StudioModel, sel: Selection): StudioModel {
   if (!sel) return m;
   if (sel.kind === 'node') return removeNode(m, sel.id);
   if (sel.kind === 'nodes') return sel.ids.reduce(removeNode, m);
-  if (sel.kind === 'edge') return removeEdge(m, sel.id);
+  if (sel.kind === 'edge') {
+    const e = findEdge(m, sel.id);
+    return e?.visual?.process ? removeProcess(m, e.visual.process.id) : removeEdge(m, sel.id);
+  }
   // Deleting a group deletes what it holds; to keep the contents, ungroup instead.
   if (sel.kind === 'group') return nodesIn(m, sel.id).reduce(removeNode, m);
   if (sel.kind === 'bundle') return m;
+  if (sel.kind === 'process') return removeProcess(m, sel.id);
   const next = cloneModel(m);
   next._diagram.boundaries = next._diagram.boundaries.filter((b) => b.id !== sel.id);
   return next;
@@ -214,6 +222,7 @@ export function renameNode(m: StudioModel, from: string, to: string): StudioMode
     if (e.params.numerator_node === from) e.params.numerator_node = to;
   }
   tidyGroups(next, { from, to });
+  renameInProcesses(next, from, to);
   renameMarks(next, from, to);
   return next;
 }
@@ -292,6 +301,7 @@ export function pruneSelection(m: StudioModel, sel: Selection): Selection {
   if (sel.kind === 'group') return findGroup(m, sel.id) ? sel : null;
   if (sel.kind === 'bundle')
     return diagramView(m).bundles.some((b) => b.id === sel.id) ? sel : null;
+  if (sel.kind === 'process') return findProcess(m, sel.id) ? sel : null;
   return m._diagram.boundaries.some((b) => b.id === sel.id) ? sel : null;
 }
 
