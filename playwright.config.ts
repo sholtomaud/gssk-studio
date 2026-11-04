@@ -24,7 +24,24 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    {
+      name: 'chrome',
+      use: {
+        ...devices['Desktop Chrome'],
+        /*
+         * Security: installed Google Chrome, which takes Chrome's own security
+         * releases, rather than the Chromium Playwright bundles, which is
+         * pinned at each Playwright release and lags behind the fixes; and
+         * Chrome's sandbox on, which Playwright otherwise turns off. Only a run
+         * that is itself inside a container Chrome cannot sandbox in (it refuses
+         * to as root) sets E2E_NO_SANDBOX=1.
+         */
+        channel: 'chrome',
+        launchOptions: { chromiumSandbox: process.env.E2E_NO_SANDBOX !== '1' },
+      },
+    },
+  ],
   webServer: {
     // E2E runs against the production build (CSP and the service worker are
     // build-only), served the way GitHub Pages serves it: real 404s, and

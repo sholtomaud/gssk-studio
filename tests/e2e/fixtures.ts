@@ -1,8 +1,14 @@
 /**
- * The e2e `test`, with a guard on every page: a test fails if the app's own
- * origin answers any request with an error status (a missing asset such as
- * favicon.svg or /src/main.ts), or if the page throws or logs a console
- * error. Tests that expect one opt out with `allowErrors`.
+ * The e2e `test`, with a guard on every page:
+ *
+ * - The browser reaches nothing but the app's own origin. Any other request is
+ *   aborted and fails the test, unless the test answers it itself with
+ *   `page.route` (a mocked provider, say), which takes precedence. So a test
+ *   never loads outside content, the way a browser exploit would arrive.
+ * - A test fails if the app's own origin answers any request with an error
+ *   status (a missing asset such as favicon.svg or /src/main.ts), or if the
+ *   page throws or logs a console error. Tests that expect one opt out with
+ *   `allowErrors`.
  */
 import { expect, test as base } from '@playwright/test';
 
@@ -32,6 +38,14 @@ export const test = base.extend<PageGuard & { pageGuard: void }>({
         }
         note(`HTTP ${res.status()} ${res.url()}`);
       });
+      // Registered first, so a test's own routes (registered later) answer before it.
+      await page.route(
+        (url) => url.origin !== origin && url.protocol !== 'data:' && url.protocol !== 'blob:',
+        (route) => {
+          problems.push(`Blocked a request outside the app: ${route.request().url()}`);
+          return route.abort('blockedbyclient');
+        }
+      );
       page.on('pageerror', (err) => note(`Uncaught: ${err.message}`));
       page.on('console', (msg) => {
         if (msg.type() !== 'error') return;

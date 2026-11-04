@@ -608,6 +608,11 @@ and builds or changes the model with the person.
   routes); kernel (every example and every symbol on the real kernel, determinism, snapshots of
   final states, pin refusal, K-1 status); e2e against the production build (shell, studio
   workflows, files, privacy, kernel self-test).
+- **NFR-SEC-002** The e2e browser is installed Google Chrome, which takes Chrome's own security
+  releases, not Playwright's pinned Chromium, with Chrome's sandbox on (Playwright's default
+  turns it off). Only a run inside a container that Chrome cannot sandbox in sets
+  `E2E_NO_SANDBOX=1`. Every e2e page reaches only the app's own origin: any other request is
+  aborted and fails the test unless the test answers it itself, and a test checks that guard.
 - **NFR-PERF-001** First-load JS ≤ 400 kB gzipped, excluding wasm (`npm run bundle-size`).
 - **NFR-PERF-003** The code view's JS ≤ 1,100 kB gzipped, excluding `tsrs.wasm`; loaded on
   demand from `assets/code/`, never precached (ADR 0013).
