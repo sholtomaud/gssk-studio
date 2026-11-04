@@ -36,7 +36,6 @@ import {
   findEdge,
   findNode,
   removeSelection,
-  setControl,
   snap,
   updateBoundary,
   updateEdge,
@@ -48,7 +47,27 @@ import {
   toggleSensor,
   type Selection,
 } from '../../../model/ops.ts';
-import type { Group, ModelEdge, ModelNode, Point, StudioModel } from '../../../model/types.ts';
+import {
+  createProcess,
+  describeProcess,
+  findProcess,
+  flowToProcess,
+  moveProcesses,
+  opMark,
+  pathways,
+  processesOf,
+  processGaps,
+  setProduct,
+  wireIn,
+} from '../../../model/processes.ts';
+import type {
+  Group,
+  ModelEdge,
+  ModelNode,
+  Point,
+  Process,
+  StudioModel,
+} from '../../../model/types.ts';
 import {
   bounds,
   boxOf,
@@ -79,6 +98,8 @@ export const NODE_DRAG_TYPE = 'application/x-gssk-node-type';
 export const SENSOR_DRAG_TYPE = 'application/x-gssk-sensor';
 /** Dragged from the palette's Transaction tool; dropped on a flow (FR-TRX-001). */
 export const TRANSACTION_DRAG_TYPE = 'application/x-gssk-transaction';
+/** Dragged from the palette's Interaction tool: places a process (ADR 0018). */
+export const PROCESS_DRAG_TYPE = 'application/x-gssk-process';
 const GRID = 10;
 function rectOf(a: Point, b: Point): { x: number; y: number; w: number; h: number } {
   return {
@@ -158,7 +179,11 @@ type Drag =
   | { kind: 'resize'; id: string; key: string }
   /** Turning by the knob: the pointer's angle and the symbol's turn when the drag began. */
   | { kind: 'rotate'; id: string; key: string; from: number; base: number }
-  | { kind: 'scale'; id: string; key: string };
+  | { kind: 'scale'; id: string; key: string }
+  /** Moving a process's chevron. */
+  | { kind: 'process'; id: string; start: Point; applied: Point; key: string }
+  /** Wiring a process's product to a symbol. */
+  | { kind: 'product'; id: string; to: Point };
 
 export class DiagramCanvas extends BaseComponent {
   private _model: StudioModel | null = null;
@@ -332,7 +357,8 @@ export class DiagramCanvas extends BaseComponent {
         e.dataTransfer &&
         (types.includes(NODE_DRAG_TYPE) ||
           types.includes(SENSOR_DRAG_TYPE) ||
-          types.includes(TRANSACTION_DRAG_TYPE))
+          types.includes(TRANSACTION_DRAG_TYPE) ||
+          types.includes(PROCESS_DRAG_TYPE))
       ) {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
@@ -563,13 +589,125 @@ export class DiagramCanvas extends BaseComponent {
     this.view_ = view;
     for (const g of view.frames) this.renderFrame(m, g);
     this.edgeBadges = [];
-    for (const e of view.edges) this.renderEdge(m, e);
+    // A process's pathways are drawn with its chevron, not one by one (ADR 0018).
+    for (const e of view.edges) if (!e.visual?.process) this.renderEdge(m, e);
+    for (const pr of processesOf(m)) this.renderProcess(m, pr);
     for (const b of view.bundles) this.renderBundle(m, b);
     this.layers.overlay.append(...this.edgeBadges);
     for (const n of m.nodes) if (view.nodes.has(n.id)) this.renderNode(n);
     for (const g of view.packed) this.renderGroup(m, g);
     this.applyPlayback();
     this.applyView();
+  }
+
+  /**
+   * An interaction process (ADR 0018), as Odum draws it: one chevron pointing
+   * left to right, marked with its operation; the main input in at the left,
+   * the product out at the right, the used energy down to its heat sink, and
+   * each control curving in from above, a full pathway when used up and a
+   * thinner line when only read.
+   */
+  private renderProcess(m: StudioModel, pr: Process): void {
+    const selected = this._selection?.kind === 'process' && this._selection.id === pr.id;
+    const g = svg('g', {
+      class: `process${selected ? ' selected' : ''}${processGaps(pr).length ? ' incomplete' : ''}`,
+      'data-process': pr.id,
+      role: 'button',
+      tabindex: 0,
+      'aria-label': `Interaction: ${describeProcess(m, pr)}`,
+    });
+    const left = { x: pr.x - 13, y: pr.y };
+    const tip = { x: pr.x + 21, y: pr.y };
+    const bottom = { x: pr.x, y: pr.y + 14 };
+    const ways = pathways(m, pr.id);
+    const shape = (id: string) => this.shapeOf(m, ownerOf(m, id));
+    const at = (q: Point) => `${q.x.toFixed(1)},${q.y.toFixed(1)}`;
+    const path = (
+      d: string,
+      cls: 'line' | 'control',
+      edge: ModelEdge | undefined,
+      marker: 'arrow' | 'control-arrow' = 'arrow'
+    ) => {
+      const kind = edge ? kindOfCarrierId(m, edge.carrier) : undefined;
+      const pg = svg('g', { class: `edge process-path${kind ? ` kind-${kind}` : ''}` });
+      pg.append(
+        svg('path', { class: 'hit', d }),
+        svg('path', { class: cls, d, 'marker-end': `url(#${marker})` })
+      );
+      if (edge) this.edgeEls.set(edge.id, pg);
+      g.append(pg);
+    };
+    if (pr.input && findNode(m, pr.input)) {
+      const s = anchor(shape(pr.input), left);
+      path(
+        `M${at(s)} C${at({ x: (s.x + left.x) / 2, y: s.y })} ${at({ x: left.x - 30, y: left.y })} ${at(left)}`,
+        'line',
+        ways.product
+      );
+    }
+    if (pr.target && findNode(m, pr.target)) {
+      const t = anchor(shape(pr.target), tip);
+      path(
+        `M${at(tip)} C${at({ x: tip.x + 30, y: tip.y })} ${at({ x: (t.x + tip.x) / 2, y: t.y })} ${at(t)}`,
+        'line',
+        undefined
+      );
+    }
+    if (ways.heat) {
+      const sink = findNode(m, ways.heat.target);
+      if (sink) {
+        const t = anchor(shape(sink.id), bottom);
+        path(
+          `M${at(bottom)} Q${at({ x: bottom.x, y: (bottom.y + t.y) / 2 })} ${at(t)}`,
+          'line',
+          ways.heat
+        );
+      }
+    }
+    pr.controls.forEach((c, i) => {
+      if (!findNode(m, c.node)) return;
+      const entry = { x: pr.x - 4 + i * 8, y: pr.y - 13 };
+      const bend = { x: entry.x + 26, y: entry.y - 55 };
+      const s = anchor(shape(c.node), bend);
+      path(
+        `M${at(s)} Q${at(bend)} ${at(entry)}`,
+        c.used ? 'line' : 'control',
+        ways.uses.get(c.node),
+        c.used ? 'arrow' : 'control-arrow'
+      );
+    });
+    const mark = svg('text', { class: 'op-mark', x: pr.x + 3, y: pr.y + 4 });
+    mark.textContent = opMark(pr);
+    const title = svg('title');
+    const gaps = processGaps(pr);
+    title.textContent = `Interaction${pr.label ? ` “${pr.label}”` : ''}: ${describeProcess(m, pr)}${gaps.length ? ` (needs ${gaps.join(', ')})` : ''}`;
+    g.append(
+      svg('rect', {
+        class: 'chevron-hit',
+        x: pr.x - 26,
+        y: pr.y - 18,
+        width: 52,
+        height: 36,
+        rx: 4,
+      }),
+      svg('use', {
+        class: 'chevron',
+        href: '#odum-interaction',
+        x: pr.x - 28,
+        y: pr.y - 28,
+        width: 56,
+        height: 56,
+      }),
+      mark,
+      svg('circle', { class: 'port', 'data-process-out': pr.id, cx: tip.x + 9, cy: tip.y, r: 6 }),
+      title
+    );
+    if (pr.label) {
+      const label = svg('text', { class: 'process-label', x: pr.x, y: pr.y + 32 });
+      label.textContent = pr.label;
+      g.append(label);
+    }
+    this.layers.edges.append(g);
   }
 
   private renderNode(n: ModelNode): void {
@@ -1315,6 +1453,8 @@ export class DiagramCanvas extends BaseComponent {
       return;
     }
     const port = target.closest('[data-port]');
+    const productPort = target.closest('[data-process-out]');
+    const proc = target.closest('[data-process]');
     const handle = target.closest('[data-edge-handle]');
     const resize = target.closest('[data-resize]');
     const turner = target.closest('[data-rotate]');
@@ -1322,7 +1462,19 @@ export class DiagramCanvas extends BaseComponent {
     const node = target.closest('[data-node]');
     const edge = target.closest('[data-edge]');
     const boundary = target.closest('[data-boundary]');
-    if (port) {
+    if (productPort) {
+      this.drag = {
+        kind: 'product',
+        id: productPort.getAttribute('data-process-out') ?? '',
+        to: p,
+      };
+      this.root.classList.add('wiring');
+    } else if (proc && !port) {
+      const id = proc.getAttribute('data-process') ?? '';
+      this.drag = { kind: 'process', id, start: p, applied: { x: 0, y: 0 }, key };
+      if (!(this._selection?.kind === 'process' && this._selection.id === id))
+        this.select({ kind: 'process', id });
+    } else if (port) {
       const from = port.getAttribute('data-port') ?? '';
       this.drag = { kind: 'wire', from, to: p };
       this.root.classList.add('wiring');
@@ -1538,6 +1690,28 @@ export class DiagramCanvas extends BaseComponent {
         });
         break;
       }
+      case 'process': {
+        const dx = snap(p.x - d.start.x, GRID);
+        const dy = snap(p.y - d.start.y, GRID);
+        if (dx === d.applied.x && dy === d.applied.y) break;
+        const model = moveProcesses(m, [d.id], dx - d.applied.x, dy - d.applied.y);
+        d.applied = { x: dx, y: dy };
+        this.emit({ model, label: 'Move interaction', coalesce: d.key });
+        break;
+      }
+      case 'product': {
+        d.to = p;
+        const pr = findProcess(m, d.id);
+        this.layers.overlay.replaceChildren();
+        for (const x of this.root.querySelectorAll('.drop-target'))
+          x.classList.remove('drop-target');
+        this.dropTarget(e)?.closest('[data-node]')?.classList.add('drop-target');
+        if (pr)
+          this.layers.overlay.append(
+            svg('path', { class: 'wire', d: `M${pr.x + 21},${pr.y} L${p.x},${p.y}` })
+          );
+        break;
+      }
       case 'wire': {
         d.to = p;
         const from = findNode(m, d.from);
@@ -1565,7 +1739,8 @@ export class DiagramCanvas extends BaseComponent {
       const n = hit.closest('[data-node]') ?? hit.closest('[data-inner]');
       const id = n?.getAttribute('data-node') ?? n?.getAttribute('data-inner');
       if (n && id !== from) return n;
-      fallback ??= hit.closest('.node.group') ?? hit.closest('[data-edge]');
+      fallback ??=
+        hit.closest('[data-process]') ?? hit.closest('.node.group') ?? hit.closest('[data-edge]');
     }
     return fallback;
   }
@@ -1577,10 +1752,20 @@ export class DiagramCanvas extends BaseComponent {
       const target = this.dropTarget(e);
       const nodeId = target?.getAttribute('data-node') ?? target?.getAttribute('data-inner');
       const edgeId = target?.getAttribute('data-edge');
+      const processId = target?.getAttribute('data-process');
       const groupId = target?.classList.contains('group')
         ? target.getAttribute('data-group')
         : null;
-      if (groupId) {
+      if (processId) {
+        // Wired into a process: its main input first, then a control (ADR 0018).
+        const model = wireIn(m, processId, d.from);
+        if (model !== m)
+          this.emit({
+            model,
+            label: `${d.from} into interaction`,
+            select: { kind: 'process', id: processId },
+          });
+      } else if (groupId) {
         const g = findGroup(m, groupId);
         this.dispatchEvent(
           new CustomEvent('diagram-hint', {
@@ -1597,11 +1782,32 @@ export class DiagramCanvas extends BaseComponent {
             select: { kind: 'edge', id },
           });
       } else if (edgeId) {
-        this.emit({
-          model: setControl(m, edgeId, d.from),
-          label: `${d.from} controls ${edgeId}`,
-          select: { kind: 'edge', id: edgeId },
+        // A symbol dropped onto a flow controls it: the flow becomes a process's
+        // product, with the symbol as its control and its used energy to a heat sink.
+        const edge = findEdge(m, edgeId);
+        const curve = edge && this.curveOf(m, edge);
+        const mid = curve ? pointAt(curve, 0.5) : d.to;
+        const { model, id } = flowToProcess(m, edgeId, d.from, {
+          x: snap(mid.x, GRID),
+          y: snap(mid.y, GRID),
         });
+        if (id)
+          this.emit({
+            model,
+            label: `${d.from} controls ${edgeId}`,
+            select: { kind: 'process', id },
+          });
+      }
+    } else if (d?.kind === 'product' && m) {
+      const nodeId = this.dropTarget(e)?.closest('[data-node]')?.getAttribute('data-node');
+      if (nodeId) {
+        const model = setProduct(m, d.id, nodeId);
+        if (model !== m)
+          this.emit({
+            model,
+            label: `Interaction makes ${nodeId}`,
+            select: { kind: 'process', id: d.id },
+          });
       }
     } else if (d?.kind === 'pan' && !d.moved) {
       this.select(null);
@@ -1721,6 +1927,12 @@ export class DiagramCanvas extends BaseComponent {
   }
 
   private onDrop(e: DragEvent): void {
+    if (e.dataTransfer?.types.includes(PROCESS_DRAG_TYPE) && this._model) {
+      e.preventDefault();
+      const p = this.toModel(e);
+      this.placeProcess({ x: snap(p.x, GRID), y: snap(p.y, GRID) });
+      return;
+    }
     if (e.dataTransfer?.types.includes(TRANSACTION_DRAG_TYPE) && this._model) {
       e.preventDefault();
       const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-edge]');
@@ -1805,6 +2017,16 @@ export class DiagramCanvas extends BaseComponent {
    * Add a symbol and select it: at the drop point, or for a palette click at
    * the free grid spot nearest the viewport centre, preferring one in view.
    */
+  /** Place an empty interaction process (ADR 0018), to wire up; at the viewport centre by default. */
+  placeProcess(at?: Point): void {
+    const m = this._model;
+    if (!m) return;
+    const p = at ?? this.centre();
+    const { model, id } = createProcess(m, p);
+    this.reveal(p);
+    this.emit({ model, label: 'Add interaction', select: { kind: 'process', id } });
+  }
+
   place(type: string, at?: Point): void {
     const m = this._model;
     if (!isNodeType(type) || !m) return;

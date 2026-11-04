@@ -268,3 +268,26 @@
 :host .assumed-note p {
   margin: 0;
 }
+/* Interaction processes (ADR 0018) */
+:host ul.controls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+:host .control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+:host .control-row .name {
+  flex: 1;
+  min-width: 0;
+}
+:host .control-row .check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+}

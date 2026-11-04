@@ -437,3 +437,48 @@
   text-anchor: middle;
   cursor: help;
 }
+/* Interaction processes (ADR 0018) */
+:host .process {
+  color: var(--ink);
+  cursor: move;
+  outline: none;
+}
+:host .process .chevron-hit {
+  fill: var(--canvas-bg);
+  stroke: none;
+}
+:host .process.selected .chevron-hit {
+  fill: var(--accent-soft);
+}
+:host .process.incomplete .chevron {
+  opacity: 0.6;
+}
+:host .process .op-mark {
+  fill: var(--ink);
+  font: 600 12px var(--font-mono);
+  text-anchor: middle;
+  pointer-events: none;
+}
+:host .process .process-label {
+  fill: var(--text-secondary);
+  font: 11px var(--font-sans);
+  text-anchor: middle;
+  pointer-events: none;
+}
+:host .process .port {
+  fill: var(--surface-2);
+  stroke: var(--select);
+  stroke-width: 1.5;
+  opacity: 0;
+  cursor: crosshair;
+  transition: opacity 0.12s;
+}
+:host .process:hover .port,
+:host .process.selected .port {
+  opacity: 1;
+}
+:host .process.drop-target .chevron-hit {
+  fill: var(--accent-soft);
+  stroke: var(--good);
+  stroke-width: 1.5;
+}

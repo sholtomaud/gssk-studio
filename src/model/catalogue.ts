@@ -97,14 +97,17 @@ export const CATALOGUE: readonly SymbolSpec[] = [
   },
   {
     type: 'interaction',
-    label: 'Interaction',
+    label: 'Interaction node',
     symbol: 'odum-interaction',
     half: { w: 30, h: 20 },
     holdsState: false,
     composite: false,
-    palette: true,
+    // The kernel's processing node. Odum's interaction is the palette's
+    // Interaction tool, a process whose pathways are flows (ADR 0018).
+    palette: false,
     valueLabel: 'Level',
-    summary: 'A work gate: its output is the product of its inputs.',
+    summary:
+      'The kernel’s interaction node. Use the palette’s Interaction: a production process whose pathways are flows.',
   },
   {
     type: 'exchange',

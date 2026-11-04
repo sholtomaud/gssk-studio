@@ -281,6 +281,20 @@ export function wireIn(m: StudioModel, id: string, node: string): StudioModel {
   });
 }
 
+/** Set the main input, the left-hand pathway with the most energy. */
+export function setInput(m: StudioModel, id: string, input: string): StudioModel {
+  const p = findProcess(m, id);
+  if (!p || p.controls.some((c) => c.node === input)) return m;
+  return edit(m, id, (q) => (q.input = input));
+}
+
+/** Add a read-only control, whether or not the process has its main input yet. */
+export function addControl(m: StudioModel, id: string, node: string): StudioModel {
+  const p = findProcess(m, id);
+  if (!p || node === p.input || p.controls.some((c) => c.node === node)) return m;
+  return edit(m, id, (q) => q.controls.push({ node, used: false }));
+}
+
 export function setProduct(m: StudioModel, id: string, target: string): StudioModel {
   const p = findProcess(m, id);
   if (!p || target === p.input) return m;

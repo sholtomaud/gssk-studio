@@ -27,6 +27,8 @@ describe('Odum symbols (FR-EDIT-009)', () => {
   it('leaves the exchange node out: it moves nothing in the pinned kernel (K-9)', () => {
     // Odum's transaction is the Transaction tool, a marking on a flow and its counter-flow.
     expect(PALETTE.map((s) => s.type)).not.toContain('exchange');
-    expect(PALETTE).toHaveLength(CATALOGUE.length - 2);
+    // The interaction node too: Odum's interaction is a process tool (ADR 0018).
+    expect(PALETTE.map((s) => s.type)).not.toContain('interaction');
+    expect(PALETTE).toHaveLength(CATALOGUE.length - 3);
   });
 });
