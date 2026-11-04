@@ -579,6 +579,14 @@ and builds or changes the model with the person.
   among them that every storage loses something as it stores. **add_loss** drains a storage to a
   heat sink with a linear flow (a new sink below it unless one is named), carrying its carrier,
   with k marked as an assumption.
+- **The Odum reference** (`src/assistant/odum.ts`): an entry for every palette symbol (what it
+  means, how to draw it here, common mistakes) and every convention (energy laws, losses and
+  depreciation, money, materials, information, layout by energy quality, the boundary, zooming,
+  emergy, flow logics) and a method for building a model, written from Odum's books, with each
+  symbol's kernel type and equations taken from the catalogue. The assistant reads it with
+  **odum_reference** before explaining or drawing; people read the same entries on the
+  **Reference** page (`/reference`). Money never goes to a heat sink: **add_loss** refuses a money
+  storage, and the model summary does not ask for one.
 - **Not yet**: calibration and Energese scripts as tools, and drawing a card's draft on the canvas
   before it is applied.
 

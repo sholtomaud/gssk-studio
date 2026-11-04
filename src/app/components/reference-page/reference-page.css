@@ -1,0 +1,92 @@
+:host {
+  display: block;
+  overflow: auto;
+  flex: 1;
+}
+:host .lede {
+  color: var(--text-secondary);
+  margin: 8px 0 24px;
+  max-width: 72ch;
+}
+:host .layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+:host .contents {
+  position: sticky;
+  top: 12px;
+  display: grid;
+  gap: 14px;
+  font-size: 13px;
+}
+:host .contents h3 {
+  margin: 0 0 4px;
+}
+:host .contents ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+:host .entries {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+}
+:host .card {
+  padding: 16px 20px;
+  scroll-margin-top: 12px;
+}
+:host .entry header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+:host .entry header svg.sym {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  color: var(--ink);
+}
+:host .entry h2 {
+  margin: 0;
+}
+:host .gist {
+  margin: 2px 0 0;
+  color: var(--text-secondary);
+}
+:host .text {
+  line-height: 1.55;
+}
+:host .text p,
+:host .text ul,
+:host .text ol {
+  margin: 0 0 10px;
+}
+:host .text > :last-child {
+  margin-bottom: 0;
+}
+:host .text ul,
+:host .text ol {
+  padding-left: 22px;
+}
+:host .see {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+:host .sources {
+  margin-top: 16px;
+  max-width: 760px;
+}
+@media (max-width: 800px) {
+  :host .layout {
+    grid-template-columns: 1fr;
+  }
+  :host .contents {
+    position: static;
+  }
+}
