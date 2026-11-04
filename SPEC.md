@@ -125,20 +125,20 @@ A model is one JSON document that is a valid GSSK Schema v4 model (ADR 0003):
 
 One symbol per kernel node type. `src/model/catalogue.ts` is the only table of node semantics.
 
-| Symbol (Odum 1983) | Kernel type    | Holds state     | Notes                                                                                 |
-| ------------------ | -------------- | --------------- | ------------------------------------------------------------------------------------- |
-| Source             | `source`       | no              | Held at its value                                                                     |
-| Storage (tank)     | `storage`      | yes             | dQ/dt = inflows − outflows                                                            |
-| Heat sink          | `sink`         | yes             | Accumulates degraded energy                                                           |
-| Constant           | `constant`     | no              | Not in the palette: a source does the same job; imported constants still draw and run |
-| Producer           | `producer`     | yes (composite) | Expands to body, gate, heat; charted by its body                                      |
-| Consumer           | `consumer`     | yes (composite) | Expands to body, heat                                                                 |
-| Interaction        | `interaction`  | no              | Multiplicative work gate                                                              |
-| Transaction        | `exchange`     | no              | Goods one way, money the other, at a price or price node                              |
-| Switch             | `switch`       | no              | On/off around a threshold                                                             |
-| Amplifier          | `gain`         | no              | Constant-gain amplifier                                                               |
-| Receiver           | `loop_limited` | no              | k·Q/(1+Q/C)                                                                           |
-| Box                | `misc_box`     | yes (composite) | A subsystem not drawn in detail                                                       |
+| Symbol (Odum 1983) | Kernel type    | Holds state     | Notes                                                                                               |
+| ------------------ | -------------- | --------------- | --------------------------------------------------------------------------------------------------- |
+| Source             | `source`       | no              | Held at its value                                                                                   |
+| Storage (tank)     | `storage`      | yes             | dQ/dt = inflows − outflows                                                                          |
+| Heat sink          | `sink`         | yes             | Accumulates degraded energy                                                                         |
+| Constant           | `constant`     | no              | Not in the palette: a source does the same job; imported constants still draw and run               |
+| Producer           | `producer`     | yes (composite) | Expands to body, gate, heat; charted by its body                                                    |
+| Consumer           | `consumer`     | yes (composite) | Expands to body, heat                                                                               |
+| Interaction        | (a process)    | no              | A production process (FR-EDIT-015, ADR 0018); the kernel's `interaction` node is not in the palette |
+| Transaction        | `exchange`     | no              | Goods one way, money the other, at a price or price node                                            |
+| Switch             | `switch`       | no              | On/off around a threshold                                                                           |
+| Amplifier          | `gain`         | no              | Constant-gain amplifier                                                                             |
+| Receiver           | `loop_limited` | no              | k·Q/(1+Q/C)                                                                                         |
+| Box                | `misc_box`     | yes (composite) | A subsystem not drawn in detail                                                                     |
 
 Flow logics are the kernel's: `linear`, `constant`, `interaction`, `limit`, `threshold`, `ratio`,
 `reversible`, `subtract`, each with the parameters the kernel requires (§10).
@@ -251,7 +251,9 @@ value or capacity, or a node's or flow's parameter. Every input it sets is marke
   to show it; drag places it where dropped.
 - **FR-EDIT-002** Select, move (grid 10), delete (Delete/Backspace), nudge (arrows, Shift ×5).
 - **FR-EDIT-003** Wire: drag from a node's port onto another node to add a flow; onto a flow to
-  make the node that flow's control, turning it into an interaction with a drawn work gate.
+  make the node that flow's control: the flow becomes the product of an interaction process with
+  that control, only read, and a used-energy pathway (FR-EDIT-015); onto a process's chevron to
+  wire into it.
   Self-loops are refused. A symbol takes any number of flows in and out, and a second flow
   between the same two symbols is a parallel pathway, as Odum draws them: its own logic and
   rate, added by the kernel. Each further parallel flow bows 24 units further out, so all can be
@@ -295,6 +297,22 @@ value or capacity, or a node's or flow's parameter. Every input it sets is marke
   cannot run script or load anything; loading a file drops anything that is not such an image.
   The model's inspector lists its own icons and removes them. Layout only: the kernel never sees
   them. In the icon view a storage's level shows as a gauge.
+- **FR-EDIT-015** Interaction processes (ADR 0018), after Odum and Odum's _Modeling for All Scales_
+  (2000), Fig. 2.6. An interaction is a production process drawn as one chevron, pointing left to
+  right and marked with its production function: `*` once per multiplied control (product, up to
+  eight), `÷` (divisor, the kernel's `ratio`) or `−` (subtracting). Its main input enters at the
+  left, its product leaves at the right, its used energy drops to a heat sink, and each control
+  curves in from above, as a full pathway when **used up** (an ingredient drawn down in
+  proportion) and as a thinner line when **only read**; a control may be the product itself, its
+  feedback. Each pathway is a kernel edge with its own k, kept in step with the process:
+  product (input → target), used energy (input → heat sink, the nearest sink below the chevron or
+  a new one) and one use pathway per used-up control (control → heat sink). Place one with the
+  palette's **Interaction**, wire symbols onto it and drag from its right port to its product, or
+  drop a symbol onto a flow. Its inspector edits the production function, main input, product,
+  heat sink, controls and every pathway's k. An incomplete process has no flows and is a warning;
+  a divisor or subtraction with more than one control is an error. Deleting a pathway deletes
+  its process. A plain interaction flow from an older model draws as a gate on the flow and
+  offers **Make it a process**.
 
 ### 6.1 Packing and unpacking (M7a, FR-GRP-001)
 
@@ -558,7 +576,8 @@ and builds or changes the model with the person.
   table on Settings. One consent dialog serves the whole app.
 - **Tools** (`src/assistant/tools.ts`) are the app's own operations, with strict JSON Schemas:
   describe the model, read the checks and the kernel JSON, add symbols, connect, set a control,
-  set values, declare and set carriers, move, remove, group and pack, add a transaction and its
+  set values, declare and set carriers, move, remove, group and pack, add an interaction
+  process (or make a flow one with a control), add a transaction and its
   counter-flow, and run the model through the app's worker. A refused call changes nothing and
   says why; every edit returns the checks.
 - **Cards**: a turn's edits build a draft, shown as one card listing each step. **Apply** makes

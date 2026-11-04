@@ -106,11 +106,14 @@ const SYMBOLS: Omit<ReferenceEntry, 'kind'>[] = [
 - **Variants** (Modeling for All Scales, Fig. 2.6): three or more inputs multiplied; a **divisor** (the left input divided by the control: dilution); a **subtracting** action.
 - A control can be an ingredient that is **used up** (drawn down in proportion), or a force that is only **read** (information, a pressure).
 
-**Here**: drop a symbol's port onto a flow to make it that flow's control. The flow becomes an *interaction* flow, J = k·Q₀·Qc, and the app draws the gate on it with the control's feedback curve. The kernel reads the control and never drains it, so:
-- for an ingredient that is **used up**, add its own flow out of it with the same interaction (k₂·A·B);
-- for the **used energy**, add a flow to the heat sink with the same interaction (k₃·A·B).
+**Here** an interaction is a **process** (ADR 0018): one chevron, its pathways drawn into and out of it.
+- Place one with the palette's **Interaction** and wire it: the first symbol wired in is the main input, the next ones controls; drag from its right port to what it makes. Or drop a symbol onto a flow: the flow becomes the product, the symbol its control.
+- Each control is **used up** (an ingredient, drawn down: its own pathway, k·B·A) or **only read** (a force or information).
+- The **used energy** goes to a heat sink (the nearest one below, or a new one), k·A·B with its own k.
+- The production function is a **product** (\`*\` once per multiplied control; up to eight), a **divisor** (\`÷\`, the kernel's *ratio*) or **subtracting** (\`−\`).
+- A unit feeding back to its own intake (grazers on their grazing, a producer on its capture) is a control that is also the product.
 
-The kernel's *ratio* and *subtract* logics are the divisor and subtracting interactions; it multiplies up to eight controls on one flow.
+The kernel runs each pathway as a flow and reads controls without draining them, which is why a used-up control has its own pathway. Older models may have a plain interaction flow (a gate on one flow); its inspector offers **Make it a process**.
 
 **Mistakes**: adding the inputs instead of multiplying (that is two separate flows); no heat sink; an ingredient that is never drawn down; reading the gate as a coefficient (every pathway has its own k, interaction or not).`,
     see: ['logics', 'producer', 'energy-laws'],

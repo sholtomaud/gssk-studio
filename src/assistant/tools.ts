@@ -20,6 +20,18 @@ import {
   unitOf,
 } from '../model/carriers.ts';
 import { REFERENCE, referenceEntry, SOURCES } from './odum.ts';
+import {
+  addControl,
+  createProcess,
+  describeProcess,
+  findProcess,
+  flowToProcess,
+  pathways,
+  processesOf,
+  processGaps,
+  processOfEdge,
+  removeProcess,
+} from '../model/processes.ts';
 import { diagramView, findGroup, groupNodes, groupOfNode, setCollapsed } from '../model/groups.ts';
 import { toKernelModel } from '../model/kernel-json.ts';
 import {
@@ -30,7 +42,6 @@ import {
   moveNode,
   removeEdge,
   removeNode,
-  setControl,
   updateEdge,
   updateNode,
 } from '../model/ops.ts';
@@ -188,8 +199,41 @@ export const TOOLS: readonly ToolSpec[] = [
   {
     name: 'set_control',
     description:
-      'Make a symbol the control of a flow (Odum’s work gate): the flow becomes an interaction, J = k·Q₀·Qc.',
+      'Make a symbol the control of a flow: the flow becomes the product of an interaction process, J = k·Q₀·Qc, with a used-energy pathway to a heat sink. The control is only read; use add_interaction for an ingredient that is used up.',
     parameters: schema({ flow: str('The flow id'), control: str('The controlling symbol id') }),
+  },
+  {
+    name: 'add_interaction',
+    description:
+      'Odum’s interaction (work gate) as a production process: the main input (most energy, from the left) and the controls (from the right) combine by the production function into a product, with the used energy to a heat sink. Every pathway is a flow with its own k. A control that is an ingredient is used up (drawn down in proportion); a force or information is only read. A unit feeding back to its own intake is a control that is also the product.',
+    parameters: schema({
+      input: str('The main input'),
+      controls: {
+        type: 'array',
+        description: 'The other inputs, each used up or only read',
+        items: {
+          type: 'object',
+          properties: {
+            node: str('A symbol id'),
+            used: {
+              type: 'boolean',
+              description: 'Drawn down in proportion (an ingredient), or only read',
+            },
+          },
+          required: ['node', 'used'],
+          additionalProperties: false,
+        },
+      },
+      product: str('What it makes: the target of the product pathway'),
+      op: oneOf(
+        ['product', 'divide', 'subtract'],
+        'product k·A·B…; divide k·A/B (dilution); subtract k·(A − B)'
+      ),
+      k: optNum('The product pathway’s k, or null for 0.1'),
+      heat_k: optNum('The used-energy pathway’s k, or null for 0.01'),
+      label: optStr('A name for the process, or null'),
+      why: WHY,
+    }),
   },
   {
     name: 'set_values',
@@ -393,6 +437,16 @@ function describe(m: StudioModel): unknown {
       kind: kindOf(c) ?? 'unknown',
       ...(unitOf(c) ? { unit: unitOf(c) } : {}),
     })),
+    interactions: processesOf(m).map((p) => ({
+      id: p.id,
+      reads: describeProcess(m, p),
+      op: p.op,
+      ...(p.input ? { input: p.input } : {}),
+      controls: p.controls,
+      ...(p.target ? { product: p.target } : {}),
+      ...(p.sink ? { heatSink: p.sink } : {}),
+      ...(processGaps(p).length ? { needs: processGaps(p) } : {}),
+    })),
     groups: (m._diagram.groups ?? []).map((g) => ({
       id: g.id,
       label: g.label,
@@ -526,10 +580,80 @@ async function dispatch(ctx: ToolContext, name: string, a: Args): Promise<unknow
 
     case 'set_control': {
       const flow = s(a, 'flow');
-      if (!flow || !findEdge(m, flow)) refuse(`There is no flow “${flow ?? ''}”.`);
+      const e = flow ? findEdge(m, flow) : undefined;
+      if (!flow || !e) refuse(`There is no flow “${flow ?? ''}”.`);
       const control = node(s(a, 'control')).id;
-      commit(setControl(m, flow, control), `“${labelOf(m, control)}” controls ${flow}`);
-      return { flow, checks: checksOf(ctx.draft) };
+      const pr = processOfEdge(m, e);
+      if (pr) {
+        commit(addControl(m, pr.id, control), `“${labelOf(m, control)}” also controls ${flow}`);
+        return { process: pr.id, checks: checksOf(ctx.draft) };
+      }
+      const from = findNode(m, e.origin)!.visual;
+      const to = findNode(m, e.target)!.visual;
+      const { model, id } = flowToProcess(m, flow, control, {
+        x: Math.round((from.x + to.x) / 20) * 10,
+        y: Math.round((from.y + to.y) / 20) * 10,
+      });
+      if (!id) refuse(`“${control}” cannot control “${flow}”: it is the flow's own origin.`);
+      commit(model, `“${labelOf(m, control)}” controls ${flow}`);
+      return { process: id, checks: checksOf(ctx.draft) };
+    }
+
+    case 'add_interaction': {
+      const input = node(s(a, 'input')).id;
+      const product = node(s(a, 'product')).id;
+      const rawControls = Array.isArray(a.controls) ? a.controls : [];
+      const controls = rawControls
+        .filter(
+          (c): c is { node: string; used?: boolean } =>
+            !!c && typeof (c as { node?: unknown }).node === 'string'
+        )
+        .map((c) => ({ node: node(c.node).id, used: c.used === true }));
+      if (controls.length === 0)
+        refuse('An interaction needs at least one control: what the main input combines with.');
+      const op =
+        s(a, 'op') === 'divide' || s(a, 'op') === 'subtract'
+          ? (s(a, 'op') as 'divide' | 'subtract')
+          : 'product';
+      if (op !== 'product' && controls.length > 1)
+        refuse('A divisor or subtraction takes one control.');
+      const at = (id: string) => findNode(m, id)!.visual;
+      const label = s(a, 'label');
+      const { model, id } = createProcess(
+        m,
+        {
+          x: Math.round((at(input).x + at(product).x) / 20) * 10,
+          y: Math.round((at(input).y + at(product).y) / 20) * 10,
+        },
+        { op, input, target: product, controls, ...(label ? { label } : {}) }
+      );
+      const ways = pathways(model, id);
+      const marked: string[] = [];
+      const k = n(a, 'k');
+      const heatK = n(a, 'heat_k');
+      if (k !== undefined && ways.product) {
+        ways.product.params.k = k;
+        marked.push(inputKey('edge', ways.product.id, 'params.k'));
+      }
+      if (heatK !== undefined && ways.heat) {
+        ways.heat.params.k = heatK;
+        marked.push(inputKey('edge', ways.heat.id, 'params.k'));
+      }
+      commit(
+        model,
+        `Add interaction: ${describeProcess(model, findProcess(model, id)!)}`,
+        marked,
+        s(a, 'why')
+      );
+      return {
+        process: id,
+        pathways: {
+          product: ways.product?.id,
+          heat: ways.heat?.id,
+          uses: [...ways.uses.values()].map((e) => e.id),
+        },
+        checks: checksOf(ctx.draft),
+      };
     }
 
     case 'set_values': {
@@ -633,8 +757,12 @@ async function dispatch(ctx: ToolContext, name: string, a: Args): Promise<unknow
     case 'remove': {
       const id = s(a, 'id') ?? '';
       if (s(a, 'kind') === 'edge') {
-        if (!findEdge(m, id)) refuse(`There is no flow “${id}”.`);
-        commit(removeEdge(m, id), `Remove flow ${id}`);
+        const e = findEdge(m, id);
+        if (!e) refuse(`There is no flow “${id}”.`);
+        const pr = processOfEdge(m, e);
+        // A pathway goes with its process: removing one removes the interaction.
+        if (pr) commit(removeProcess(m, pr.id), `Remove interaction ${describeProcess(m, pr)}`);
+        else commit(removeEdge(m, id), `Remove flow ${id}`);
       } else {
         const label = labelOf(m, node(id).id);
         commit(removeNode(m, id), `Remove “${label}” and its flows`);

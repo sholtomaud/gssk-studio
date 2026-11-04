@@ -194,4 +194,76 @@ describe('the assistant’s tools (M12, ADR 0016)', () => {
     expect((d.symbolTypes as { type: string }[]).map((x) => x.type)).toContain('storage');
     expect((d.logics as { logic: string }[]).map((x) => x.logic)).toContain('interaction');
   });
+
+  it('adds an interaction as a process: product, used energy, a used-up ingredient, marked rates (ADR 0018)', async () => {
+    const ctx = context();
+    const add = (type: string, label: string) =>
+      ok(ctx, 'add_symbol', {
+        type,
+        label,
+        x: null,
+        y: null,
+        value: null,
+        capacity: null,
+        carrier: null,
+        why: null,
+      });
+    await add('source', 'Sun');
+    await add('storage', 'Nutrients');
+    await add('storage', 'Grass');
+    const r = await ok(ctx, 'add_interaction', {
+      input: 'sun',
+      controls: [{ node: 'nutrients', used: true }],
+      product: 'grass',
+      op: 'product',
+      k: 0.02,
+      heat_k: null,
+      label: 'Photosynthesis',
+      why: 'a guess',
+    });
+    const ways = r.pathways as { product: string; heat: string; uses: string[] };
+    expect(ways.uses).toHaveLength(1);
+    expect(ctx.steps.at(-1)).toBe('Add interaction: Sun × Nutrients → Grass');
+    expect(ctx.draft.edges.find((e) => e.id === ways.product)?.params.k).toBe(0.02);
+    expect(assumedCount(ctx.draft)).toBe(1);
+    const d = (await ok(ctx, 'describe_model', {})) as { interactions: { reads: string }[] };
+    expect(d.interactions[0]?.reads).toBe('Sun × Nutrients → Grass');
+    // Removing a pathway removes the interaction it belongs to.
+    await ok(ctx, 'remove', { kind: 'edge', id: ways.heat });
+    expect(ctx.draft._diagram.processes).toBeUndefined();
+    expect(ctx.draft.edges).toEqual([]);
+  });
+
+  it('set_control turns a flow into a process with a read-only control', async () => {
+    const ctx = context();
+    for (const [type, label] of [
+      ['storage', 'Grass'],
+      ['consumer', 'Grazers'],
+    ] as const)
+      await ok(ctx, 'add_symbol', {
+        type,
+        label,
+        x: null,
+        y: null,
+        value: null,
+        capacity: null,
+        carrier: null,
+        why: null,
+      });
+    const flow = await ok(ctx, 'connect', {
+      from: 'grass',
+      to: 'grazers',
+      logic: null,
+      k: null,
+      carrier: null,
+      why: null,
+    });
+    const r = await ok(ctx, 'set_control', { flow: flow.id, control: 'grazers' });
+    expect(r.process).toBeTruthy();
+    expect(ctx.draft._diagram.processes?.[0]?.controls).toEqual([{ node: 'grazers', used: false }]);
+    expect(ctx.draft.edges.find((e) => e.id === flow.id)).toMatchObject({
+      logic: 'interaction',
+      params: { control_node: 'grazers' },
+    });
+  });
 });
