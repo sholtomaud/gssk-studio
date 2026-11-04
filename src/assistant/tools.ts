@@ -11,7 +11,15 @@
  * the model learns what is valid from the app.
  */
 import { CATALOGUE, isNodeType, logicFor, PALETTE, symbolFor } from '../model/catalogue.ts';
-import { addCarrier, findCarrier, isCurrency, kindOf, unitOf } from '../model/carriers.ts';
+import {
+  addCarrier,
+  findCarrier,
+  isCurrency,
+  kindOf,
+  kindOfCarrierId,
+  unitOf,
+} from '../model/carriers.ts';
+import { REFERENCE, referenceEntry, SOURCES } from './odum.ts';
 import { diagramView, findGroup, groupNodes, groupOfNode, setCollapsed } from '../model/groups.ts';
 import { toKernelModel } from '../model/kernel-json.ts';
 import {
@@ -117,6 +125,14 @@ const WHY = optStr(
 );
 
 export const TOOLS: readonly ToolSpec[] = [
+  {
+    name: 'odum_reference',
+    description:
+      'Read the app’s reference on Odum’s energy systems language: a symbol (what it means, how to draw it here, common mistakes) or a convention (losses, money, materials, layout, flow logics, how to build a model). Read it before explaining a symbol or convention, or when unsure how to draw something; quote it rather than guess. "index" lists every entry.',
+    parameters: schema({
+      topic: oneOf(['index', ...REFERENCE.map((e) => e.id)], 'An entry id, or index'),
+    }),
+  },
   {
     name: 'describe_model',
     description:
@@ -432,6 +448,18 @@ async function dispatch(ctx: ToolContext, name: string, a: Args): Promise<unknow
   };
 
   switch (name) {
+    case 'odum_reference': {
+      const topic = s(a, 'topic') ?? 'index';
+      if (topic === 'index')
+        return {
+          entries: REFERENCE.map((e) => ({ id: e.id, title: e.title, gist: e.gist })),
+          sources: SOURCES,
+        };
+      const e = referenceEntry(topic);
+      if (!e) refuse(`There is no reference entry “${topic}”. Use “index” to list them.`);
+      return { id: e.id, title: e.title, text: e.text, see: e.see };
+    }
+
     case 'describe_model':
       return describe(m);
     case 'get_checks':
@@ -630,6 +658,10 @@ async function dispatch(ctx: ToolContext, name: string, a: Args): Promise<unknow
       const from = node(s(a, 'from'));
       if (!symbolFor(from.type).holdsState || from.type === 'sink')
         refuse(`“${from.id}” holds nothing to lose: add_loss is for storages.`);
+      if (kindOfCarrierId(m, from.carrier) === 'monetary')
+        refuse(
+          `“${from.id}” holds money. In Odum’s diagrams money does not go to a heat sink: it circulates, flowing against what it buys. Draw spending as a flow to whoever is paid (see odum_reference “money”).`
+        );
       const sinkId = s(a, 'sink');
       if (sinkId && node(sinkId).type !== 'sink') refuse(`“${sinkId}” is not a heat sink.`);
       let model = m;
@@ -762,6 +794,8 @@ export function modelBrief(m: StudioModel, limit = 40): string {
     .filter(
       (x) => symbolFor(x.type).holdsState && x.type !== 'sink' && !symbolFor(x.type).composite
     )
+    // Money circulates and never goes to a heat sink (odum_reference “money”).
+    .filter((x) => kindOfCarrierId(m, x.carrier) !== 'monetary')
     .filter((x) => !m.edges.some((e) => e.origin === x.id && sinks.has(e.target)))
     .map((x) => x.id);
   const more = (all: unknown[]) =>
