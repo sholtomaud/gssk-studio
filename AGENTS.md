@@ -75,7 +75,7 @@ npm run typecheck
 npm test            # unit and kernel tests (Vitest)
 npm run gssk:verify
 npm run build && npm run bundle-size
-npm run e2e         # needs Playwright's Chromium: npx playwright install chromium
+npm run e2e         # needs Google Chrome: npx playwright install chrome
 ```
 
 All must pass. CI runs the same on every PR.

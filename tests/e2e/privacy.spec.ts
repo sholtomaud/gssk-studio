@@ -34,3 +34,14 @@ test('the CSP lists only its own origin and the assistant’s providers', async 
     'https://openrouter.ai',
   ]);
 });
+
+test.describe('the test guard', () => {
+  // Console errors are allowed here, so only the guard's block can fail the test.
+  test.use({ allowErrors: [/./] });
+
+  test('fails any test whose page reaches outside the app', async ({ page }) => {
+    test.fail(true, 'the guard aborts the request and fails the test, as it should');
+    await page.goto('./');
+    await page.evaluate(() => fetch('http://127.0.0.1:9/probe').catch(() => undefined));
+  });
+});

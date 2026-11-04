@@ -67,7 +67,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Google Chrome stable, not Playwright's pinned Chromium (playwright.config.ts).
+      - run: npx playwright install --with-deps chrome
       - name: The site from the build job
         uses: actions/download-artifact@v4
         with:
