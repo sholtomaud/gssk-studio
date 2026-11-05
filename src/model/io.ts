@@ -14,6 +14,8 @@ import {
   DEFAULT_CONFIG,
   EDGE_LOGICS,
   METHODS,
+  type BlockPort,
+  type BlockRef,
   type Boundary,
   CARRIER_KINDS,
   type Carrier,
@@ -284,6 +286,7 @@ export function normaliseModel(raw: unknown): ParseResult {
       nodes: members,
       collapsed: rg.collapsed === true,
       ...(str(rg.parent) ? { parent: str(rg.parent) } : {}),
+      ...blockRef(rg.block, nodeIds),
     });
   }
 
@@ -477,4 +480,20 @@ export function fileNameFor(m: StudioModel): string {
       .replace(/[^\w.-]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'model';
   return `${base}${FILE_EXTENSION}`;
+}
+
+/** A placed block's record on its group (ADR 0017), when it is whole. */
+function blockRef(raw: unknown, nodeIds: ReadonlySet<string>): { block?: BlockRef } {
+  if (!isObj(raw) || !str(raw.id) || !str(raw.version) || !str(raw.hash)) return {};
+  const ports: BlockPort[] = [];
+  for (const rp of Array.isArray(raw.ports) ? raw.ports : []) {
+    if (!isObj(rp) || !str(rp.node) || !nodeIds.has(rp.node as string)) continue;
+    ports.push({
+      node: rp.node as string,
+      direction: rp.direction === 'in' || rp.direction === 'out' ? rp.direction : 'both',
+      ...(str(rp.carrier) ? { carrier: str(rp.carrier) } : {}),
+      ...(str(rp.label) ? { label: str(rp.label) } : {}),
+    });
+  }
+  return { block: { id: str(raw.id)!, version: str(raw.version)!, hash: str(raw.hash)!, ports } };
 }

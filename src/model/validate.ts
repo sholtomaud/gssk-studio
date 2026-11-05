@@ -10,6 +10,7 @@ import { carrierProblems } from './carriers.ts';
 import { logicFor, symbolFor } from './catalogue.ts';
 import { transactionProblems } from './transactions.ts';
 import { assumedCount } from './provenance.ts';
+import { blockIssues } from './blocks.ts';
 import { processesOf, processGaps } from './processes.ts';
 import { canForceNode, forcingProblems } from './forcing.ts';
 import { controlsOf, type StudioModel } from './types.ts';
@@ -248,6 +249,9 @@ export function validate(m: StudioModel): Issue[] {
         message: `Interaction “${name}” ${p.op === 'divide' ? 'divides' : 'subtracts'} by one control; it has ${p.controls.length}.`,
       });
   }
+
+  // ADR 0017: flows wired to a placed block reach its ports.
+  issues.push(...blockIssues(m));
 
   // NFR-HON-002: say how much of the model rests on the assistant's guesses.
   const assumed = assumedCount(m);

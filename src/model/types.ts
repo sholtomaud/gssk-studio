@@ -288,6 +288,27 @@ export interface Group {
   parent?: string;
   /** Packed: drawn as one symbol, its flows across the edge combined. */
   collapsed: boolean;
+  /** Placed from a building block (ADR 0017): which one, and its interface. */
+  block?: BlockRef;
+}
+
+/** A symbol inside a block that flows from outside may reach (ADR 0017). */
+export interface BlockPort {
+  node: string;
+  /** in: flows from outside into it; out: from it to outside; both. */
+  direction: 'in' | 'out' | 'both';
+  /** The carrier its flows carry, when they share one. */
+  carrier?: string;
+  label?: string;
+}
+
+/** Where a placed block came from: enough to tell it from another version or a changed copy. */
+export interface BlockRef {
+  id: string;
+  version: string;
+  /** SHA-256 of the block file's canonical JSON. */
+  hash: string;
+  ports: BlockPort[];
 }
 
 export interface ModelConfig {
