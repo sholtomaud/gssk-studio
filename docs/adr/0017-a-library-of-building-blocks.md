@@ -1,6 +1,7 @@
 # ADR 0017 — A library of building blocks: reusable, cited, checked, in its own repository
 
-**Status**: proposed (M7b, with M9 and M10)
+**Status**: accepted for the block file, placing and sources (M7b, SPEC §6.2); the library
+repository and its CI are still proposed (with M9 and M10).
 
 ## Context
 
@@ -55,8 +56,13 @@ A **block** (`.gssk-block.json`) holds:
 Placing a block in a model adds it as a packed group with fresh ids (copy semantics, as
 FR-EDIT-011). It is not a kernel `archetype`: archetypes cap a template at 16 nodes and 32 edges
 and two ports, and expand inside the kernel where the studio cannot show them (ADR 0010).
-A placed block remembers where it came from (`_block: { id, version, hash }`). The library can
-then offer updates, and a model can say which blocks it is built from.
+A placed block remembers where it came from (`block: { id, version, hash, ports, tests }` on the
+group, in the editor-only `_diagram`). The library can then offer updates, and a model can say
+which blocks it is built from.
+
+As built, a block's tests run on the block alone, with the run settings saved in it: that is
+what the library's CI can run, and a block that only fits in the model it was cut from is not
+reusable. A block saved from a placed block keeps the placed block's tests and declared ports.
 
 ### The library lives in its own repository
 

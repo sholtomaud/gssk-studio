@@ -233,13 +233,21 @@ An LLM never produces a result (NFR-HON-002), but the assistant may set an input
 value or capacity, or a node's or flow's parameter. Every input it sets is marked.
 
 - **Stored** in `_provenance`, keyed `node:<id>:<field>` or `edge:<id>:<field>` (`value`,
-  `capacity`, `params.k`…), as `{ by, at, provider?, model?, why? }`, with `by` one of
-  `assistant`, `user` or `calibration`. The kernel never sees it, so the model hash is unchanged.
+  `capacity`, `params.k`…), as `{ by, at, provider?, model?, why?, source? }`, with `by` one of
+  `assistant`, `user`, `calibration` or `data`. The kernel never sees it, so the model hash is
+  unchanged.
+- **Cited data** (ADR 0017): a symbol's or flow's **Sources** in its inspector cite where a value
+  comes from: dataset (required), table or series, link, retrieved date, licence, and how it was
+  derived. The mark is `by: "data"` with that `source`. A hand edit of a cited value marks it
+  `user`, since it is no longer the published number; a citation can be removed, leaving the
+  value.
 - **Shown**: a ≈ mark on the symbol or flow, with which inputs and why on hover; a note in its
   inspector; an info item in the checks ("2 values were set by the assistant and are not from
   data").
 - **Counted**: every run's manifest carries `assumedInputs`, the assistant's marks nobody has
-  replaced, shown beside the model hash.
+  replaced, and `inputSources`, every input counted once as cited, calibrated, assumed or with no
+  stated source. The results line shows the cited, calibrated and assumed counts beside the model
+  hash; its tooltip gives all four.
 - **Replaced, never cleared silently**: an edit that changes a marked value marks it `user`;
   calibration marks it `calibration`. Undo restores the mark. Renames follow; marks on inputs
   that are gone are dropped. Rebuilding the model from Energese code keeps them.
@@ -357,8 +365,39 @@ Odum's diagrams zoom: a storage drawn once at one scale is many storages at the 
 - The **Household budget** example packs eleven bills and renewals into Expenses, with Housing,
   Phone and internet, Living and Renewals inside it. Bills are constant flows; renewals are
   repeating table forcings (FR-FRC-001).
-- Later (M7b): save a group as a reusable symbol (a kernel `archetypes` template), and unpack a
-  built-in composite (producer, consumer) into the members the kernel runs.
+- Building blocks (§6.2) save a group to its own file to place in other models.
+- Later: unpack a built-in composite (producer, consumer) into the members the kernel runs.
+
+### 6.2 Building blocks (M7b, FR-BLK-001, ADR 0017)
+
+A block is a packed group saved to a `.gssk-block.json` file, to place in other models.
+
+- **The file** holds `format: "gssk-block"`, `format_version: 1`, an `id` (dotted, lower case:
+  `au.sna.households`), a semantic `version`, a `title` and description, classification `codes`
+  (`SNA2008`, `ANZSIC2006`, `ISIC4`, `GICS`, `CPC2.1`, `COICOP2018`), its `ports`, its `tests`,
+  the GSSK version it was saved on, and its `model`: a model file of what the group holds, drawn
+  around (0, 0), with its inner groups, processes, the carriers and icons it uses, its sources
+  (`_provenance`) and the run settings its tests run with.
+- **Ports** are the symbols inside that flows across the group's edge reach (§6.1), each with
+  its direction (in, out or both) and the carrier its flows share.
+- **Saving**: a group's inspector has **Save as a building block**: id, version, title,
+  description, codes one per line (`SNA2008 S.14 Households`), and which of the model's
+  observations of something inside become tests, each with a measure (NSE, KGE or R²) and the
+  least value it must reach. References to symbols outside (a control, a price node, a divisor,
+  a pairing) cannot travel: they are dropped, and the inspector says which before saving.
+- **Placing**: with nothing selected, **Place a building block** reads a block file and adds a
+  copy, packed, to the right of the diagram, with fresh ids for everything in it. A carrier or icon
+  the model has with the same id and meaning is shared; one that differs comes in renamed. The
+  group records `block: { id, version, hash, ports, tests }`, the hash being SHA-256 of the
+  block file's canonical JSON.
+- **Checks**: a flow wired to a placed block that reaches a symbol inside that is not a port,
+  goes against a port's direction, or carries other than the port's carrier is a warning.
+- **Trust** (shown in the group's inspector): **structural** when the block's own contents pass
+  their checks; **runs** when **Run it on its own** ran cleanly; **fitted** when every test
+  reached its measure on that run; **reviewed** is the library's to give (ADR 0017). The
+  inspector also counts where the block's inputs come from (§5.7).
+- A block placed and run on its own runs as the group it was saved from (a kernel test for every
+  example).
 
 ## 7. Simulation (FR-SIM)
 
@@ -709,23 +748,23 @@ See [AGENTS.md](AGENTS.md#layout).
 
 ## 19. Milestones
 
-| ID  | Scope                                                                                                                                              | Status                                                   |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                                                                     | done                                                     |
-| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback                                                    | done                                                     |
-| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor                                           | done                                                     |
-| M3  | Observations and fitness (§11)                                                                                                                     | done                                                     |
-| M4  | Calibration and sensitivity (§12)                                                                                                                  | done                                                     |
-| M5  | Forcing functions and ensembles (§12)                                                                                                              | done                                                     |
-| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                                                                       | planned                                                  |
-| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                                                           | done                                                     |
-| M7b | Building blocks: packed groups saved as cited, tested blocks with typed ports, from a library repository (ADR 0017); unpacking built-in composites | proposed                                                 |
-| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)                                                        | done                                                     |
-| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                                                          | planned                                                  |
-| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                                                                     | planned                                                  |
-| M11 | Article editing: LaTeX in the browser, figures bound to runs                                                                                       | planned                                                  |
-| M12 | Assistant: chat that edits through the app's operations as cards to apply; local model first; inputs it sets are marked (ADR 0016)                 | done; calibrate and script tools, canvas preview to come |
-| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9                                                       | done; pricing waits on K-9                               |
+| ID  | Scope                                                                                                                                                            | Status                                                   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| M0  | Foundation: spec, ADRs, pinned kernel in a worker, app shell, CI, offline, CSP                                                                                   | done                                                     |
+| M1  | Editor and runs: palette, wiring, gates, boundaries, inspector, checks, undo, results, playback                                                                  | done                                                     |
+| M2  | Run progress and cancel, multi-select, copy/paste, align, SVG/PNG diagram export, run comparison, sensor                                                         | done                                                     |
+| M3  | Observations and fitness (§11)                                                                                                                                   | done                                                     |
+| M4  | Calibration and sensitivity (§12)                                                                                                                                | done                                                     |
+| M5  | Forcing functions and ensembles (§12)                                                                                                                            | done                                                     |
+| M6  | Opt-in services: live data sources, AI run write-up, report/PDF export (§13)                                                                                     | planned                                                  |
+| M7a | Zoom groups: pack and unpack symbols, nested, with combined flows (§6.1)                                                                                         | done                                                     |
+| M7b | Building blocks: packed groups saved as cited, tested blocks with typed ports (§6.2, ADR 0017); the library repository and unpacking built-in composites to come | in progress                                              |
+| M8  | Energese SDK: builder, constructs, code generation, round trip (§9.1); code view (ADR 0013)                                                                      | done                                                     |
+| M9  | Repeatability index and an embeddable model viewer (docs/architecture.md)                                                                                        | planned                                                  |
+| M10 | Publishing: GitHub and Zenodo through a token proxy (ADR 0014)                                                                                                   | planned                                                  |
+| M11 | Article editing: LaTeX in the browser, figures bound to runs                                                                                                     | planned                                                  |
+| M12 | Assistant: chat that edits through the app's operations as cards to apply; local model first; inputs it sets are marked (ADR 0016)                               | done; calibrate and script tools, canvas preview to come |
+| M13 | Energetic types (§5.5) and transactions (§5.6); priced counter-flows when the kernel has K-9                                                                     | done; pricing waits on K-9                               |
 
 ## 20. Open questions
 
