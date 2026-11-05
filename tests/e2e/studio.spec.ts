@@ -71,19 +71,22 @@ test('build a model from the palette, wire it, run it, undo it', async ({ page }
   await expect(page.locator('diagram-canvas [data-edge]')).toHaveCount(2);
   await expect(page.locator('studio-page .badge').filter({ hasText: 'Checks pass' })).toBeVisible();
 
-  // Wiring a node onto a flow makes it that flow's control: an interaction with a gate.
+  // Wiring a node onto a flow makes it that flow's control: the flow becomes the
+  // product of an interaction process, with its used energy to a heat sink (ADR 0018).
   await page.getByRole('button', { name: 'Add Source' }).click();
   await wire(page, 'source_2', 'edge:storage_to_heat_sink');
-  await expect(page.locator('[data-edge="storage_to_heat_sink"] .gate')).toHaveCount(1);
-  await expect(page.locator('inspector-panel select[name="logic"]')).toHaveValue('interaction');
+  await expect(page.locator('diagram-canvas g.process')).toHaveCount(1);
+  await expect(page.locator('inspector-panel .kind .s')).toHaveText(
+    'Storage × Source (read) → Heat sink'
+  );
+  await expect(page.locator('inspector-panel input[name="k-heat"]')).toHaveValue('0.01');
 
   await run(page);
-  await expect(page.locator('results-panel .series button')).toHaveCount(4);
 
   await page.keyboard.press('Escape');
   await page.locator('diagram-canvas svg.canvas').focus();
   await page.keyboard.press('Control+z');
-  await expect(page.locator('[data-edge="storage_to_heat_sink"] .gate')).toHaveCount(0);
+  await expect(page.locator('diagram-canvas g.process')).toHaveCount(0);
   await expect(page.locator('results-panel .status')).toContainText('Model changed since this run');
 });
 
@@ -257,4 +260,59 @@ test('the icon view draws symbols as pictures: built-in, picked, or your own (FR
   await expect(page.locator('inspector-panel .own-icon[data-icon="icon_cow"]')).toContainText(
     '1 symbol'
   );
+});
+
+test('a control enters its work gate as a solid feedback curve with an arrow, not a dashed line', async ({
+  page,
+}) => {
+  await openExample(page, 'grassland');
+  const control = page.locator('diagram-canvas g.edge .control').first();
+  await expect(control).toHaveAttribute('marker-end', 'url(#control-arrow)');
+  expect(await control.evaluate((el) => getComputedStyle(el).strokeDasharray)).toBe('none');
+  // The gate points along its flow.
+  await expect(page.locator('diagram-canvas g.edge .gate').first()).toHaveAttribute(
+    'transform',
+    /^rotate\(/
+  );
+});
+
+test('an interaction is a production process: place, wire, product, used-up control (ADR 0018)', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'New model' }).click();
+  await page.getByRole('button', { name: 'Add Source' }).click();
+  await page.getByRole('button', { name: 'Add Storage' }).click();
+  await page.getByRole('button', { name: 'Add Storage' }).click();
+  await page.getByRole('button', { name: 'Add Interaction' }).click();
+  const proc = page.locator('diagram-canvas g.process');
+  await expect(proc).toHaveCount(1);
+  await expect(page.locator('inspector-panel .warn-text')).toContainText(
+    'Needs a main input, a control or second input, a product target'
+  );
+
+  // The first symbol wired in is the main input; the next a control; the inspector sets the product.
+  await page.locator('inspector-panel select[name="input"]').selectOption('source');
+  await page.locator('inspector-panel select[name="add-control"]').selectOption('storage');
+  await page.locator('inspector-panel select[name="target"]').selectOption('storage_2');
+  await expect(page.locator('inspector-panel .kind .s')).toHaveText(
+    'Source × Storage (read) → Storage'
+  );
+  // Product and used energy, each with its own k; the used energy has a new heat sink.
+  await expect(page.locator('inspector-panel input[name="k-product"]')).toHaveValue('0.1');
+  await expect(page.locator('inspector-panel input[name="k-heat"]')).toHaveValue('0.01');
+  await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(4);
+  await expect(proc.locator('.op-mark')).toHaveText('*');
+
+  // A used-up control is drawn down: its own pathway, drawn as a full flow.
+  await page.locator('inspector-panel input[name="used-storage"]').check();
+  await expect(page.locator('inspector-panel input[name="k-use-storage"]')).toHaveValue('0.01');
+  await expect(proc.locator('.process-path .line')).toHaveCount(4);
+  await expect(page.locator('studio-page .badge').filter({ hasText: 'Checks pass' })).toBeVisible();
+  await run(page);
+
+  // Deleting the interaction removes its pathways, and keeps the symbols.
+  await page.getByRole('button', { name: 'Delete interaction' }).click();
+  await expect(proc).toHaveCount(0);
+  await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(4);
 });

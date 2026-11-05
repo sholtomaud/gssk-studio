@@ -83,8 +83,10 @@ import {
   type ModelEdge,
   type ModelNode,
   type NodeType,
+  type Process,
   type StudioModel,
   type Waveform,
+  controlsOf,
 } from '../../../model/types.ts';
 import type { Issue } from '../../../model/validate.ts';
 import { symbolIcon } from '../../symbol-icon.ts';
@@ -93,6 +95,23 @@ import { observationsFromCsv, observationTargets } from '../../../fit/observatio
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import { SYMBOL_SCALE } from '../../../diagram/geometry.ts';
 import { kernelHash, toKernelModel } from '../../../model/kernel-json.ts';
+import {
+  addControl,
+  describeProcess,
+  findProcess,
+  flowToProcess,
+  pathways,
+  processGaps,
+  processOfEdge,
+  removeControl,
+  removeProcess,
+  renameProcess,
+  setControlUsed,
+  setInput,
+  setOp,
+  setProduct,
+  setSink,
+} from '../../../model/processes.ts';
 import { marksFor } from '../../../model/provenance.ts';
 import { BUILTIN_ICONS, builtinIcon, DEFAULT_ICON } from '../../../diagram/icons.ts';
 import {
@@ -270,6 +289,9 @@ export class InspectorPanel extends BaseComponent {
     } else if (s?.kind === 'edge') {
       const e = findEdge(m, s.id);
       if (e) return this.edgeForm(m, e);
+    } else if (s?.kind === 'process') {
+      const pr = findProcess(m, s.id);
+      if (pr) return this.processForm(m, pr);
     } else if (s?.kind === 'group') {
       if (findGroup(m, s.id)) return this.groupForm(m, s.id);
     } else if (s?.kind === 'bundle') {
@@ -317,6 +339,205 @@ export class InspectorPanel extends BaseComponent {
       }
     }
     this.modelForm(m);
+  }
+
+  /**
+   * On a flow's form: the process it is a pathway of (ADR 0018), or for a
+   * plain interaction flow, the offer to make it one.
+   */
+  private processNote(m: StudioModel, e: ModelEdge): HTMLElement | null {
+    const cur = () => this._model ?? m;
+    const pr = processOfEdge(m, e);
+    if (pr) {
+      const role = e.visual?.process?.role;
+      const b = el('button', { type: 'button', text: describeProcess(m, pr) });
+      b.onclick = () => this.selectRef({ kind: 'process', id: pr.id });
+      return el(
+        'div',
+        { class: 'links' },
+        el('span', {
+          class: 'hint',
+          text: `The ${role === 'heat' ? 'used-energy' : role === 'use' ? 'use' : 'product'} pathway of`,
+        }),
+        b
+      );
+    }
+    const control = controlsOf(e)[0];
+    if (e.logic !== 'interaction' || !control) return null;
+    const make = el('button', { type: 'button', name: 'make-process', text: 'Make it a process' });
+    make.onclick = () => {
+      const o = findNode(cur(), e.origin);
+      const t = findNode(cur(), e.target);
+      const at = {
+        x: ((o?.visual.x ?? 0) + (t?.visual.x ?? 0)) / 2,
+        y: ((o?.visual.y ?? 0) + (t?.visual.y ?? 0)) / 2,
+      };
+      const { model, id } = flowToProcess(cur(), e.id, control, {
+        x: Math.round(at.x / 10) * 10,
+        y: Math.round(at.y / 10) * 10,
+      });
+      if (id) this.emit(model, `Make ${e.id} a process`, undefined, { kind: 'process', id });
+    };
+    return el(
+      'div',
+      { class: 'make-process' },
+      el('p', {
+        class: 'hint',
+        text: 'Odum’s interaction is a production process: its used energy goes to a heat sink, and an ingredient is drawn down. Make this flow the product of one to draw and edit those pathways.',
+      }),
+      el('div', { class: 'actions' }, make)
+    );
+  }
+
+  /** An interaction process (ADR 0018): its operation, inputs, product, heat sink and every pathway's k. */
+  private processForm(m: StudioModel, pr: Process): void {
+    const id = pr.id;
+    const cur = () => this._model ?? m;
+    const go = (model: StudioModel, label: string, field?: string) => {
+      this.emit(model, label, field);
+      this.renderForm(true);
+    };
+    const name = (nid: string) => findNode(m, nid)?.visual.label ?? nid;
+    const options = (filter: (n: ModelNode) => boolean = () => true) => [
+      { value: '', label: '— choose —' },
+      ...m.nodes.filter(filter).map((n) => ({ value: n.id, label: name(n.id) })),
+    ];
+    const ways = pathways(m, id);
+    const gaps = processGaps(pr);
+    const rate = (label: string, e: ModelEdge | undefined, field: string) =>
+      e
+        ? this.numberField(
+            label,
+            e.params.k,
+            (v) =>
+              v !== undefined &&
+              this.emit(
+                updateEdge(cur(), e.id, (x) => (x.params.k = v)),
+                label,
+                field
+              ),
+            { name: field }
+          )
+        : null;
+    const controls = pr.controls.map((c) => {
+      const used = el('input', { type: 'checkbox', name: `used-${c.node}` });
+      used.checked = c.used;
+      used.onchange = () =>
+        go(
+          setControlUsed(cur(), id, c.node, used.checked),
+          `${name(c.node)} ${used.checked ? 'used up' : 'only read'}`
+        );
+      const remove = iconButton('x', `Remove ${name(c.node)}`, 'ghost icon');
+      remove.onclick = () =>
+        go(removeControl(cur(), id, c.node), `Remove ${name(c.node)} from interaction`);
+      return el(
+        'li',
+        { class: 'control-row', 'data-control': c.node },
+        el('span', { class: 'name', text: name(c.node) }),
+        el('label', { class: 'check' }, used, 'Used up'),
+        remove
+      );
+    });
+    const del = el(
+      'button',
+      { type: 'button', class: 'danger' },
+      icon('trash'),
+      'Delete interaction'
+    );
+    del.onclick = () => this.emit(removeProcess(cur(), id), 'Delete interaction', undefined, null);
+    this.form.append(
+      el(
+        'section',
+        {},
+        el(
+          'div',
+          { class: 'kind' },
+          symbolIcon('interaction'),
+          el(
+            'div',
+            {},
+            el('div', { class: 't', text: 'Interaction' }),
+            el('div', { class: 's', text: describeProcess(m, pr) })
+          )
+        ),
+        el('p', {
+          class: 'summary',
+          text: 'A production process (Odum’s work gate): every pathway in or out follows its production function, each with its own k. The used energy goes to the heat sink; a used-up control is drawn down too.',
+        }),
+        gaps.length
+          ? el('p', { class: 'hint warn-text', text: `Needs ${gaps.join(', ')}.` })
+          : null,
+        this.textField(
+          'Label',
+          pr.label ?? '',
+          (v) => this.emit(renameProcess(cur(), id, v), 'Rename interaction', 'label'),
+          'label'
+        ),
+        this.selectField<Process['op']>(
+          'Production function',
+          pr.op,
+          [
+            { value: 'product', label: 'Product: k·A·B (inputs multiplied)' },
+            { value: 'divide', label: 'Divisor: k·A/B (dilution)' },
+            { value: 'subtract', label: 'Subtracting: k·(A − B)' },
+          ],
+          (v) => v && go(setOp(cur(), id, v), 'Production function'),
+          'op'
+        ),
+        this.selectField(
+          'Main input (from the left)',
+          pr.input ?? '',
+          options((n) => n.type !== 'sink'),
+          (v) => v && go(setInput(cur(), id, v), 'Main input'),
+          'input'
+        ),
+        this.selectField(
+          'Makes (product)',
+          pr.target ?? '',
+          options((n) => n.type !== 'source' && n.type !== 'constant'),
+          (v) => v && go(setProduct(cur(), id, v), 'Product'),
+          'target'
+        ),
+        this.selectField(
+          'Used energy to',
+          pr.sink ?? '',
+          options((n) => n.type === 'sink'),
+          (v) => v && go(setSink(cur(), id, v), 'Heat sink'),
+          'sink'
+        )
+      ),
+      el(
+        'section',
+        {},
+        el('h3', { text: 'Controls (from the right)' }),
+        controls.length
+          ? el('ul', { class: 'controls' }, ...controls)
+          : el('p', { class: 'hint', text: 'None yet.' }),
+        this.selectField(
+          'Add a control',
+          '',
+          options(
+            (n) =>
+              n.id !== pr.input && !pr.controls.some((c) => c.node === n.id) && n.type !== 'sink'
+          ),
+          (v) => v && go(addControl(cur(), id, v), `Add ${name(v)} to interaction`),
+          'add-control'
+        )
+      ),
+      el(
+        'section',
+        {},
+        el('h3', { text: 'Rates' }),
+        ...(ways.product
+          ? [
+              rate('Product k', ways.product, 'k-product'),
+              rate('Used energy k', ways.heat, 'k-heat'),
+              ...[...ways.uses].map(([c, e]) => rate(`Use of ${name(c)} k`, e, `k-use-${c}`)),
+            ]
+          : [el('p', { class: 'hint', text: 'Its pathways appear once it is wired.' })]),
+        el('div', { class: 'actions' }, del)
+      )
+    );
   }
 
   /** A zoom group (FR-GRP-001): its name, packing, what it holds and what crosses its edge. */
@@ -1684,6 +1905,7 @@ export class InspectorPanel extends BaseComponent {
           end(e.target)
         ),
         this.assumedNote(m, 'edge', id),
+        this.processNote(m, e),
         this.selectField<EdgeLogic>(
           'Logic',
           e.logic,

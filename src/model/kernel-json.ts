@@ -71,6 +71,7 @@ export function toKernelModel(m: StudioModel): KernelModel {
         params: defined({
           ...e.params,
           control_node: level(e.params.control_node),
+          control_nodes: e.params.control_nodes?.map((c) => level(c)!),
           numerator_node: level(e.params.numerator_node),
         }),
         forcing: e.forcing,

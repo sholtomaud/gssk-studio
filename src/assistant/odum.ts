@@ -99,15 +99,23 @@ const SYMBOLS: Omit<ReferenceEntry, 'kind'>[] = [
     type: 'interaction',
     title: 'Interaction (work gate)',
     gist: 'Two flows combining multiplicatively: one does work on the other.',
-    text: `An **interaction** (work gate) is where two or more flows combine **multiplicatively** to do work: sunlight and nutrients in photosynthesis, fuel and labour in a factory, rain and soil in erosion. Its output is proportional to the product of its inputs, so neither alone produces anything.
+    text: `An **interaction** (work gate, the chevron) is a **production process**: two or more pathways, each carrying something different and each necessary, combine to make a product of another kind: sunlight and nutrients in photosynthesis, fuel and labour in a factory. It holds nothing: it is arithmetic on its inputs, the **production function**.
 
-- Draw it on the pathway it controls, with the controlling flow coming in from above or the side.
-- Every interaction **degrades energy**: draw its pathway to the heat sink.
-- The higher-quality input (the one with greater transformity, often information, labour or money's purchasing) usually acts as the *control*.
+- **All its flows are in proportion to the production function**, usually the product of the input forces: the product out is k₁·A·B, each ingredient drawn in is its own k·A·B, and the **used energy** goes to the heat sink, k·A·B again. Each pathway has its own coefficient k.
+- **Inputs by quality**: the low-transformity input (most energy) comes in from the left; the highest-transformity input, often a **control feedback** from a unit downstream, comes in from the right or top as a solid curve. The chevron points left to right along the flow.
+- **Variants** (Modeling for All Scales, Fig. 2.6): three or more inputs multiplied; a **divisor** (the left input divided by the control: dilution); a **subtracting** action.
+- A control can be an ingredient that is **used up** (drawn down in proportion), or a force that is only **read** (information, a pressure).
 
-**Here**: drop a symbol's port onto a flow to make it that flow's control: the flow becomes an interaction, J = k·Q₀·Qc, and the app draws the gate. A standalone Interaction symbol is for a gate with its own outputs. You can turn it to face its heat sink.
+**Here** an interaction is a **process** (ADR 0018): one chevron, its pathways drawn into and out of it.
+- Place one with the palette's **Interaction** and wire it: the first symbol wired in is the main input, the next ones controls; drag from its right port to what it makes. Or drop a symbol onto a flow: the flow becomes the product, the symbol its control.
+- Each control is **used up** (an ingredient, drawn down: its own pathway, k·B·A) or **only read** (a force or information).
+- The **used energy** goes to a heat sink (the nearest one below, or a new one), k·A·B with its own k.
+- The production function is a **product** (\`*\` once per multiplied control; up to eight), a **divisor** (\`÷\`, the kernel's *ratio*) or **subtracting** (\`−\`).
+- A unit feeding back to its own intake (grazers on their grazing, a producer on its capture) is a control that is also the product.
 
-**Mistakes**: adding the inputs instead of multiplying (that is two separate flows, not an interaction); no heat sink.`,
+The kernel runs each pathway as a flow and reads controls without draining them, which is why a used-up control has its own pathway. Older models may have a plain interaction flow (a gate on one flow); its inspector offers **Make it a process**.
+
+**Mistakes**: adding the inputs instead of multiplying (that is two separate flows); no heat sink; an ingredient that is never drawn down; reading the gate as a coefficient (every pathway has its own k, interaction or not).`,
     see: ['logics', 'producer', 'energy-laws'],
   },
   {
@@ -322,7 +330,7 @@ This app runs energy and material flows; emergy accounting is not computed yet.`
 
 ${LOGICS.map((l) => `- **${l.label}** (\`${l.logic}\`): ${l.formula}${l.needs.length ? `; needs ${l.needs.join(', ').replace(/_/g, ' ')}` : ''}.`).join('\n')}
 
-Most pathways out of a storage are **linear**: a fuller storage pushes harder (a donor-controlled flow). Use **constant** for a fixed rate set from outside (a bill, a quota), **interaction** for a work gate, **limit** for a saturating receptor.`,
+**Every pathway has its own coefficient k**, interaction or not: it says how strongly that pathway draws on the force behind it. Most pathways out of a storage are **linear**: a fuller storage pushes harder (a donor-controlled flow), and every storage needs at least one, its depreciation. Use **constant** for a fixed rate set from outside (a bill, a quota), **interaction** for a work gate, **limit** for a saturating receptor.`,
     see: ['interaction', 'receiver', 'switch', 'storage'],
   },
 ];

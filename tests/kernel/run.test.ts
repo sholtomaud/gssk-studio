@@ -106,6 +106,60 @@ describe('running models (FR-SIM-001)', () => {
     expect(b.final).toEqual(a.final);
   });
 
+  it('multiplies every control of a three-input interaction (control_nodes, Fig. 2.6c)', async () => {
+    const m: StudioModel = {
+      metadata: { schema_version: 4, name: 'Three inputs' },
+      config: { t_start: 0, t_end: 0.1, dt: 0.1, method: 'euler' },
+      nodes: [
+        { id: 'a', type: 'source', value: 2, visual: { x: 0, y: 0 } },
+        { id: 'b', type: 'source', value: 3, visual: { x: 0, y: 0 } },
+        { id: 'c', type: 'source', value: 5, visual: { x: 0, y: 0 } },
+        { id: 'p', type: 'storage', value: 0, visual: { x: 0, y: 0 } },
+      ],
+      edges: [
+        {
+          id: 'make',
+          origin: 'a',
+          target: 'p',
+          logic: 'interaction',
+          params: { k: 0.5, control_nodes: ['b', 'c'] },
+        },
+      ],
+      _diagram: { boundaries: [] },
+    };
+    const r = await runModel(kernel, m);
+    // One Euler step: 0.1 · 0.5 · 2 · 3 · 5.
+    expect(r.final.p).toBeCloseTo(1.5, 9);
+  });
+
+  it('runs a process as Odum writes it: product, used energy, and the ingredient drawn down (ADR 0018)', async () => {
+    const { createProcess, setControlUsed, setProduct, wireIn } =
+      await import('../../src/model/processes.ts');
+    const base: StudioModel = {
+      metadata: { schema_version: 4, name: 'Process' },
+      config: { t_start: 0, t_end: 0.1, dt: 0.1, method: 'euler' },
+      nodes: [
+        { id: 'a', type: 'storage', value: 10, visual: { x: 0, y: 0 } },
+        { id: 'b', type: 'storage', value: 5, visual: { x: 0, y: 0 } },
+        { id: 'p', type: 'storage', value: 0, visual: { x: 0, y: 0 } },
+      ],
+      edges: [],
+      _diagram: { boundaries: [] },
+    };
+    const { model, id } = createProcess(base, { x: 0, y: -50 });
+    const m = setControlUsed(
+      setProduct(wireIn(wireIn(model, id, 'a'), id, 'b'), id, 'p'),
+      id,
+      'b',
+      true
+    );
+    const r = await runModel(kernel, m);
+    // One Euler step of 0.1, with A·B = 50: product 0.1·50, used energy 0.01·50, use of B 0.01·50.
+    expect(r.final.p).toBeCloseTo(0.5, 9);
+    expect(r.final.a).toBeCloseTo(10 - 0.5 - 0.05, 9);
+    expect(r.final.b).toBeCloseTo(5 - 0.05, 9);
+  });
+
   it('records flows per edge, signed, refreshed each step', async () => {
     const r = await runModel(kernel, EXAMPLES[3]!.model);
     const pay = r.flows.find((f) => f.id === 'pay');

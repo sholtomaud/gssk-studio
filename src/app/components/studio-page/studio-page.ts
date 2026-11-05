@@ -36,6 +36,7 @@ import { downloadBlob, downloadText, el, icon, iconButton, toast } from '../../u
 import { diagramSvg, svgToPng } from '../../diagram-export.ts';
 import {
   NODE_DRAG_TYPE,
+  PROCESS_DRAG_TYPE,
   SENSOR_DRAG_TYPE,
   TRANSACTION_DRAG_TYPE,
   type DiagramCanvas,
@@ -238,6 +239,8 @@ export class StudioPage extends BaseComponent {
         if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
       });
       grid.append(b);
+      // Odum's interaction, a production process (ADR 0018), where the kernel's node used to be.
+      if (s.type === 'consumer') grid.append(this.interactionTool());
     }
     const frame = el(
       'button',
@@ -386,6 +389,29 @@ export class StudioPage extends BaseComponent {
     );
     if (this.model) this.canvas.model = this.model;
     this.results.setRun(null, { state: 'idle' });
+  }
+
+  /** The palette's Interaction: places a process to wire up (ADR 0018). */
+  private interactionTool(): HTMLButtonElement {
+    const b = el(
+      'button',
+      {
+        type: 'button',
+        draggable: 'true',
+        title:
+          'Interaction: a production process. Wire its main input from the left and its controls in, then drag from its right port to what it makes. Or drop a symbol onto a flow.',
+        'aria-label': 'Add Interaction',
+        'data-type': 'process',
+      },
+      symbolIcon('interaction'),
+      el('span', { text: 'Interaction' })
+    );
+    b.onclick = () => this.canvas.placeProcess();
+    b.addEventListener('dragstart', (e) => {
+      e.dataTransfer?.setData(PROCESS_DRAG_TYPE, 'process');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'copy';
+    });
+    return b;
   }
 
   /**

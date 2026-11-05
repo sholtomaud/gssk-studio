@@ -97,6 +97,14 @@ function kitchenSink(): StudioModel {
       { id: 'z.price-2', type: 'storage', value: 1.5e-7, visual: { x: -3.5, y: 0, label: 'Sun' } },
     ],
     edges: [
+      // Odum's three-input interaction (control_nodes): round-trips as ener.interaction(k, [b, c]).
+      {
+        id: 'three_way',
+        origin: 'sun',
+        target: 'tank',
+        logic: 'interaction',
+        params: { k: 0.001, control_nodes: ['k1', 'grass'] },
+      },
       { id: 'sun_to_tank', origin: 'sun', target: 'tank', logic: 'linear', params: { k: 0.5 } },
       {
         id: 'fill',

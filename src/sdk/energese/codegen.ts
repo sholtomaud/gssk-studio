@@ -271,12 +271,14 @@ export function toEnergese(m: StudioModel, options: CodegenOptions = {}): string
 
 /** The helper call for an edge's logic, or the general `ener.logic` when no helper fits. */
 function flowLogic(e: ModelEdge, ref: (id: string) => string): string {
-  const { k, control_node: c, threshold: t, numerator_node: n } = e.params;
+  const { k, control_node: c, control_nodes: cs, threshold: t, numerator_node: n } = e.params;
   const K = num(k);
   const only = (...keys: string[]) =>
-    (['control_node', 'threshold', 'numerator_node'] as const).every(
+    (['control_node', 'control_nodes', 'threshold', 'numerator_node'] as const).every(
       (p) => keys.includes(p) || e.params[p] === undefined
     );
+  if (e.logic === 'interaction' && cs !== undefined && only('control_nodes'))
+    return `ener.interaction(${K}, [${cs.map(ref).join(', ')}])`;
   switch (e.logic) {
     case 'linear':
     case 'constant':
@@ -305,6 +307,7 @@ function flowLogic(e: ModelEdge, ref: (id: string) => string): string {
   }
   const p: [string, string][] = [['k', K]];
   if (c !== undefined) p.push(['control', ref(c)]);
+  if (cs !== undefined) p.push(['controls', `[${cs.map(ref).join(', ')}]`]);
   if (t !== undefined) p.push(['threshold', num(t)]);
   if (n !== undefined) p.push(['numerator', ref(n)]);
   return `ener.logic(${str(e.logic)}, ${obj(p, '', LINE)})`;

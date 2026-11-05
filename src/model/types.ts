@@ -153,6 +153,45 @@ export interface EdgeVisual {
    * for by the money flow named in `coupled_edge`.
    */
   transaction?: Transaction;
+  /** This flow is one pathway of an interaction process (ADR 0018). */
+  process?: ProcessPathway;
+}
+
+/** Which pathway of a process a flow is (ADR 0018). */
+export interface ProcessPathway {
+  id: string;
+  /** product: input → target; heat: input → heat sink; use: a used-up control → heat sink. */
+  role: 'product' | 'heat' | 'use';
+  /** For a use pathway: the control it draws down. */
+  control?: string;
+}
+
+/**
+ * An interaction as Odum draws it (ADR 0018): a production process whose
+ * flows all follow its production function. Diagram data: the kernel runs
+ * the flows tagged with its id.
+ */
+export interface Process {
+  id: string;
+  label?: string;
+  /** product: k·A·B…; divide: k·A/B (dilution); subtract: k·(A − B). */
+  op: 'product' | 'divide' | 'subtract';
+  /** Where the chevron is drawn. */
+  x: number;
+  y: number;
+  /** The main input, from the left (most energy, lowest transformity). */
+  input?: string;
+  /** Where the product goes. */
+  target?: string;
+  /** Where its used energy goes. */
+  sink?: string;
+  /** The other inputs, from the right: each drawn down in proportion (used) or only read. */
+  controls: { node: string; used: boolean }[];
+  /**
+   * Each pathway's last rate (`product`, `heat`, `use:<control>`), so a
+   * pathway the process drops while incomplete comes back with its k.
+   */
+  rates?: Record<string, number>;
 }
 
 /** Odum's transaction: a marking on a flow, paid for by a counter-flow of money. */
@@ -195,6 +234,11 @@ export interface ModelEdge {
   params: {
     k: number;
     control_node?: string;
+    /**
+     * Several controls, multiplied (the kernel's ADR 0008; Odum's three-input
+     * interaction): interaction logic only, and never with control_node.
+     */
+    control_nodes?: string[];
     threshold?: number;
     numerator_node?: string;
   };
@@ -266,7 +310,13 @@ export interface StudioModel {
   /** What flows (Odum's Code), with units and currencies (FR-TYP-001). */
   carriers?: Carrier[];
   /** Editor-only: diagram regions. The kernel ignores `_`-prefixed keys. */
-  _diagram: { boundaries: Boundary[]; groups?: Group[]; icons?: Icon[] };
+  _diagram: {
+    boundaries: Boundary[];
+    groups?: Group[];
+    icons?: Icon[];
+    /** Interaction processes (ADR 0018). */
+    processes?: Process[];
+  };
   /** Editor-only: observed data to fit runs against (M3). */
   _observations?: ObservationSeries[];
   /** Editor-only: the last Energese script applied, as provenance (ADR 0011). */
@@ -296,6 +346,19 @@ export function emptyModel(name = 'Untitled model'): StudioModel {
     edges: [],
     _diagram: { boundaries: [] },
   };
+}
+
+/** The nodes whose levels a flow reads as controls: its control_node, or its control_nodes. */
+export function controlsOf(e: Pick<ModelEdge, 'params'>): string[] {
+  return e.params.control_nodes ?? (e.params.control_node ? [e.params.control_node] : []);
+}
+
+/** Set a flow's controls: one as control_node, several as control_nodes, none as neither. */
+export function setControls(e: ModelEdge, ids: readonly string[]): void {
+  delete e.params.control_node;
+  delete e.params.control_nodes;
+  if (ids.length === 1) e.params.control_node = ids[0]!;
+  else if (ids.length > 1) e.params.control_nodes = [...ids];
 }
 
 /** A deep copy; models are plain JSON. */

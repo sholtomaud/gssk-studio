@@ -7,6 +7,7 @@
 import { isNodeType } from './catalogue.ts';
 import { parseForcing } from './forcing.ts';
 import { tidyGroups } from './groups.ts';
+import { tidyProcesses } from './processes.ts';
 import { isIconHref } from './icons.ts';
 import { uniqueId } from './ids.ts';
 import {
@@ -20,6 +21,8 @@ import {
   type Transaction,
   type Group,
   type Icon,
+  type Process,
+  type ProcessPathway,
   type Provenance,
   type EdgeLogic,
   type Method,
@@ -183,7 +186,16 @@ export function normaliseModel(raw: unknown): ParseResult {
     }
     const edge: ModelEdge = { id, origin, target, logic, params: { k } };
     const control = str(rp.control_node) ?? str(re.control_node);
-    if (control) edge.params.control_node = control;
+    const controls = Array.isArray(rp.control_nodes)
+      ? rp.control_nodes.filter((c): c is string => typeof c === 'string' && c.length > 0)
+      : [];
+    if (controls.length) {
+      // The kernel refuses both; several controls win, as the more specific.
+      if (control)
+        notes.push(`Flow “${id}” named control_node and control_nodes; kept control_nodes.`);
+      if (controls.length === 1) edge.params.control_node = controls[0]!;
+      else edge.params.control_nodes = controls;
+    } else if (control) edge.params.control_node = control;
     const threshold = num(rp.threshold);
     if (threshold !== undefined) edge.params.threshold = threshold;
     const numerator = str(rp.numerator_node);
@@ -205,12 +217,19 @@ export function normaliseModel(raw: unknown): ParseResult {
     const c2 = pt(v.ctrl2);
     const sensor = v.sensor === true;
     const transaction = parseTransaction(v.transaction);
-    if (c1 || c2 || sensor || transaction) {
+    const rpw = isObj(v.process) ? v.process : undefined;
+    const role = rpw?.role;
+    const process: ProcessPathway | undefined =
+      rpw && str(rpw.id) && (role === 'product' || role === 'heat' || role === 'use')
+        ? { id: str(rpw.id)!, role, ...(str(rpw.control) ? { control: str(rpw.control) } : {}) }
+        : undefined;
+    if (c1 || c2 || sensor || transaction || process) {
       edge.visual = {
         ...(c1 ? { ctrl1: c1 } : {}),
         ...(c2 ? { ctrl2: c2 } : {}),
         ...(sensor ? { sensor: true } : {}),
         ...(transaction ? { transaction } : {}),
+        ...(process ? { process } : {}),
       };
     }
     edges.push(edge);
@@ -285,6 +304,45 @@ export function normaliseModel(raw: unknown): ParseResult {
     icons.push({ id, label: str(ri.label) ?? id, href });
   }
 
+  // Interaction processes (ADR 0018): kept when they name a position; their ends are checked by tidyProcesses.
+  const processes: Process[] = [];
+  for (const rp of Array.isArray(diagram.processes) ? diagram.processes : []) {
+    if (!isObj(rp)) continue;
+    const x = num(rp.x);
+    const y = num(rp.y);
+    if (x === undefined || y === undefined) continue;
+    const id =
+      str(rp.id) && !taken.has(rp.id as string)
+        ? (rp.id as string)
+        : uniqueId('interaction', taken);
+    taken.add(id);
+    const op = rp.op === 'divide' || rp.op === 'subtract' ? rp.op : 'product';
+    const controls = (Array.isArray(rp.controls) ? rp.controls : [])
+      .filter(isObj)
+      .filter((c) => !!str(c.node))
+      .map((c) => ({ node: str(c.node)!, used: c.used === true }));
+    processes.push({
+      id,
+      op,
+      x,
+      y,
+      controls,
+      ...(str(rp.label) ? { label: str(rp.label) } : {}),
+      ...(str(rp.input) ? { input: str(rp.input) } : {}),
+      ...(str(rp.target) ? { target: str(rp.target) } : {}),
+      ...(str(rp.sink) ? { sink: str(rp.sink) } : {}),
+      ...(isObj(rp.rates)
+        ? {
+            rates: Object.fromEntries(
+              Object.entries(rp.rates).filter(
+                (kv): kv is [string, number] => typeof kv[1] === 'number' && Number.isFinite(kv[1])
+              )
+            ),
+          }
+        : {}),
+    });
+  }
+
   const observations: ObservationSeries[] = [];
   const known = new Set([...nodes.map((n) => n.id), ...edges.map((e) => `flow:${e.id}`)]);
   for (const ro of Array.isArray(raw._observations) ? raw._observations : []) {
@@ -340,12 +398,14 @@ export function normaliseModel(raw: unknown): ParseResult {
       boundaries,
       ...(groups.length ? { groups } : {}),
       ...(icons.length ? { icons } : {}),
+      ...(processes.length ? { processes } : {}),
     },
     ...(observations.length ? { _observations: observations } : {}),
     ...(script && scriptHash ? { _energese: { source: script, modelHash: scriptHash } } : {}),
     ...(Object.keys(provenance).length ? { _provenance: provenance } : {}),
   };
   tidyGroups(model);
+  tidyProcesses(model);
   return { model, notes };
 }
 

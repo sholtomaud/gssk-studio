@@ -10,8 +10,9 @@ import { carrierProblems } from './carriers.ts';
 import { logicFor, symbolFor } from './catalogue.ts';
 import { transactionProblems } from './transactions.ts';
 import { assumedCount } from './provenance.ts';
+import { processesOf, processGaps } from './processes.ts';
 import { canForceNode, forcingProblems } from './forcing.ts';
-import type { StudioModel } from './types.ts';
+import { controlsOf, type StudioModel } from './types.ts';
 
 /** An info item is neither wrong nor risky, only worth knowing (an assumed value, ADR 0016). */
 export type Severity = 'error' | 'warning' | 'info';
@@ -86,13 +87,28 @@ export function validate(m: StudioModel): Issue[] {
       for (const p of forcingProblems(e.forcing)) err('forcing', `Flow “${e.id}”: ${p}.`, ref);
 
     const spec = logicFor(e.logic);
-    const control = e.params.control_node;
-    if (control !== undefined) {
-      touched.add(control);
-      if (!nodeIds.has(control)) {
-        err('control-missing', `Flow “${e.id}” is controlled by a missing node “${control}”.`, ref);
+    const controls = controlsOf(e);
+    const control = controls[0];
+    for (const c of controls) {
+      touched.add(c);
+      if (!nodeIds.has(c)) {
+        err('control-missing', `Flow “${e.id}” is controlled by a missing node “${c}”.`, ref);
       }
     }
+    if (e.params.control_node !== undefined && e.params.control_nodes !== undefined)
+      err('controls-both', `Flow “${e.id}” names both control_node and control_nodes.`, ref);
+    if (controls.length > 1 && e.logic !== 'interaction')
+      err(
+        'controls-many',
+        `Only an interaction multiplies several controls; ${spec.label.toLowerCase()} flow “${e.id}” takes one.`,
+        ref
+      );
+    if (controls.length > 8)
+      err(
+        'controls-many',
+        `Flow “${e.id}” multiplies more than eight controls, the kernel's limit.`,
+        ref
+      );
     const threshold = e.params.threshold;
     for (const need of spec.needs) {
       if (need === 'control_node' && control === undefined) {
@@ -215,6 +231,24 @@ export function validate(m: StudioModel): Issue[] {
       cref
     );
   }
+  // Interaction processes (ADR 0018): complete, and a divisor or subtraction takes one control.
+  for (const p of processesOf(m)) {
+    const name = p.label ?? p.id;
+    const gaps = processGaps(p);
+    if (gaps.length)
+      issues.push({
+        severity: 'warning',
+        code: 'process-incomplete',
+        message: `Interaction “${name}” needs ${gaps.join(', ')} before it has flows.`,
+      });
+    if (p.op !== 'product' && p.controls.length > 1)
+      issues.push({
+        severity: 'error',
+        code: 'process-controls',
+        message: `Interaction “${name}” ${p.op === 'divide' ? 'divides' : 'subtracts'} by one control; it has ${p.controls.length}.`,
+      });
+  }
+
   // NFR-HON-002: say how much of the model rests on the assistant's guesses.
   const assumed = assumedCount(m);
   if (assumed) {

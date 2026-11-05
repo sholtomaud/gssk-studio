@@ -23,6 +23,14 @@ describe('the Odum reference (ADR 0016)', () => {
     expect(text('materials')).toMatch(/conserved/);
   });
 
+  it('describes the interaction as Odum and the kernel do: no state, all flows in proportion, own k each', () => {
+    expect(text('interaction')).toMatch(/It holds nothing/);
+    expect(text('interaction')).toMatch(/used energy/);
+    expect(text('interaction')).toMatch(/without draining them/);
+    expect(text('interaction')).toMatch(/is a \*\*process\*\*/);
+    expect(text('logics')).toMatch(/Every pathway has its own coefficient k/);
+  });
+
   it('takes the app’s own facts from the catalogue: kernel types and every flow logic', () => {
     expect(text('storage')).toMatch(/Kernel type `storage`/);
     expect(text('receiver')).toMatch(/Kernel type `loop_limited`/);
