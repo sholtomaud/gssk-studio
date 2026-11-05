@@ -112,7 +112,7 @@ import {
   setProduct,
   setSink,
 } from '../../../model/processes.ts';
-import { marksFor } from '../../../model/provenance.ts';
+import { citeInput, inputKeys, marksFor, uncite } from '../../../model/provenance.ts';
 import { BUILTIN_ICONS, builtinIcon, DEFAULT_ICON } from '../../../diagram/icons.ts';
 import {
   addIcon,
@@ -1563,6 +1563,101 @@ export class InspectorPanel extends BaseComponent {
     );
   }
 
+  /**
+   * Where a symbol's or flow's numbers come from (ADR 0017): each cited value
+   * with its source, and a form to cite one. A cited value that is edited by
+   * hand loses its citation, since it no longer is the published number.
+   */
+  private sourcesField(m: StudioModel, kind: 'node' | 'edge', id: string): HTMLElement {
+    const cur = () => this._model ?? m;
+    const prefix = `${kind}:${id}:`;
+    const fields = inputKeys(m)
+      .filter((k) => k.startsWith(prefix))
+      .map((k) => k.slice(prefix.length));
+    const cited = marksFor(m, kind, id).filter((x) => x.mark.by === 'data' && x.mark.source);
+    const name = (f: string) => f.replace(/^params\./, '');
+    const rows = cited.map(({ field, mark }) => {
+      const s = mark.source!;
+      const del = iconButton('trash', `Remove the source of ${name(field)}`, 'ghost icon danger');
+      del.onclick = () =>
+        this.emit(uncite(cur(), prefix + field), `Remove source of ${id}.${name(field)}`);
+      const what = [s.dataset, s.table].filter(Boolean).join(', ');
+      const meta = [s.retrieved && `retrieved ${s.retrieved}`, s.licence, s.note]
+        .filter(Boolean)
+        .join(' · ');
+      return el(
+        'li',
+        {},
+        el(
+          'span',
+          {},
+          el('strong', { text: `${name(field)}: ` }),
+          s.url
+            ? el('a', { href: s.url, target: '_blank', rel: 'noopener noreferrer', text: what })
+            : what,
+          meta ? el('span', { class: 'hint', text: ` (${meta})` }) : ''
+        ),
+        del
+      );
+    });
+    const input = (label: string, key: string, type = 'text', placeholder = '') =>
+      el('label', {}, label, el('input', { type, name: key, placeholder }));
+    const form = el(
+      'form',
+      { class: 'cite-form' },
+      el(
+        'label',
+        {},
+        'Value',
+        el(
+          'select',
+          { name: 'field' },
+          ...fields.map((f) => el('option', { value: f, text: name(f) }))
+        )
+      ),
+      input('Dataset', 'dataset', 'text', 'ABS 5206.0 National Accounts'),
+      input('Table or series', 'table', 'text', 'Table 2, A2304402X'),
+      input('Link', 'url', 'url', 'https://'),
+      input('Retrieved', 'retrieved', 'date'),
+      input('Licence', 'licence', 'text', 'CC BY 4.0'),
+      input('How it was derived', 'note', 'text', 'read directly'),
+      el('button', { type: 'submit' }, icon('check'), 'Cite')
+    );
+    form.onsubmit = (ev) => {
+      ev.preventDefault();
+      const f = new FormData(form);
+      const get = (k: string) => String(f.get(k) ?? '').trim();
+      const field = get('field');
+      if (!get('dataset')) {
+        toast('Name the dataset the value comes from.');
+        return;
+      }
+      this.emit(
+        citeInput(cur(), prefix + field, {
+          dataset: get('dataset'),
+          table: get('table'),
+          url: get('url'),
+          retrieved: get('retrieved'),
+          licence: get('licence'),
+          note: get('note'),
+        }),
+        `Cite a source for ${id}.${name(field)}`
+      );
+    };
+    return el(
+      'details',
+      { class: 'sources' },
+      el('summary', { text: cited.length ? `Sources (${cited.length})` : 'Sources' }),
+      rows.length
+        ? el('ul', { class: 'cited' }, ...rows)
+        : el('p', {
+            class: 'hint',
+            text: 'No value here cites a source yet. Cite the dataset a number comes from so others can check it.',
+          }),
+      fields.length ? form : ''
+    );
+  }
+
   /** Observed data to fit runs against (FR-OBS-001). */
   private observationsSection(m: StudioModel): HTMLElement {
     const cur = () => this._model ?? m;
@@ -1779,6 +1874,7 @@ export class InspectorPanel extends BaseComponent {
         {},
         el('h3', { text: 'Values' }),
         this.assumedNote(m, 'node', n.id),
+        this.sourcesField(m, 'node', n.id),
         el(
           'div',
           { class: 'row2' },
@@ -1905,6 +2001,7 @@ export class InspectorPanel extends BaseComponent {
           end(e.target)
         ),
         this.assumedNote(m, 'edge', id),
+        this.sourcesField(m, 'edge', id),
         this.processNote(m, e),
         this.selectField<EdgeLogic>(
           'Logic',

@@ -372,13 +372,27 @@ export function normaliseModel(raw: unknown): ParseResult {
       if (!isObj(rp) || !/^(node|edge):[^:]+:.+$/.test(k)) continue;
       const by = rp.by;
       const at = str(rp.at);
-      if ((by !== 'assistant' && by !== 'user' && by !== 'calibration') || !at) continue;
+      if ((by !== 'assistant' && by !== 'user' && by !== 'calibration' && by !== 'data') || !at)
+        continue;
+      const rs = isObj(rp.source) ? rp.source : undefined;
+      const source =
+        rs && str(rs.dataset)
+          ? {
+              dataset: str(rs.dataset)!,
+              ...Object.fromEntries(
+                (['table', 'url', 'retrieved', 'licence', 'note'] as const)
+                  .filter((f) => str(rs[f]))
+                  .map((f) => [f, str(rs[f])!])
+              ),
+            }
+          : undefined;
       provenance[k] = {
         by,
         at,
         ...(str(rp.provider) ? { provider: str(rp.provider) } : {}),
         ...(str(rp.model) ? { model: str(rp.model) } : {}),
         ...(str(rp.why) ? { why: str(rp.why) } : {}),
+        ...(source ? { source } : {}),
       };
     }
   }

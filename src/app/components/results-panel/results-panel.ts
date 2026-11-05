@@ -5,7 +5,7 @@
  * or fewer lines are drawn, and a table view of the same numbers.
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
-import { sampleAt, type RunResult } from '../../../sim/run.ts';
+import { sampleAt, type RunManifest, type RunResult } from '../../../sim/run.ts';
 import { fitSeries } from '../../../fit/stats.ts';
 import type { Elasticity } from '../../../fit/sensitivity.ts';
 import type { EnsembleOptions, EnsembleResult, EnsembleSeries } from '../../../sim/ensemble.ts';
@@ -372,8 +372,8 @@ export class ResultsPanel extends BaseComponent {
         solver,
         ' ',
         el('span', {
-          text: `${m.steps.toLocaleString('en')} steps · ${m.method} · dt ${m.dt} · ${r.elapsedMs.toFixed(0)} ms · GSSK ${m.kernelVersion} · model ${m.modelHash.slice(0, 8)}${m.assumedInputs ? ` · ${m.assumedInputs} assumed input${m.assumedInputs === 1 ? '' : 's'}` : ''}`,
-          title: `Model hash ${m.modelHash}\nKernel SHA-256 ${m.kernelSha256}${m.assumedInputs ? `\n${m.assumedInputs} input${m.assumedInputs === 1 ? ' was' : 's were'} set by the assistant, not from data (ADR 0016)` : ''}`,
+          text: `${m.steps.toLocaleString('en')} steps · ${m.method} · dt ${m.dt} · ${r.elapsedMs.toFixed(0)} ms · GSSK ${m.kernelVersion} · model ${m.modelHash.slice(0, 8)}${sourcesText(m)}`,
+          title: `Model hash ${m.modelHash}\nKernel SHA-256 ${m.kernelSha256}${sourcesTitle(m)}`,
         })
       );
       if (s.state === 'done' && s.stale)
@@ -948,3 +948,26 @@ export class ResultsPanel extends BaseComponent {
 }
 
 define('results-panel', ResultsPanel);
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** The results line's note on where the inputs come from (ADR 0016, 0017): only the sourced kinds. */
+function sourcesText(m: RunManifest): string {
+  const c = m.inputSources;
+  const parts = [
+    c?.cited ? `${c.cited} cited` : '',
+    c?.calibrated ? `${c.calibrated} calibrated` : '',
+    m.assumedInputs ? plural(m.assumedInputs, 'assumed input') : '',
+  ].filter(Boolean);
+  return parts.length ? ` · ${parts.join(', ')}` : '';
+}
+
+function sourcesTitle(m: RunManifest): string {
+  const c = m.inputSources;
+  if (!c) return '';
+  const total = c.cited + c.calibrated + c.assumed + c.unsourced;
+  return (
+    `\nOf ${plural(total, 'input')}: ${c.cited} from cited data, ${c.calibrated} calibrated, ` +
+    `${c.assumed} set by the assistant (assumptions), ${c.unsourced} with no stated source (ADR 0017)`
+  );
+}

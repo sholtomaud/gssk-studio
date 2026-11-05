@@ -8,7 +8,7 @@
  * A mark is replaced, never cleared silently: a hand edit of a marked value
  * marks it `user`; calibration marks it `calibration`.
  */
-import type { ModelEdge, ModelNode, Provenance, StudioModel } from './types.ts';
+import type { Citation, ModelEdge, ModelNode, Provenance, StudioModel } from './types.ts';
 
 /** An input a mark can name: a node's value or capacity, or a node's or flow's parameter. */
 export type InputField = 'value' | 'capacity' | `params.${string}`;
@@ -110,4 +110,68 @@ export function renameMarks(m: StudioModel, from: string, to: string): void {
   for (const [k, v] of Object.entries(m._provenance))
     out[k.startsWith(prefix) ? `node:${to}:${k.slice(prefix.length)}` : k] = v;
   m._provenance = out;
+}
+
+/** Every input a model has, as keys: each node's value, capacity and parameters, each flow's. */
+export function inputKeys(m: StudioModel): string[] {
+  const keys: string[] = [];
+  for (const n of m.nodes) {
+    keys.push(inputKey('node', n.id, 'value'));
+    if (n.visual.capacity !== undefined) keys.push(inputKey('node', n.id, 'capacity'));
+    for (const [p, v] of Object.entries(n.params ?? {}))
+      if (typeof v === 'number') keys.push(inputKey('node', n.id, `params.${p}`));
+  }
+  for (const e of m.edges)
+    for (const [p, v] of Object.entries(e.params))
+      if (typeof v === 'number') keys.push(inputKey('edge', e.id, `params.${p}`));
+  return keys;
+}
+
+export interface SourceCounts {
+  /** From a cited source. */
+  cited: number;
+  /** Fitted to observations. */
+  calibrated: number;
+  /** Set by the assistant, not replaced. */
+  assumed: number;
+  /** Typed by a person or never marked: no stated source. */
+  unsourced: number;
+}
+
+/** Where a model's inputs come from (ADR 0017): every input counted once. */
+export function sourceCounts(m: StudioModel): SourceCounts {
+  const out: SourceCounts = { cited: 0, calibrated: 0, assumed: 0, unsourced: 0 };
+  const marks = marksOf(m);
+  for (const k of inputKeys(m)) {
+    const by = marks[k]?.by;
+    if (by === 'data') out.cited++;
+    else if (by === 'calibration') out.calibrated++;
+    else if (by === 'assistant') out.assumed++;
+    else out.unsourced++;
+  }
+  return out;
+}
+
+/** Cite where an input's value comes from; returns a new model. */
+export function citeInput(
+  m: StudioModel,
+  key: string,
+  source: Citation,
+  at = new Date().toISOString()
+): StudioModel {
+  if (inputValue(m, key) === undefined || !source.dataset.trim()) return m;
+  const clean = Object.fromEntries(
+    Object.entries(source).filter(([, v]) => typeof v === 'string' && v.trim() !== '')
+  ) as unknown as Citation;
+  return { ...m, _provenance: { ...m._provenance, [key]: { by: 'data', at, source: clean } } };
+}
+
+/** Remove a citation; the value stays, with no stated source. */
+export function uncite(m: StudioModel, key: string): StudioModel {
+  if (m._provenance?.[key]?.by !== 'data') return m;
+  const marks = { ...m._provenance };
+  delete marks[key];
+  const out: StudioModel = { ...m, _provenance: marks };
+  if (Object.keys(marks).length === 0) delete out._provenance;
+  return out;
 }

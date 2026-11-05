@@ -104,13 +104,30 @@ export interface NodeVisual {
  * assumption), a person, or calibration against observations.
  */
 export interface Provenance {
-  by: 'assistant' | 'user' | 'calibration';
+  /** data: taken from a cited source (ADR 0017). */
+  by: 'assistant' | 'user' | 'calibration' | 'data';
   /** ISO 8601 time it was set. */
   at: string;
   /** For the assistant: which provider and model, and why it chose the value. */
   provider?: string;
   model?: string;
   why?: string;
+  /** For data: where the value comes from. */
+  source?: Citation;
+}
+
+/** Where a number comes from (ADR 0017): enough to find it again and check its licence. */
+export interface Citation {
+  /** The publisher's dataset, e.g. "ABS 5206.0 Australian National Accounts". */
+  dataset: string;
+  /** The table, series id or page within it. */
+  table?: string;
+  url?: string;
+  /** When it was retrieved, ISO 8601 date. */
+  retrieved?: string;
+  licence?: string;
+  /** How the value was derived from it, if not read directly (a unit conversion, a share). */
+  note?: string;
 }
 
 /** A picture of the model's own for the icon view (FR-EDIT-014): an image as a data URL. */

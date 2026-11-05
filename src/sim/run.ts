@@ -5,7 +5,7 @@
  * the DOM, so it runs the same in a worker, in Node and in tests.
  */
 import { symbolFor } from '../model/catalogue.ts';
-import { assumedCount } from '../model/provenance.ts';
+import { assumedCount, sourceCounts, type SourceCounts } from '../model/provenance.ts';
 import { canonicalJson, toKernelModel } from '../model/kernel-json.ts';
 import type { NodeType, StudioModel } from '../model/types.ts';
 import { sha256Hex, type GsskInstance, type GsskKernel } from './gssk.ts';
@@ -47,6 +47,8 @@ export interface RunManifest {
   seed: string;
   /** Inputs the assistant set that nobody has replaced: how much of the result rests on guesses (ADR 0016). */
   assumedInputs: number;
+  /** Where every input comes from: cited data, calibration, the assistant, or no stated source (ADR 0017). */
+  inputSources: SourceCounts;
 }
 
 export interface RunDiagnostics {
@@ -241,6 +243,7 @@ export class RunSession {
         samples: n,
         seed: this.seed,
         assumedInputs: assumedCount(this.model),
+        inputSources: sourceCounts(this.model),
       },
       times: this.times.subarray(0, n),
       nodes: this.nodes.map((x) => ({ ...x, values: x.values.subarray(0, n) })),

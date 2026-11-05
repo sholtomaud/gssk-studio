@@ -102,6 +102,8 @@ describe('running models (FR-SIM-001)', () => {
     const b = await runModel(kernel, guessed);
     expect(a.manifest.assumedInputs).toBe(0);
     expect(b.manifest.assumedInputs).toBe(1);
+    expect(b.manifest.inputSources.assumed).toBe(1);
+    expect(b.manifest.inputSources.cited).toBe(0);
     expect(b.manifest.modelHash).toBe(a.manifest.modelHash);
     expect(b.final).toEqual(a.final);
   });

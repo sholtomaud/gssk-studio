@@ -268,6 +268,41 @@
 :host .assumed-note p {
   margin: 0;
 }
+/* Sources of numbers (ADR 0017) */
+:host details.sources {
+  font-size: 12.5px;
+}
+:host details.sources summary {
+  cursor: pointer;
+  color: var(--muted, inherit);
+}
+:host ul.cited {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+}
+:host ul.cited li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+:host ul.cited li > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+:host .cite-form {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+:host .cite-form label {
+  display: grid;
+  gap: 2px;
+}
+:host .cite-form button {
+  justify-self: start;
+}
 /* Interaction processes (ADR 0018) */
 :host ul.controls {
   list-style: none;

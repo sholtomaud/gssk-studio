@@ -5,7 +5,11 @@ import { canonicalJson, toKernelModel } from '../../src/model/kernel-json.ts';
 import { removeNode, renameNode, updateEdge } from '../../src/model/ops.ts';
 import {
   assumedCount,
+  citeInput,
   inputKey,
+  inputKeys,
+  sourceCounts,
+  uncite,
   inputValue,
   markInputs,
   marksFor,
@@ -89,5 +93,62 @@ describe('inputs the assistant set (NFR-HON-002, ADR 0016)', () => {
     expect(marksFor(renamed, 'node', 'meadow')).toEqual([{ field: 'value', mark: assistant }]);
     const back = parseModel(serialiseModel(renamed)).model;
     expect(back._provenance).toEqual(renamed._provenance);
+  });
+});
+
+describe('numbers from cited data (ADR 0017)', () => {
+  const source = {
+    dataset: 'ABS 5206.0 Australian National Accounts',
+    table: 'Table 2',
+    url: 'https://www.abs.gov.au/statistics/economy/national-accounts',
+    retrieved: '2026-11-01',
+    licence: 'CC BY 4.0',
+  };
+
+  it('counts every input once by where it comes from', () => {
+    const m = guessed();
+    const total = inputKeys(m).length;
+    expect(total).toBeGreaterThan(2);
+    const c0 = sourceCounts(m);
+    expect(c0).toEqual({ cited: 0, calibrated: 0, assumed: 1, unsourced: total - 1 });
+    const key = inputKeys(m).find((k) => k.startsWith('node:') && k.endsWith(':value'))!;
+    const cited = citeInput(m, key, source, AT);
+    expect(cited._provenance?.[key]).toEqual({ by: 'data', at: AT, source });
+    expect(sourceCounts(cited)).toEqual({
+      cited: 1,
+      calibrated: 0,
+      assumed: 1,
+      unsourced: total - 2,
+    });
+    expect(m._provenance?.[key]).toBeUndefined();
+  });
+
+  it('refuses a citation with no dataset or for an input that is not there, and drops blank fields', () => {
+    const m = guessed();
+    expect(citeInput(m, 'node:nowhere:value', source)).toBe(m);
+    expect(citeInput(m, 'node:sun:value', { dataset: '  ' })).toBe(m);
+    const c = citeInput(m, 'node:sun:value', { dataset: 'BoM solar exposure', url: '' }, AT);
+    expect(c._provenance?.['node:sun:value']?.source).toEqual({ dataset: 'BoM solar exposure' });
+  });
+
+  it('keeps a citation through a file, and loses it when the value is edited by hand', () => {
+    const m = citeInput(guessed(), 'node:sun:value', source, AT);
+    const back = parseModel(serialiseModel(m)).model;
+    expect(back._provenance?.['node:sun:value']).toEqual({ by: 'data', at: AT, source });
+    const edited = reconcileMarks(
+      back,
+      { ...back, nodes: back.nodes.map((n) => (n.id === 'sun' ? { ...n, value: 7 } : n)) },
+      'user',
+      AT
+    );
+    expect(edited._provenance?.['node:sun:value']).toEqual({ by: 'user', at: AT });
+  });
+
+  it('removes a citation, leaving the value', () => {
+    const m = citeInput(cloneModel(exampleById('grassland')!.model), 'node:sun:value', source, AT);
+    const u = uncite(m, 'node:sun:value');
+    expect(u._provenance).toBeUndefined();
+    expect(inputValue(u, 'node:sun:value')).toBe(inputValue(m, 'node:sun:value'));
+    expect(uncite(u, 'node:sun:value')).toBe(u);
   });
 });
