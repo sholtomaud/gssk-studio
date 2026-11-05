@@ -88,13 +88,13 @@ import {
   type Waveform,
   controlsOf,
 } from '../../../model/types.ts';
-import type { Issue } from '../../../model/validate.ts';
+import { validate, type Issue } from '../../../model/validate.ts';
 import { symbolIcon } from '../../symbol-icon.ts';
-import { el, formatNumber, icon, iconButton, svg, toast } from '../../ui.ts';
+import { downloadText, el, formatNumber, icon, iconButton, svg, toast } from '../../ui.ts';
 import { observationsFromCsv, observationTargets } from '../../../fit/observations.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import { SYMBOL_SCALE } from '../../../diagram/geometry.ts';
-import { kernelHash, toKernelModel } from '../../../model/kernel-json.ts';
+import { canonicalJson, kernelHash, toKernelModel } from '../../../model/kernel-json.ts';
 import {
   addControl,
   describeProcess,
@@ -112,7 +112,30 @@ import {
   setProduct,
   setSink,
 } from '../../../model/processes.ts';
-import { citeInput, inputKeys, marksFor, uncite } from '../../../model/provenance.ts';
+import { citeInput, inputKeys, marksFor, sourceCounts, uncite } from '../../../model/provenance.ts';
+import {
+  BLOCK_EXTENSION,
+  blockFileName,
+  blockHash,
+  parseBlock,
+  placeBlock,
+  blockFromGroup,
+  CODE_SCHEMES,
+  metaProblems,
+  scoreTests,
+  serialiseBlock,
+  TEST_METRICS,
+  trustLevel,
+  type BlockCode,
+  type CodeScheme,
+  type TestMetric,
+  type TestScore,
+  type TrustLevel,
+} from '../../../model/blocks.ts';
+import { slugify } from '../../../model/ids.ts';
+import { ModelFormatError } from '../../../model/io.ts';
+import { simWorker } from '../../sim-client.ts';
+import KERNEL_PIN from '../../../../vendor/gssk/GSSK_PIN.json' with { type: 'json' };
 import { BUILTIN_ICONS, builtinIcon, DEFAULT_ICON } from '../../../diagram/icons.ts';
 import {
   addIcon,
@@ -644,7 +667,224 @@ export class InspectorPanel extends BaseComponent {
         }),
         el('div', { class: 'actions' }, del)
       ),
-      this.crossingSection(m, [...flowsIn, ...flowsOut], inside)
+      this.crossingSection(m, [...flowsIn, ...flowsOut], inside),
+      this.blockSection(m, id)
+    );
+  }
+
+  /** The symbol or flow whose sources are open, kept open across a rebuild. */
+  private sourcesOpen: string | null = null;
+
+  /** Test runs of blocks, by group, with the contents they ran (stale once those change). */
+  private blockRuns = new Map<
+    string,
+    { key: string; ran: boolean; scores: TestScore[]; error?: string }
+  >();
+
+  /**
+   * A group as a building block (ADR 0017): where it came from, where its
+   * numbers come from, its trust level and tests, and saving it to a file.
+   */
+  private blockSection(m: StudioModel, id: string): HTMLElement {
+    const g = findGroup(m, id)!;
+    const cur = () => this._model ?? m;
+    const meta = {
+      id: g.block?.id ?? `my.${slugify(g.label).replace(/_/g, '-') || 'block'}`,
+      version: g.block?.version ?? '1.0.0',
+      title: g.label,
+    };
+    const { block, notes } = blockFromGroup(m, id, meta);
+    const errors = validate(block.model).filter((i) => i.severity === 'error').length;
+    const key = canonicalJson(toKernelModel(block.model)) + canonicalJson(block.tests);
+    const run = this.blockRuns.get(id);
+    const fresh = run?.key === key ? run : undefined;
+    const level = trustLevel({ errors, ran: fresh?.ran, scores: fresh?.scores });
+    const src = sourceCounts(block.model);
+    const total = src.cited + src.calibrated + src.assumed + src.unsourced;
+    const LEVELS: Record<TrustLevel, string> = {
+      unchecked: 'Unchecked: its contents have errors',
+      structural: 'Structural: its checks pass',
+      runs: 'Runs: it runs cleanly on its own',
+      fitted: 'Fitted: it reproduces its observations',
+      reviewed: 'Reviewed',
+    };
+
+    const testBtn = el(
+      'button',
+      { type: 'button', name: 'test-block' },
+      icon('play'),
+      block.tests.length ? 'Run its tests' : 'Run it on its own'
+    );
+    testBtn.disabled = errors > 0;
+    testBtn.onclick = async () => {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Running…';
+      try {
+        const worker = simWorker();
+        const { token } = await worker.begin(block.model);
+        for (;;) if ((await worker.advance(token, 120)).done) break;
+        const r = await worker.finish(token);
+        const series = (t: string) =>
+          t.startsWith('flow:')
+            ? r.flows.find((f) => f.id === t.slice(5))?.values
+            : r.nodes.find((n) => n.id === t)?.values;
+        const ran = r.diagnostics.solverConfident;
+        this.blockRuns.set(id, { key, ran, scores: scoreTests(block.tests, r.times, series) });
+      } catch (e) {
+        this.blockRuns.set(id, { key, ran: false, scores: [], error: (e as Error).message });
+      }
+      this.renderForm(true);
+    };
+
+    const scoreRows = (fresh?.scores ?? []).map((s) =>
+      el('li', {
+        class: s.passed ? 'pass' : 'fail',
+        text: `${s.passed ? '✓' : '✗'} ${s.test.name}: ${s.test.metric.toUpperCase()} ${Number.isFinite(s.value) ? s.value.toFixed(3) : '—'} (needs ≥ ${s.test.min}, ${s.n} points)`,
+      })
+    );
+
+    // Saving: id, version, title, description, codes, and which observations become tests.
+    const series = (m._observations ?? []).filter(
+      (o) =>
+        o.target &&
+        (o.target.startsWith('flow:')
+          ? block.model.edges.some((e) => `flow:${e.id}` === o.target)
+          : block.model.nodes.some((n) => n.id === o.target))
+    );
+    const form = el(
+      'form',
+      { class: 'cite-form block-form' },
+      el('label', {}, 'Id', el('input', { name: 'id', value: meta.id, required: '' })),
+      el(
+        'label',
+        {},
+        'Version',
+        el('input', { name: 'version', value: meta.version, required: '' })
+      ),
+      el('label', {}, 'Title', el('input', { name: 'title', value: meta.title, required: '' })),
+      el('label', {}, 'Description', el('textarea', { name: 'description', rows: '2' })),
+      el(
+        'label',
+        {},
+        'Codes, one per line',
+        el('textarea', {
+          name: 'codes',
+          rows: '2',
+          placeholder: 'SNA2008 S.14 Households\nANZSIC2006 D26',
+        })
+      ),
+      ...series.map((o) =>
+        el(
+          'fieldset',
+          { class: 'test-row' },
+          el(
+            'label',
+            { class: 'check' },
+            el('input', { type: 'checkbox', name: `test:${o.id}` }),
+            `Test: reproduce ${o.name}`
+          ),
+          el(
+            'select',
+            { name: `metric:${o.id}`, 'aria-label': `Fit measure for ${o.name}` },
+            ...TEST_METRICS.map((x) => el('option', { value: x, text: x.toUpperCase() }))
+          ),
+          el('input', {
+            type: 'number',
+            step: 'any',
+            name: `min:${o.id}`,
+            value: '0.5',
+            'aria-label': `Least fit for ${o.name}`,
+          })
+        )
+      ),
+      el(
+        'button',
+        { type: 'submit', class: 'primary' },
+        icon('download'),
+        'Save as a building block'
+      )
+    );
+    form.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const f = new FormData(form);
+      const get = (k: string) => String(f.get(k) ?? '').trim();
+      const want = { id: get('id'), version: get('version'), title: get('title') };
+      const problems = metaProblems(want);
+      if (problems.length) {
+        toast(problems.join(' '));
+        return;
+      }
+      const codes: BlockCode[] = [];
+      for (const line of get('codes')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)) {
+        const [scheme, code, ...label] = line.split(/\s+/);
+        if (!CODE_SCHEMES.includes(scheme as CodeScheme) || !code) {
+          toast(
+            `“${line}” is not a code: write the scheme (${CODE_SCHEMES.join(', ')}) then the code.`
+          );
+          return;
+        }
+        codes.push({
+          scheme: scheme as CodeScheme,
+          code,
+          ...(label.length ? { label: label.join(' ') } : {}),
+        });
+      }
+      const tests = series
+        .filter((o) => f.get(`test:${o.id}`))
+        .map((o) => ({
+          series: o.id,
+          metric: (get(`metric:${o.id}`) || 'nse') as TestMetric,
+          min: Number(get(`min:${o.id}`) || '0.5'),
+        }));
+      const out = blockFromGroup(cur(), id, {
+        ...want,
+        ...(get('description') ? { description: get('description') } : {}),
+        codes,
+        tests,
+        kernel: KERNEL_PIN.version,
+      });
+      downloadText(blockFileName(out.block), serialiseBlock(out.block));
+      toast(
+        out.notes.length ? `Saved. ${out.notes.join(' ')}` : `Saved ${blockFileName(out.block)}.`
+      );
+    };
+
+    return el(
+      'section',
+      { class: 'block' },
+      el('h3', { text: 'Building block' }),
+      g.block
+        ? el('p', {
+            class: 'summary',
+            text: `Placed from ${g.block.id} ${g.block.version}`,
+            title: `Block hash ${g.block.hash}`,
+          })
+        : el('p', {
+            class: 'hint',
+            text: 'Save this group as a block to place it in other models. The symbols inside that flows from outside reach become its ports.',
+          }),
+      el('p', { class: `trust trust-${level}` }, el('strong', { text: LEVELS[level] })),
+      el('p', {
+        class: 'hint',
+        text: `Ports: ${block.ports.length ? block.ports.map((p) => `${p.label ?? p.node} (${p.direction}${p.carrier ? `, ${p.carrier}` : ''})`).join('; ') : 'none yet'}.`,
+      }),
+      el('p', {
+        class: 'hint',
+        text: `Of ${total} inputs: ${src.cited} from cited data, ${src.calibrated} calibrated, ${src.assumed} assumed by the assistant, ${src.unsourced} with no stated source.`,
+      }),
+      notes.length
+        ? el('p', { class: 'hint', text: `Saved, it would leave out: ${notes.join(' ')}` })
+        : null,
+      fresh?.error ? el('p', { class: 'hint', text: `It did not run: ${fresh.error}` }) : null,
+      fresh && !fresh.error && !fresh.ran
+        ? el('p', { class: 'hint', text: 'The solver lost confidence in its run.' })
+        : null,
+      scoreRows.length ? el('ul', { class: 'scores' }, ...scoreRows) : null,
+      el('div', { class: 'actions' }, testBtn),
+      el('details', {}, el('summary', { text: 'Save as a building block' }), form)
     );
   }
 
@@ -1012,7 +1252,63 @@ export class InspectorPanel extends BaseComponent {
       ),
       this.carriersSection(m),
       this.observationsSection(m),
+      this.placeBlockSection(m),
       ...(iconsOf(m).length ? [this.iconsSection(m)] : [])
+    );
+  }
+
+  /** Place a building block from its file (ADR 0017): a packed copy, right of the diagram. */
+  private placeBlockSection(m: StudioModel): HTMLElement {
+    const cur = () => this._model ?? m;
+    const file = el('input', {
+      type: 'file',
+      accept: `${BLOCK_EXTENSION},.json,application/json`,
+      hidden: '',
+      name: 'block-file',
+    });
+    const btn = el(
+      'button',
+      { type: 'button', name: 'place-block' },
+      icon('upload'),
+      'Place a building block'
+    );
+    btn.onclick = () => file.click();
+    file.onchange = async () => {
+      const f = file.files?.[0];
+      file.value = '';
+      if (!f) return;
+      try {
+        const { block, notes } = parseBlock(await f.text());
+        const now = cur();
+        const xs = now.nodes.map((n) => n.visual.x);
+        const ys = now.nodes.map((n) => n.visual.y);
+        const at = xs.length
+          ? { x: Math.max(...xs) + 240, y: Math.round((Math.min(...ys) + Math.max(...ys)) / 2) }
+          : { x: 400, y: 300 };
+        const { model, groupId } = placeBlock(now, block, at, await blockHash(block));
+        this.emit(model, `Place ${block.title}`, undefined, { kind: 'group', id: groupId });
+        toast(
+          notes.length
+            ? `Placed ${block.title}. ${notes.join(' ')}`
+            : `Placed ${block.title} ${block.version}.`
+        );
+      } catch (e) {
+        toast(
+          e instanceof ModelFormatError
+            ? e.message
+            : `Could not read ${f.name}: ${(e as Error).message}`
+        );
+      }
+    };
+    return el(
+      'section',
+      {},
+      el('h3', { text: 'Building blocks' }),
+      el('p', {
+        class: 'hint',
+        text: 'Place a block saved from another model (a .gssk-block.json file). It comes in packed, with fresh ids; wire flows to its ports.',
+      }),
+      el('div', { class: 'actions' }, btn, file)
     );
   }
 
@@ -1579,8 +1875,11 @@ export class InspectorPanel extends BaseComponent {
     const rows = cited.map(({ field, mark }) => {
       const s = mark.source!;
       const del = iconButton('trash', `Remove the source of ${name(field)}`, 'ghost icon danger');
-      del.onclick = () =>
+      del.onclick = () => {
         this.emit(uncite(cur(), prefix + field), `Remove source of ${id}.${name(field)}`);
+        this.sourcesOpen = prefix;
+        this.renderForm(true);
+      };
       const what = [s.dataset, s.table].filter(Boolean).join(', ');
       const meta = [s.retrieved && `retrieved ${s.retrieved}`, s.licence, s.note]
         .filter(Boolean)
@@ -1643,8 +1942,10 @@ export class InspectorPanel extends BaseComponent {
         }),
         `Cite a source for ${id}.${name(field)}`
       );
+      this.sourcesOpen = prefix;
+      this.renderForm(true);
     };
-    return el(
+    const details = el(
       'details',
       { class: 'sources' },
       el('summary', { text: cited.length ? `Sources (${cited.length})` : 'Sources' }),
@@ -1656,12 +1957,20 @@ export class InspectorPanel extends BaseComponent {
           }),
       fields.length ? form : ''
     );
+    if (this.sourcesOpen === prefix) details.open = true;
+    details.ontoggle = () => (this.sourcesOpen = details.open ? prefix : null);
+    return details;
   }
 
   /** Observed data to fit runs against (FR-OBS-001). */
   private observationsSection(m: StudioModel): HTMLElement {
     const cur = () => this._model ?? m;
-    const file = el('input', { type: 'file', accept: '.csv,text/csv,text/plain', hidden: '' });
+    const file = el('input', {
+      type: 'file',
+      accept: '.csv,text/csv,text/plain',
+      hidden: '',
+      name: 'observations-file',
+    });
     const importBtn = el('button', { type: 'button' }, icon('upload'), 'Import CSV');
     importBtn.onclick = () => file.click();
     file.onchange = async () => {

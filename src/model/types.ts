@@ -309,6 +309,25 @@ export interface BlockRef {
   /** SHA-256 of the block file's canonical JSON. */
   hash: string;
   ports: BlockPort[];
+  /** Its tests, their targets renamed with it, so it can still be tested placed. */
+  tests?: BlockTest[];
+}
+
+/** A goodness of fit a block's test asks for: at least `min` of NSE, KGE or R². */
+export const TEST_METRICS = ['nse', 'kge', 'r2'] as const;
+export type TestMetric = (typeof TEST_METRICS)[number];
+
+/** An observed series a block must reproduce, run on its own (ADR 0017). */
+export interface BlockTest {
+  name: string;
+  /** A node id, or `flow:<edge id>`, inside the block. */
+  target: string;
+  times: number[];
+  values: number[];
+  metric: TestMetric;
+  min: number;
+  /** Where the observations come from. */
+  source?: string;
 }
 
 export interface ModelConfig {

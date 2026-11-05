@@ -10,6 +10,7 @@
  * remembers the block's id, version and hash, and its ports, so a flow wired
  * to it can be checked against them.
  */
+import { fitSeries } from '../fit/stats.ts';
 import { canonicalJson } from './kernel-json.ts';
 import { groupCentre, findGroup, groupsOf, nodesIn } from './groups.ts';
 import { slugify, uniqueId } from './ids.ts';
@@ -20,8 +21,11 @@ import {
   cloneModel,
   controlsOf,
   setControls,
+  TEST_METRICS,
   type BlockPort,
   type BlockRef,
+  type BlockTest,
+  type TestMetric,
   type Carrier,
   type Group,
   type ModelEdge,
@@ -31,7 +35,8 @@ import {
   type StudioModel,
 } from './types.ts';
 
-export type { BlockPort, BlockRef } from './types.ts';
+export type { BlockPort, BlockRef, BlockTest, TestMetric } from './types.ts';
+export { TEST_METRICS } from './types.ts';
 
 export const BLOCK_EXTENSION = '.gssk-block.json';
 export const BLOCK_FORMAT = 'gssk-block';
@@ -56,23 +61,6 @@ export interface BlockCode {
   scheme: CodeScheme;
   code: string;
   label?: string;
-}
-
-/** A goodness of fit a test asks for: at least `min` (NSE, KGE, R²). */
-export const TEST_METRICS = ['nse', 'kge', 'r2'] as const;
-export type TestMetric = (typeof TEST_METRICS)[number];
-
-/** An observed series the block must reproduce (ADR 0017). */
-export interface BlockTest {
-  name: string;
-  /** A node id, or `flow:<edge id>`, inside the block. */
-  target: string;
-  times: number[];
-  values: number[];
-  metric: TestMetric;
-  min: number;
-  /** Where the observations come from. */
-  source?: string;
 }
 
 export interface Block {
@@ -281,6 +269,10 @@ export function blockFromGroup(
     });
   }
 
+  // A placed block's own tests stay with it.
+  for (const t of g.block?.tests ?? [])
+    if (reaches(t.target) && !tests.some((x) => x.name === t.name && x.target === t.target))
+      tests.push(structuredClone(t));
   const block: Block = {
     format: BLOCK_FORMAT,
     format_version: BLOCK_FORMAT_VERSION,
@@ -618,4 +610,56 @@ export function blockIssues(m: StudioModel): Issue[] {
     }
   }
   return issues;
+}
+
+// ---- trust -----------------------------------------------------------------------
+
+/**
+ * How far a block has earned trust (ADR 0017): its checks pass (structural),
+ * it runs cleanly (runs), it reproduces its observations (fitted). Reviewed
+ * is the library's to give, by a merged review.
+ */
+export type TrustLevel = 'unchecked' | 'structural' | 'runs' | 'fitted' | 'reviewed';
+
+export interface TestScore {
+  test: BlockTest;
+  /** The fit reached, NaN when nothing could be compared. */
+  value: number;
+  passed: boolean;
+  n: number;
+}
+
+/**
+ * Score a run of a block against its tests. `series` gives a run's values
+ * for a node id or `flow:<edge id>`, on the run's `times`.
+ */
+export function scoreTests(
+  tests: readonly BlockTest[],
+  times: ArrayLike<number>,
+  series: (target: string) => ArrayLike<number> | undefined
+): TestScore[] {
+  return tests.map((test) => {
+    const values = series(test.target);
+    if (!values) return { test, value: NaN, passed: false, n: 0 };
+    const st = fitSeries(times, values, test.times, test.values);
+    const value = st[test.metric];
+    return {
+      test,
+      value,
+      passed: st.n > 0 && Number.isFinite(value) && value >= test.min,
+      n: st.n,
+    };
+  });
+}
+
+/** The trust a block has, from its checks, whether it ran cleanly, and its test scores. */
+export function trustLevel(opts: {
+  errors: number;
+  ran?: boolean;
+  scores?: readonly TestScore[];
+}): TrustLevel {
+  if (opts.errors > 0) return 'unchecked';
+  if (!opts.ran) return 'structural';
+  if (opts.scores?.length && opts.scores.every((s) => s.passed)) return 'fitted';
+  return 'runs';
 }

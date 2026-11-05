@@ -72,7 +72,7 @@ test('import observations, compare them and see the fit (FR-OBS-001, FR-FIT-001)
 }) => {
   await openExample(page, 'predator-prey');
   await page
-    .locator('inspector-panel input[type="file"]')
+    .locator('inspector-panel input[name="observations-file"]')
     .setInputFiles('tests/fixtures/predator-prey-counts.csv');
   await expect(page.locator('.toast')).toContainText('Imported 3 series');
   await expect(page.locator('inspector-panel select[name="obs-prey"]')).toHaveValue('prey');

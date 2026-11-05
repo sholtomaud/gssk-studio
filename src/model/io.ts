@@ -16,6 +16,8 @@ import {
   METHODS,
   type BlockPort,
   type BlockRef,
+  type BlockTest,
+  TEST_METRICS,
   type Boundary,
   CARRIER_KINDS,
   type Carrier,
@@ -495,5 +497,32 @@ function blockRef(raw: unknown, nodeIds: ReadonlySet<string>): { block?: BlockRe
       ...(str(rp.label) ? { label: str(rp.label) } : {}),
     });
   }
-  return { block: { id: str(raw.id)!, version: str(raw.version)!, hash: str(raw.hash)!, ports } };
+  const tests: BlockTest[] = [];
+  for (const rt of Array.isArray(raw.tests) ? raw.tests : []) {
+    if (!isObj(rt) || !str(rt.target) || !Array.isArray(rt.times) || !Array.isArray(rt.values))
+      continue;
+    const times = rt.times.filter((x): x is number => num(x) !== undefined);
+    const values = rt.values.filter((x): x is number => num(x) !== undefined);
+    const metric = TEST_METRICS.find((x) => x === rt.metric);
+    if (!metric || num(rt.min) === undefined || times.length !== values.length || !times.length)
+      continue;
+    tests.push({
+      name: str(rt.name) ?? str(rt.target)!,
+      target: str(rt.target)!,
+      times,
+      values,
+      metric,
+      min: num(rt.min)!,
+      ...(str(rt.source) ? { source: str(rt.source) } : {}),
+    });
+  }
+  return {
+    block: {
+      id: str(raw.id)!,
+      version: str(raw.version)!,
+      hash: str(raw.hash)!,
+      ports,
+      ...(tests.length ? { tests } : {}),
+    },
+  };
 }
