@@ -97,6 +97,8 @@ export interface NodeVisual {
    * the id of one of the model's own icons. Unset: its symbol type's default.
    */
   icon?: string;
+  /** The colour its level is filled with, `#rrggbb`. Unset: the theme's light gray. */
+  fill?: string;
 }
 
 /**

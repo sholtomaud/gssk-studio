@@ -90,6 +90,7 @@ import { OUTLINES, SYMBOL_DEFS } from '../../../diagram/symbols.ts';
 import { builtinIcon, DEFAULT_ICON, ICON_DEFS } from '../../../diagram/icons.ts';
 import { iconsOf } from '../../../model/icons.ts';
 import { marksFor } from '../../../model/provenance.ts';
+import { isFillColour } from '../../../model/fill.ts';
 import { el, formatNumber, iconButton, svg } from '../../ui.ts';
 import style from './diagram-canvas.css?raw';
 
@@ -727,6 +728,8 @@ export class DiagramCanvas extends BaseComponent {
       'aria-label': `${spec.label}: ${label}`,
       'aria-pressed': selected ? 'true' : 'false',
     });
+    // Its own fill colour, checked again here: only `#rrggbb` reaches the style.
+    if (isFillColour(n.visual.fill)) g.style.setProperty('--node-fill', n.visual.fill);
     const glow = this.glow(this._issues.get(n.id), box.w, box.h);
     if (glow) g.append(glow);
     g.append(

@@ -33,8 +33,11 @@
   outline: none;
 }
 :host .node .body {
-  fill: var(--canvas-bg);
+  /* The click target across the symbol's box: never painted, so the only colour inside a
+     symbol is its level fill. */
+  fill: none;
   stroke: none;
+  pointer-events: all;
 }
 :host .node .halo {
   fill: none;
@@ -67,13 +70,13 @@
   stroke-width: 1;
 }
 :host .node .gauge {
-  fill: var(--fill-level);
+  fill: var(--node-fill, var(--fill-level));
 }
 :host .node .level-on {
-  stop-color: var(--fill-level);
+  stop-color: var(--node-fill, var(--fill-level));
 }
 :host .node .level-off {
-  stop-color: var(--fill-level);
+  stop-color: var(--node-fill, var(--fill-level));
   stop-opacity: 0;
 }
 :host .node .level-fill {

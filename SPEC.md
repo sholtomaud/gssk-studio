@@ -397,7 +397,13 @@ boundaries and layout are not in it.
   Sankey-style reading. Two more toggles, remembered, show the level: **Level gauges** (on by
   default), a bar beside the symbol, and **Level fill** (off by default), the symbol itself
   filled from the bottom up to its level. A symbol with no closed outline to fill (a heat sink)
-  keeps its gauge.
+  keeps its gauge. Each symbol that holds something has its own **fill colour** for its level and
+  gauge, so water, plants and gold read apart: picked in its inspector, or one of a few to start
+  from (water, plants, gold, soil, fuel, heat), and **Default colour** returns it to the theme's
+  light gray. Stored as `visual.fill` (`#rrggbb` only; anything else is dropped on load), layout
+  only, and round-trips through files and Energese code (`fill`). Nothing else inside a symbol is
+  painted: the box behind it is a click target, so the grid and the level fill are all that show
+  through its outline.
 - **FR-RES-004** CSV download of every sample, node and flow.
 - **FR-RES-005** A result older than the model is marked "Model changed since this run": when
   the model the kernel would be given differs, not when only layout, packing or notes changed.

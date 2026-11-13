@@ -84,6 +84,8 @@ export interface NodeInput {
   rotation?: number;
   /** Drawn as in the icon view: `builtin:<name>` or one of the model's icons. */
   icon?: string;
+  /** The colour its level is filled with, `#rrggbb`. */
+  fill?: string;
   /** Drives the held value over time (sources and constants, FR-FRC-001). */
   forcing?: Forcing;
 }
@@ -235,6 +237,7 @@ export class GsskModel {
         ...(input.scale !== undefined ? { scale: input.scale } : {}),
         ...(input.rotation !== undefined ? { rotation: input.rotation } : {}),
         ...(input.icon !== undefined ? { icon: input.icon } : {}),
+        ...(input.fill !== undefined ? { fill: input.fill } : {}),
       },
     };
     if (input.carrier) node.carrier = input.carrier;
@@ -386,6 +389,9 @@ export class GsskModel {
         }
         if (n.visual.icon === undefined && old.visual.icon !== undefined) {
           n.visual.icon = old.visual.icon;
+        }
+        if (n.visual.fill === undefined && old.visual.fill !== undefined) {
+          n.visual.fill = old.visual.fill;
         }
       } else unplaced.add(n.id);
     });

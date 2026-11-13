@@ -316,3 +316,36 @@ test('an interaction is a production process: place, wire, product, used-up cont
   await expect(proc).toHaveCount(0);
   await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(4);
 });
+
+test('each storage has its own fill colour, light gray by default, and no background but its fill', async ({
+  page,
+}) => {
+  const stop = (id: string) =>
+    page.locator(`[data-node="${id}"] .level-on`).evaluate((el) => getComputedStyle(el).stopColor);
+  await openExample(page, 'reservoir');
+  const fill = page.getByRole('button', { name: /^Level fill/ });
+  if ((await fill.getAttribute('aria-pressed')) !== 'true') await fill.click();
+  // The default is the theme's light gray, not water blue.
+  await expect.poll(() => stop('reservoir')).toBe('rgb(207, 210, 214)');
+
+  await page.locator('[data-node="reservoir"]').click();
+  const picker = page.locator('inspector-panel input[name="fill"]');
+  await picker.fill('#e3c35a');
+  await expect.poll(() => stop('reservoir')).toBe('rgb(227, 195, 90)');
+  await page.locator('inspector-panel').getByRole('button', { name: 'Plants' }).click();
+  await expect.poll(() => stop('reservoir')).toBe('rgb(143, 202, 122)');
+  await expect(picker).toHaveValue('#8fca7a');
+  // Only the one storage changed.
+  await expect.poll(() => stop('town')).toBe('rgb(207, 210, 214)');
+  await page.locator('inspector-panel').getByRole('button', { name: 'Default colour' }).click();
+  await expect.poll(() => stop('reservoir')).toBe('rgb(207, 210, 214)');
+
+  // No symbol paints a background of its own: the box behind it is a click target only.
+  for (const example of ['grassland', 'household', 'economy']) {
+    await openExample(page, example);
+    const painted = await page
+      .locator('diagram-canvas [data-node] .body')
+      .evaluateAll((els) => els.map((el) => getComputedStyle(el).fill).filter((f) => f !== 'none'));
+    expect(painted, example).toEqual([]);
+  }
+});

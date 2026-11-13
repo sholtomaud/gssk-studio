@@ -114,6 +114,7 @@ import {
 } from '../../../model/processes.ts';
 import { marksFor } from '../../../model/provenance.ts';
 import { BUILTIN_ICONS, builtinIcon, DEFAULT_ICON } from '../../../diagram/icons.ts';
+import { FILL_SWATCHES, isFillColour, setNodeFill } from '../../../model/fill.ts';
 import {
   addIcon,
   iconsOf,
@@ -1462,6 +1463,54 @@ export class InspectorPanel extends BaseComponent {
     return href;
   }
 
+  /**
+   * The colour a symbol's level is filled with: picked, one of a few to start
+   * from, or back to the theme's light gray.
+   */
+  private fillField(m: StudioModel, n: ModelNode): HTMLElement {
+    const cur = () => this._model ?? m;
+    const theme = getComputedStyle(this).getPropertyValue('--fill-level').trim();
+    const picker = el('input', {
+      type: 'color',
+      name: 'fill',
+      value: n.visual.fill ?? (isFillColour(theme) ? theme : '#cfd2d6'),
+      'aria-label': 'Fill colour',
+    });
+    const reset = el('button', {
+      type: 'button',
+      class: 'ghost',
+      text: 'Default colour',
+      title: 'Back to the theme’s light gray',
+    });
+    const set = (fill: string | undefined) => {
+      const next = setNodeFill(cur(), n.id, fill);
+      if (fill) picker.value = fill;
+      reset.disabled = !fill;
+      if (next !== cur()) this.emit(next, `Fill colour of ${n.visual.label ?? n.id}`, 'fill');
+    };
+    picker.addEventListener('input', () => set(picker.value));
+    reset.disabled = !n.visual.fill;
+    reset.onclick = () => set(undefined);
+    const swatches = FILL_SWATCHES.map((s) => {
+      const b = el('button', { type: 'button', class: 'swatch', title: s.label, text: s.label });
+      // A constant colour from the list above, never one read from the model.
+      b.style.setProperty('--swatch', s.colour);
+      b.onclick = () => set(s.colour);
+      return b;
+    });
+    return el(
+      'div',
+      { class: 'fill-field' },
+      el(
+        'label',
+        { class: 'field' },
+        'Fill colour',
+        el('span', { class: 'fill-row' }, picker, reset)
+      ),
+      el('div', { class: 'swatches', role: 'group', 'aria-label': 'Fill colours' }, ...swatches)
+    );
+  }
+
   /** What a symbol is drawn as in the icon view (FR-EDIT-014): a built-in, the model's own, or a new one. */
   private iconField(m: StudioModel, n: ModelNode): HTMLElement {
     const cur = () => this._model ?? m;
@@ -1772,7 +1821,8 @@ export class InspectorPanel extends BaseComponent {
             { optional: true, step: '15', name: 'rotation' }
           )
         ),
-        this.iconField(m, n)
+        this.iconField(m, n),
+        symbolFor(n.type).holdsState ? this.fillField(m, n) : null
       ),
       el(
         'section',

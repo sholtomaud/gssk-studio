@@ -52,6 +52,8 @@ export interface SymbolProps {
   rotation?: number;
   /** Drawn as in the icon view: `builtin:<name>` or one of the model's icons. */
   icon?: string;
+  /** The colour its level is filled with, `#rrggbb`. */
+  fill?: string;
   params?: NodeParamsInput;
   /** Drives a source's or constant's held value over time (FR-FRC-001). */
   forcing?: Forcing;
@@ -81,6 +83,7 @@ abstract class OdumSymbol implements NodeRef {
       ...(props.scale !== undefined ? { scale: props.scale } : {}),
       ...(props.rotation !== undefined ? { rotation: props.rotation } : {}),
       ...(props.icon !== undefined ? { icon: props.icon } : {}),
+      ...(props.fill !== undefined ? { fill: props.fill } : {}),
       ...(Object.keys(params).length ? { params } : {}),
       ...(props.forcing !== undefined ? { forcing: props.forcing } : {}),
     };
