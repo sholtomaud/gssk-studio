@@ -9,6 +9,7 @@ import { BaseComponent, define } from '../../core/base-component.ts';
 import { isNodeType, symbolFor } from '../../../model/catalogue.ts';
 import { describeForcing } from '../../../model/forcing.ts';
 import { kindOfCarrierId } from '../../../model/carriers.ts';
+import { isFillColour } from '../../../model/fill.ts';
 import {
   impliedPrice,
   partnerOf,
@@ -90,7 +91,6 @@ import { OUTLINES, SYMBOL_DEFS } from '../../../diagram/symbols.ts';
 import { builtinIcon, DEFAULT_ICON, ICON_DEFS } from '../../../diagram/icons.ts';
 import { iconsOf } from '../../../model/icons.ts';
 import { marksFor } from '../../../model/provenance.ts';
-import { isFillColour } from '../../../model/fill.ts';
 import { el, formatNumber, iconButton, svg } from '../../ui.ts';
 import style from './diagram-canvas.css?raw';
 
