@@ -291,3 +291,35 @@
   gap: 4px;
   font-size: 12.5px;
 }
+/* Fill colour: the picker, a way back to the default, and colours to start from. */
+:host .fill-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+:host .fill-row input[type='color'] {
+  width: 44px;
+  height: 30px;
+  padding: 2px;
+}
+:host .swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+:host .swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+}
+:host .swatch::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--swatch);
+  border: 1px solid var(--border-strong);
+}

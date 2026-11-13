@@ -9,6 +9,7 @@ import { parseForcing } from './forcing.ts';
 import { tidyGroups } from './groups.ts';
 import { tidyProcesses } from './processes.ts';
 import { isIconHref } from './icons.ts';
+import { isFillColour } from './fill.ts';
 import { uniqueId } from './ids.ts';
 import {
   DEFAULT_CONFIG,
@@ -120,6 +121,7 @@ export function normaliseModel(raw: unknown): ParseResult {
     if (rotation !== undefined && rotation % 360 !== 0) node.visual.rotation = rotation;
     const icon = str(v.icon);
     if (icon) node.visual.icon = icon;
+    if (isFillColour(v.fill)) node.visual.fill = v.fill.toLowerCase();
     if (x === undefined || y === undefined)
       notes.push(`“${id}” had no position; placed on a grid.`);
     const carrier = str(rn.carrier);

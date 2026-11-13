@@ -9,6 +9,7 @@ import { BaseComponent, define } from '../../core/base-component.ts';
 import { isNodeType, symbolFor } from '../../../model/catalogue.ts';
 import { describeForcing } from '../../../model/forcing.ts';
 import { kindOfCarrierId } from '../../../model/carriers.ts';
+import { isFillColour } from '../../../model/fill.ts';
 import {
   impliedPrice,
   partnerOf,
@@ -750,6 +751,8 @@ export class DiagramCanvas extends BaseComponent {
       'aria-label': `${spec.label}: ${label}`,
       'aria-pressed': selected ? 'true' : 'false',
     });
+    // Its own fill colour, checked again here: only `#rrggbb` reaches the style.
+    if (isFillColour(n.visual.fill)) g.style.setProperty('--node-fill', n.visual.fill);
     const glow = this.glow(this._issues.get(n.id), box.w, box.h);
     if (glow) g.append(glow);
     g.append(
