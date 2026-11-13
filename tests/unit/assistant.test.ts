@@ -219,6 +219,7 @@ describe('a turn (M12)', () => {
       steps: [],
       author: { provider: 'local', model: 'local' },
     };
+    const drafts: string[][] = [];
     const out = await runTurn({
       cfg: local,
       key: undefined,
@@ -226,7 +227,10 @@ describe('a turn (M12)', () => {
       history,
       userText: 'Add a tank',
       ctx,
+      onDraft: (d) => drafts.push(d.nodes.map((n) => n.id)),
     });
+    // The draft was handed on as soon as the edit landed, to draw live (ADR 0016).
+    expect(drafts).toEqual([['tank']]);
     expect(out.stop).toBe('end');
     expect(ctx.steps).toEqual(['Add storage “Tank”']);
     expect(assumedCount(ctx.draft)).toBe(1);

@@ -45,7 +45,14 @@ import {
   updateEdge,
   updateNode,
 } from '../model/ops.ts';
-import { inputKey, markInputs, marksFor, type InputField } from '../model/provenance.ts';
+import {
+  compareInputs,
+  inputKey,
+  markInputs,
+  marksFor,
+  type InputField,
+} from '../model/provenance.ts';
+import type { CalibrationResult } from '../fit/calibrate.ts';
 import {
   addCounterFlow,
   toggleTransaction,
@@ -100,8 +107,21 @@ export interface ToolContext {
   run?: (m: StudioModel) => Promise<RunSummary>;
   /** The last run in this conversation, if any. */
   lastRun?: RunSummary;
+  /** Calibrate rates to the model's observations on the kernel (the app's worker, ADR 0008). */
+  calibrate?: (
+    m: StudioModel,
+    edgeIds: string[],
+    maxIterations: number
+  ) => Promise<CalibrationResult>;
+  /** Check and run an Energese script in the script sandbox (ADR 0013), building on `previous`. */
+  runEnergese?: (source: string, previous: StudioModel) => Promise<EnergeseOutcome>;
   now?: () => string;
 }
+
+/** What running an Energese script gave: the model it builds, or why it did not build. */
+export type EnergeseOutcome =
+  | { ok: true; model: StudioModel; logs: string[] }
+  | { ok: false; problems: string[]; logs: string[] };
 
 export interface ToolResult {
   ok: boolean;
@@ -339,6 +359,28 @@ export const TOOLS: readonly ToolSpec[] = [
     description:
       'Run the model as it stands in this turn on the GSSK kernel. Returns the run id and each symbol’s final level: the only numbers you may report as results.',
     parameters: schema({}),
+  },
+  {
+    name: 'calibrate',
+    description:
+      'Fit flow rates k to the observation series the model is compared with, by least squares on the GSSK kernel (the app’s own calibration). The fitted rates are marked as calibrated, not as your assumption. Needs observations (the person adds them); returns each rate before and after, its standard error, and the fit before and after: the only fit figures you may report.',
+    parameters: schema({
+      flows: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Ids of the flows whose rates to fit; fewer fit faster and more reliably',
+      },
+      max_iterations: optNum('At most this many iterations (default 40, at most 500)'),
+    }),
+  },
+  {
+    name: 'propose_energese',
+    description:
+      "Build the model from an Energese TypeScript script instead of tool by tool: `import * as ener from 'energese';`, build `const m = new ener.Model(…)`, then `export default m;`. get_kernel_json and the code view show the form. The app type-checks it and runs it in a sandbox with no network; what it builds replaces the draft, keeping positions of symbols it keeps. Every number it sets differently is marked as your assumption.",
+    parameters: schema({
+      source: str('The whole script'),
+      why: WHY,
+    }),
   },
   {
     name: 'get_run_summary',
@@ -884,6 +926,87 @@ async function dispatch(ctx: ToolContext, name: string, a: Args): Promise<unknow
       if (checks.errors.length) refuse(`Fix these first: ${checks.errors.join(' · ')}`);
       ctx.lastRun = await ctx.run(m);
       return ctx.lastRun;
+    }
+
+    case 'calibrate': {
+      const ids = Array.isArray(a.flows)
+        ? [...new Set(a.flows.filter((x): x is string => typeof x === 'string'))]
+        : [];
+      if (ids.length === 0) refuse('Name at least one flow whose rate to fit.');
+      for (const id of ids) if (!findEdge(m, id)) refuse(`There is no flow “${id}”.`);
+      if (!ctx.calibrate) refuse('Calibrating is not available here.');
+      const checks = checksOf(m);
+      if (checks.errors.length) refuse(`Fix these first: ${checks.errors.join(' · ')}`);
+      const iterations = Math.round(Math.max(1, Math.min(500, n(a, 'max_iterations') ?? 40)));
+      let r: CalibrationResult;
+      try {
+        r = await ctx.calibrate(m, ids, iterations);
+      } catch (err) {
+        refuse(err instanceof Error ? err.message : String(err));
+      }
+      let next = m;
+      for (const rate of r.rates)
+        if (Number.isFinite(rate.after))
+          next = updateEdge(next, rate.edgeId, (e) => (e.params.k = rate.after));
+      const names = [...new Set(r.fits.map((f) => f.name))].join(', ');
+      if (next !== m) {
+        // Fitted to data, so not the assistant's assumption (NFR-HON-002).
+        markInputs(
+          next,
+          r.rates.map((x) => inputKey('edge', x.edgeId, 'params.k')),
+          { by: 'calibration', at, why: `Fitted to ${names} (calibrate, ${r.stop})` }
+        );
+        ctx.draft = next;
+        ctx.steps.push(`Calibrate ${ids.join(', ')} to ${names}`);
+      }
+      return {
+        rates: r.rates.map((x) => ({
+          flow: x.edgeId,
+          before: x.before,
+          after: x.after,
+          se: x.se,
+          informed: x.informed,
+        })),
+        fits: r.fits.map((f) => ({
+          series: f.name,
+          target: f.target,
+          before: { rmse: f.before.rmse, nse: f.before.nse, r2: f.before.r2 },
+          after: { rmse: f.after.rmse, nse: f.after.nse, r2: f.after.r2 },
+        })),
+        sseBefore: r.sseBefore,
+        sseAfter: r.sseAfter,
+        iterations: r.iterations,
+        runs: r.runs,
+        stop: r.stop,
+      };
+    }
+
+    case 'propose_energese': {
+      const source = s(a, 'source') ?? '';
+      if (!source.trim()) refuse('Give the whole script.');
+      if (!ctx.runEnergese) refuse('Running Energese scripts is not available here.');
+      const out = await ctx.runEnergese(source, m);
+      if (!out.ok)
+        refuse(
+          `The script did not build: ${[...out.problems, ...out.logs].slice(0, 12).join(' · ')}`
+        );
+      const next = out.model;
+      const { changed, kept } = compareInputs(m, next);
+      if (Object.keys(kept).length) next._provenance = kept;
+      else delete next._provenance;
+      commit(
+        next,
+        `Build from an Energese script: ${next.nodes.length} symbols, ${next.edges.length} flows`,
+        changed,
+        s(a, 'why')
+      );
+      return {
+        symbols: next.nodes.length,
+        flows: next.edges.length,
+        assumed: changed.length,
+        logs: out.logs,
+        checks: checksOf(ctx.draft),
+      };
     }
 
     case 'get_run_summary':

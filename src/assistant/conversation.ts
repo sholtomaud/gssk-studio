@@ -12,6 +12,7 @@ import {
   type Turn,
 } from './providers.ts';
 import { callTool, modelBrief, symbolCatalogue, TOOLS, type ToolContext } from './tools.ts';
+import type { StudioModel } from '../model/types.ts';
 
 /** Tool rounds in one turn before the assistant must stop and answer. */
 export const MAX_ROUNDS = 12;
@@ -33,6 +34,8 @@ Odum's energy systems language:
 Numbers:
 - You never produce a result. Levels, flows, prices and any outcome come only from run_model, quoted with the run id it returns.
 - You may set inputs (initial values, capacities, rates k) when the person has none. Each one is shown to them as your assumption, so give a short reason in "why".
+- When the model has observations, fit its rates to them with calibrate rather than guessing; report a fit only with the figures calibrate returns.
+- For a whole new structure, or many changes at once, you may write an Energese script with propose_energese instead of many small edits.
 - State no other figure as fact.
 
 Symbols you can add:
@@ -61,6 +64,8 @@ export async function runTurn(opts: {
   userText: string;
   ctx: ToolContext;
   onStep?: (text: string) => void;
+  /** After each tool call that changed the draft: the draft as it now stands, to draw live. */
+  onDraft?: (draft: StudioModel) => void;
   /** Ask for a streamed reply and hand on its text as it arrives. */
   onText?: (piece: string) => void;
 }): Promise<TurnOutcome> {
@@ -105,7 +110,9 @@ export async function runTurn(opts: {
     const results: { id: string; content: string; isError?: boolean }[] = [];
     for (const call of reply.calls) {
       opts.onStep?.(call.name);
+      const was = ctx.draft;
       const r = await callTool(ctx, call.name, call.input);
+      if (ctx.draft !== was) opts.onDraft?.(ctx.draft);
       const content = JSON.stringify(r.result);
       toolText.push(content);
       results.push({ id: call.id, content, ...(r.ok ? {} : { isError: true }) });

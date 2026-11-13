@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { callTool, TOOLS, type ToolContext } from '../../src/assistant/tools.ts';
-import { assumedCount, marksFor } from '../../src/model/provenance.ts';
-import { emptyModel } from '../../src/model/types.ts';
+import { assumedCount, inputKey, markInputs, marksFor } from '../../src/model/provenance.ts';
+import { exampleById } from '../../src/model/examples/index.ts';
+import { cloneModel, emptyModel, type StudioModel } from '../../src/model/types.ts';
+import type { CalibrationResult } from '../../src/fit/calibrate.ts';
 import { hasErrors, validate } from '../../src/model/validate.ts';
 import { toKernelModel } from '../../src/model/kernel-json.ts';
 
@@ -265,5 +267,161 @@ describe('the assistant’s tools (M12, ADR 0016)', () => {
       logic: 'interaction',
       params: { control_node: 'grazers' },
     });
+  });
+});
+
+/** The reservoir example, whose observations calibration can fit. */
+function reservoir(): StudioModel {
+  return cloneModel(exampleById('reservoir')!.model);
+}
+
+const fit = (rmse: number) => ({
+  n: 11,
+  excluded: 0,
+  rmse,
+  mae: rmse,
+  bias: 0,
+  r2: 1,
+  nse: 1,
+  kge: 1,
+});
+
+describe('calibrate: fit rates through the app’s calibration (ADR 0016, FR-CAL-001)', () => {
+  /** A stand-in for the sim worker: halves each rate, and reports how the fit improved. */
+  function fake(seen: { ids: string[]; iterations: number }[] = []): ToolContext['calibrate'] {
+    return async (m, ids, iterations) => {
+      seen.push({ ids, iterations });
+      return {
+        rates: ids.map((edgeId) => {
+          const k = m.edges.find((e) => e.id === edgeId)!.params.k;
+          return { edgeId, before: k, after: k / 2, se: 0.001, informed: true };
+        }),
+        fits: [
+          {
+            obsId: 'o',
+            name: 'Reservoir level',
+            target: 'reservoir',
+            before: fit(9),
+            after: fit(1),
+          },
+        ],
+        sseBefore: 81,
+        sseAfter: 1,
+        iterations: 7,
+        runs: 30,
+        stop: 'converged',
+        model: m,
+      } satisfies CalibrationResult;
+    };
+  }
+
+  it('sets the fitted rates on the draft, marked by calibration, not as the assistant’s guess', async () => {
+    const seen: { ids: string[]; iterations: number }[] = [];
+    const ctx = { ...context(), draft: reservoir(), calibrate: fake(seen) };
+    const flow = ctx.draft.edges[0]!;
+    const before = flow.params.k;
+    markInputs(ctx.draft, [inputKey('edge', flow.id, 'params.k')], {
+      by: 'assistant',
+      at: AT,
+      why: 'a guess',
+    });
+    const r = await ok(ctx, 'calibrate', { flows: [flow.id], max_iterations: null });
+    expect(seen).toEqual([{ ids: [flow.id], iterations: 40 }]);
+    expect(r).toMatchObject({
+      rates: [{ flow: flow.id, before, after: before / 2, informed: true }],
+      sseBefore: 81,
+      sseAfter: 1,
+      stop: 'converged',
+    });
+    expect(ctx.draft.edges[0]!.params.k).toBe(before / 2);
+    const [mark] = marksFor(ctx.draft, 'edge', flow.id);
+    expect(mark?.mark).toMatchObject({ by: 'calibration', at: AT });
+    expect(mark?.mark.why).toContain('Reservoir level');
+    expect(assumedCount(ctx.draft)).toBe(0);
+    expect(ctx.steps).toEqual([`Calibrate ${flow.id} to Reservoir level`]);
+  });
+
+  it('refuses without observations or a way to calibrate, and names flows that are not there', async () => {
+    const empty = { ...context(), calibrate: fake() };
+    const none = await callTool(empty, 'calibrate', { flows: ['x'], max_iterations: null });
+    expect(none.ok).toBe(false);
+    expect(JSON.stringify(none.result)).toContain('There is no flow');
+
+    const unrunnable = { ...context(), draft: reservoir() };
+    const off = await callTool(unrunnable, 'calibrate', {
+      flows: [unrunnable.draft.edges[0]!.id],
+      max_iterations: null,
+    });
+    expect(JSON.stringify(off.result)).toContain('not available');
+
+    const failing = {
+      ...context(),
+      draft: reservoir(),
+      calibrate: async () => {
+        throw new Error('Compare at least one observation series with a symbol first');
+      },
+    };
+    const r = await callTool(failing, 'calibrate', {
+      flows: [failing.draft.edges[0]!.id],
+      max_iterations: 5,
+    });
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(r.result)).toContain('observation series');
+    expect(failing.steps).toEqual([]);
+  });
+});
+
+describe('propose_energese: a script the app runs in its sandbox (ADR 0016, ADR 0013)', () => {
+  it('makes what the script builds the draft, keeps marks on unchanged inputs, and marks the ones it changed', async () => {
+    const ctx = context();
+    ctx.draft = cloneModel(exampleById('grassland')!.model);
+    const [kept, changed] = ctx.draft.edges;
+    markInputs(ctx.draft, [inputKey('edge', kept!.id, 'params.k')], {
+      by: 'assistant',
+      at: AT,
+      why: 'earlier guess',
+    });
+    const seen: string[] = [];
+    ctx.runEnergese = async (source, previous) => {
+      seen.push(source);
+      const built = cloneModel(previous);
+      delete built._provenance;
+      built.edges.find((e) => e.id === changed!.id)!.params.k = 0.42;
+      built.nodes.push({ ...structuredClone(built.nodes[0]!), id: 'extra', value: 3 });
+      return { ok: true, model: built, logs: ['built'] };
+    };
+    const r = await ok(ctx, 'propose_energese', {
+      source: 'export default m;',
+      why: 'a faster grazing rate',
+    });
+    expect(seen).toEqual(['export default m;']);
+    expect(r).toMatchObject({ symbols: ctx.draft.nodes.length, logs: ['built'] });
+    expect(ctx.draft.edges.find((e) => e.id === changed!.id)!.params.k).toBe(0.42);
+    expect(marksFor(ctx.draft, 'edge', kept!.id)[0]?.mark.why).toBe('earlier guess');
+    expect(marksFor(ctx.draft, 'edge', changed!.id)[0]?.mark).toMatchObject({
+      by: 'assistant',
+      why: 'a faster grazing rate',
+    });
+    expect(marksFor(ctx.draft, 'node', 'extra').map((x) => x.field)).toEqual(['value']);
+    expect(ctx.steps).toEqual([
+      `Build from an Energese script: ${ctx.draft.nodes.length} symbols, ${ctx.draft.edges.length} flows`,
+    ]);
+  });
+
+  it('answers a script that does not build with its problems, and changes nothing', async () => {
+    const ctx = context();
+    const before = ctx.draft;
+    ctx.runEnergese = async () => ({
+      ok: false,
+      problems: ["script.ts 2:7  Type 'string' is not assignable to type 'number'."],
+      logs: [],
+    });
+    const r = await callTool(ctx, 'propose_energese', { source: 'x', why: null });
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(r.result)).toContain('not assignable');
+    expect(ctx.draft).toBe(before);
+    expect(ctx.steps).toEqual([]);
+    const off = await callTool(context(), 'propose_energese', { source: 'x', why: null });
+    expect(JSON.stringify(off.result)).toContain('not available');
   });
 });

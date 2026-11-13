@@ -1,7 +1,8 @@
 # ADR 0016 — The assistant edits through the app's own operations, and marks every number it sets
 
-**Status**: accepted (M12). Amends NFR-HON-002 at the owner's request. Calibration and
-Energese scripts as tools, and drawing a card's draft on the canvas, are still to come.
+**Status**: accepted (M12). Amends NFR-HON-002 at the owner's request. Implemented in full,
+with one addition: the canvas draws a turn's draft live, after each edit, not only once the card
+is shown (see Decision, _Cards_).
 
 ## Context
 
@@ -47,6 +48,10 @@ function that already exists:
 
 Every editing tool returns a proposed model, never one already applied. The chat shows each
 proposal as a card with the change listed and drawn on the canvas, to **Apply** or **Discard**.
+The drawing is live: after each tool call the canvas shows the draft so far, read-only, with what
+it adds or changes outlined, so the person watches the model being built. Nothing is versioned
+along the way, because nothing is committed: the stream is a preview of one draft, Discard drops
+all of it, and Apply is one undo step.
 An applied card is one undo step (FR-EDIT-007). A tool call that the checks reject is answered
 with the checks' own messages, so the model learns validity from the app, not from its own
 guesses.

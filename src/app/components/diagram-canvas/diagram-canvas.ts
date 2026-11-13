@@ -90,6 +90,7 @@ import { OUTLINES, SYMBOL_DEFS } from '../../../diagram/symbols.ts';
 import { builtinIcon, DEFAULT_ICON, ICON_DEFS } from '../../../diagram/icons.ts';
 import { iconsOf } from '../../../model/icons.ts';
 import { marksFor } from '../../../model/provenance.ts';
+import type { ProposedChanges } from '../../../model/diff.ts';
 import { el, formatNumber, iconButton, svg } from '../../ui.ts';
 import style from './diagram-canvas.css?raw';
 
@@ -222,6 +223,9 @@ export class DiagramCanvas extends BaseComponent {
     overlay: SVGGElement;
   };
   private hint!: HTMLElement;
+  private banner!: HTMLElement;
+  /** A proposal drawn instead of the model (ADR 0016): read-only, what it adds or changes picked out. */
+  private _preview: Set<string> | null = null;
   private pct!: HTMLElement;
 
   constructor() {
@@ -325,9 +329,15 @@ export class DiagramCanvas extends BaseComponent {
         this.render();
       }
     );
+    this.banner = el(
+      'div',
+      { class: 'preview-banner', role: 'status', hidden: '' },
+      'Previewing the assistant’s proposal: apply or discard it in the chat.'
+    );
     this.append(
       this.root,
       this.hint,
+      this.banner,
       el(
         'div',
         { class: 'zoom' },
@@ -402,6 +412,19 @@ export class DiagramCanvas extends BaseComponent {
   }
   get model(): StudioModel | null {
     return this._model;
+  }
+
+  /**
+   * Draw a proposal (the model set with it) read-only: the view still pans
+   * and zooms, but nothing can be selected or edited, so no edit is made on
+   * a model the person has not applied. Null ends the preview.
+   */
+  set preview(changes: ProposedChanges | null) {
+    this._preview = changes ? new Set([...changes.added, ...changes.changed]) : null;
+    if (!this.root) return;
+    this.root.classList.toggle('previewing', !!changes);
+    this.banner.hidden = !changes;
+    this.render();
   }
 
   set selection(s: Selection) {
@@ -719,7 +742,7 @@ export class DiagramCanvas extends BaseComponent {
     const selected = selectedNodeIds(this._selection).includes(n.id);
     const label = n.visual.label ?? n.id;
     const g = svg('g', {
-      class: `node${selected ? ' selected' : ''}${this.mark(n.id)}`,
+      class: `node${selected ? ' selected' : ''}${this.mark(n.id)}${this._preview?.has(n.id) ? ' proposed' : ''}`,
       'data-node': n.id,
       transform: `translate(${n.visual.x} ${n.visual.y})`,
       tabindex: 0,
@@ -951,7 +974,7 @@ export class DiagramCanvas extends BaseComponent {
     const kind = kindOfCarrierId(m, e.carrier);
     const g = svg('g', {
       // Odum's line styles by what flows (ADR 0015): money dashed, information dotted.
-      class: `edge ${e.logic}${kind ? ` kind-${kind}` : ''}${selected ? ' selected' : ''}${this.mark(e.id)}`,
+      class: `edge ${e.logic}${kind ? ` kind-${kind}` : ''}${selected ? ' selected' : ''}${this.mark(e.id)}${this._preview?.has(e.id) ? ' proposed' : ''}`,
       'data-edge': e.id,
     });
     const d = pathData(curve);
@@ -1430,6 +1453,18 @@ export class DiagramCanvas extends BaseComponent {
   private onPointerDown(e: PointerEvent): void {
     if (e.button !== 0 || !this._model) return;
     this.root.focus({ preventScroll: true });
+    if (this._preview) {
+      // A proposal is only looked at: any drag pans.
+      this.drag = {
+        kind: 'pan',
+        start: { x: e.clientX, y: e.clientY },
+        view: { x: this.view.x, y: this.view.y },
+        moved: false,
+      };
+      this.root.classList.add('panning');
+      this.root.setPointerCapture(e.pointerId);
+      return;
+    }
     const target = e.target as Element;
     const p = this.toModel(e);
     const key = `g${++this.gestureSeq}`;
@@ -1846,7 +1881,7 @@ export class DiagramCanvas extends BaseComponent {
 
   private onKeyDown(e: KeyboardEvent): void {
     const m = this._model;
-    if (!m) return;
+    if (!m || this._preview) return;
     const sel = this._selection;
     const focused = (e.target as Element).closest?.('[data-node]')?.getAttribute('data-node');
     if (e.key === 'Enter' && focused) {
@@ -1919,6 +1954,7 @@ export class DiagramCanvas extends BaseComponent {
   }
 
   private onDoubleClick(e: MouseEvent): void {
+    if (this._preview) return;
     const node = (e.target as Element).closest('[data-node]');
     if (node)
       this.dispatchEvent(
@@ -1927,6 +1963,7 @@ export class DiagramCanvas extends BaseComponent {
   }
 
   private onDrop(e: DragEvent): void {
+    if (this._preview) return;
     if (e.dataTransfer?.types.includes(PROCESS_DRAG_TYPE) && this._model) {
       e.preventDefault();
       const p = this.toModel(e);
