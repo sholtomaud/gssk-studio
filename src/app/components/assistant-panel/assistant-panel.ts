@@ -4,6 +4,12 @@
  * showing the exact request. Each turn's edits arrive as one card listing its
  * steps, to Apply (one undoable `diagram-edit`) or Discard. The panel never
  * owns the model.
+ *
+ * While a turn runs, its draft is handed on after every edit as an
+ * `assistant-preview` event, so the canvas draws the changes as they land;
+ * after the turn, the card's Preview button shows or hides its draft. A
+ * preview is only drawn: Discard drops every change at once, and Apply makes
+ * them one undo step.
  */
 import { BaseComponent, define } from '../../core/base-component.ts';
 import { runTurn } from '../../../assistant/conversation.ts';
@@ -18,6 +24,9 @@ import { renderMarkdown } from '../../markdown.ts';
 import { el, icon, iconButton } from '../../ui.ts';
 import type { EditDetail } from '../diagram-canvas/diagram-canvas.ts';
 import style from './assistant-panel.css?raw';
+
+/** What the canvas should draw instead of the model, or null for the model itself. */
+export type PreviewDetail = { base: StudioModel; draft: StudioModel } | null;
 
 /** A turn's proposal: its steps, and the draft they build on the model it began from. */
 interface Card {
@@ -41,8 +50,14 @@ export class AssistantPanel extends BaseComponent {
   private sendBtn!: HTMLButtonElement;
   private status!: HTMLElement;
   private stop: (() => void) | null = null;
+  /** The card whose draft the canvas shows, if any. */
+  private previewed: Card | null = null;
   /** Runs a model on the kernel through the app's worker; set by the studio. */
   runModel: ((m: StudioModel) => Promise<RunSummary>) | null = null;
+  /** Calibrates rates on the kernel through the app's worker; set by the studio. */
+  calibrate: ToolContext['calibrate'] | null = null;
+  /** Checks and runs an Energese script in the sandbox; set by the studio. */
+  runEnergese: ToolContext['runEnergese'] | null = null;
 
   constructor() {
     super('', style);
@@ -153,6 +168,8 @@ export class AssistantPanel extends BaseComponent {
       steps: card.steps,
       author: { provider: ready.cfg.kind, model: ready.cfg.model },
       ...(this.runModel ? { run: this.runModel } : {}),
+      ...(this.calibrate ? { calibrate: this.calibrate } : {}),
+      ...(this.runEnergese ? { runEnergese: this.runEnergese } : {}),
       ...(this.lastRun ? { lastRun: this.lastRun } : {}),
     };
     this.input.value = '';
@@ -172,6 +189,11 @@ export class AssistantPanel extends BaseComponent {
         userText: note + text,
         ctx,
         onStep: (name) => (this.status.textContent = `Working: ${name.replace(/_/g, ' ')}…`),
+        // Each edit is drawn as it lands, on a preview of the draft.
+        onDraft: (draft) => {
+          card.draft = draft;
+          this.showPreview(card);
+        },
         onText: (piece) => {
           if (!bubble.isConnected) this.log.append(bubble);
           streamed += piece;
@@ -183,6 +205,7 @@ export class AssistantPanel extends BaseComponent {
       this.lastRun = ctx.lastRun;
       card.draft = ctx.draft;
       if (card.steps.length) this.cards.push(card);
+      else if (this.previewed === card) this.endPreview();
       this.addReply(
         bubble,
         out.text ||
@@ -194,6 +217,7 @@ export class AssistantPanel extends BaseComponent {
       if (out.stop === 'max_tokens') this.addNote('The answer was cut off at the length limit.');
       if (out.stop === 'rounds') this.addNote('Stopped after many tool calls in one turn.');
     } catch (err) {
+      if (this.previewed === card) this.endPreview();
       bubble.remove();
       // Nothing sent, or the provider failed: drop the unanswered message from the history.
       while (this.history.length && this.history.at(-1)?.role !== 'user') this.history.pop();
@@ -208,6 +232,31 @@ export class AssistantPanel extends BaseComponent {
       this.sendBtn.disabled = false;
       this.status.textContent = '';
     }
+  }
+
+  /** Draw a card's draft on the canvas instead of the model. */
+  private showPreview(card: Card): void {
+    const was = this.previewed;
+    this.previewed = card;
+    if (was && was !== card) was.redraw?.();
+    card.redraw?.();
+    this.dispatchEvent(
+      new CustomEvent<PreviewDetail>('assistant-preview', {
+        detail: { base: card.base, draft: card.draft },
+        bubbles: true,
+      })
+    );
+  }
+
+  /** Back to the model itself; the studio calls this when the model changes another way. */
+  endPreview(): void {
+    const was = this.previewed;
+    if (!was) return;
+    this.previewed = null;
+    was.redraw?.();
+    this.dispatchEvent(
+      new CustomEvent<PreviewDetail>('assistant-preview', { detail: null, bubbles: true })
+    );
   }
 
   private addMessage(who: 'user', text: string): void {
@@ -260,7 +309,17 @@ export class AssistantPanel extends BaseComponent {
         'Apply'
       );
       const discard = el('button', { type: 'button', name: 'discard-card', text: 'Discard' });
+      const preview = el('button', {
+        type: 'button',
+        name: 'preview-card',
+        text: 'Preview',
+        title: 'Show these changes on the canvas, without applying them',
+        'aria-pressed': String(this.previewed === card),
+      });
+      preview.onclick = () =>
+        this.previewed === card ? this.endPreview() : this.showPreview(card);
       apply.onclick = () => {
+        if (this.previewed === card) this.endPreview();
         if (this._model !== card.base) {
           card.state = 'stale';
           draw();
@@ -276,6 +335,7 @@ export class AssistantPanel extends BaseComponent {
         draw();
       };
       discard.onclick = () => {
+        if (this.previewed === card) this.endPreview();
         card.state = 'discarded';
         draw();
       };
@@ -289,7 +349,7 @@ export class AssistantPanel extends BaseComponent {
                   class: 'done warn-text',
                   text: 'The model changed since this was proposed, so it was not applied. Ask again.',
                 })
-              : el('div', { class: 'actions' }, apply, discard);
+              : el('div', { class: 'actions' }, apply, preview, discard);
       box.replaceChildren(
         el('strong', {
           text: `Proposed: ${card.steps.length} change${card.steps.length === 1 ? '' : 's'}`,

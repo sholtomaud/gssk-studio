@@ -53,7 +53,8 @@ import '../calibrate-dialog/calibrate-dialog.ts';
 import type { CalibrateDialog } from '../calibrate-dialog/calibrate-dialog.ts';
 import type { CodeView } from '../code-view/code-view.ts';
 import '../assistant-panel/assistant-panel.ts';
-import type { AssistantPanel } from '../assistant-panel/assistant-panel.ts';
+import type { AssistantPanel, PreviewDetail } from '../assistant-panel/assistant-panel.ts';
+import { proposedChanges } from '../../../model/diff.ts';
 import type { RunSummary } from '../../../assistant/tools.ts';
 import style from './studio-page.css?raw';
 
@@ -68,6 +69,8 @@ export class StudioPage extends BaseComponent {
   params: Record<string, string> = {};
   private modelId = '';
   private model: StudioModel | null = null;
+  /** An assistant proposal the canvas draws instead of the model (ADR 0016). */
+  private preview: PreviewDetail = null;
   private selection: Selection = null;
   private issues: Issue[] = [];
   private readonly history = new History();
@@ -339,6 +342,14 @@ export class StudioPage extends BaseComponent {
     this.assistant = document.createElement('assistant-panel') as AssistantPanel;
     this.assistant.hidden = true;
     this.assistant.runModel = (m) => this.runSummary(m);
+    this.assistant.calibrate = (m, ids, iterations) => this.calibrateFor(m, ids, iterations);
+    // The compiler and script worker load only when the assistant first writes a script.
+    this.assistant.runEnergese = async (source, previous) =>
+      (await import('../../energese-runner.ts')).runEnergese(source, previous);
+    this.assistant.addEventListener('assistant-preview', (e) => {
+      this.preview = (e as CustomEvent<PreviewDetail>).detail;
+      this.update();
+    });
     this.assistant.addEventListener('diagram-edit', (e) =>
       this.commit((e as CustomEvent<EditDetail>).detail)
     );
@@ -564,6 +575,22 @@ export class StudioPage extends BaseComponent {
     };
   }
 
+  /** Calibration for the assistant (ADR 0016): the same worker and fit as the Calibrate dialog. */
+  private async calibrateFor(m: StudioModel, edgeIds: string[], maxIterations: number) {
+    const w = simWorker();
+    const token = await w.calibrateBegin(m, edgeIds, maxIterations);
+    try {
+      for (;;) {
+        const p = await w.calibrateAdvance(token, 150);
+        if (p.done) break;
+      }
+      return await w.calibrateFinish(token);
+    } catch (err) {
+      await w.calibrateCancel(token);
+      throw err;
+    }
+  }
+
   /** Diagram or code (FR-SDK-006). The code view, Monaco and tsrs load on first use. */
   private async setView(view: 'diagram' | 'code'): Promise<void> {
     if (view === this.view) return;
@@ -592,6 +619,11 @@ export class StudioPage extends BaseComponent {
 
   private commit(d: EditDetail): void {
     if (!this.model || d.model === this.model) return;
+    // Any change to the model ends a preview of a proposal built on the old one.
+    if (this.preview) {
+      this.preview = null;
+      this.assistant.endPreview();
+    }
     if (!d.coalesce || d.coalesce !== this.lastCoalesce) this.history.push(this.model);
     this.lastCoalesce = d.coalesce;
     // A marked input someone else changes is theirs now (NFR-HON-002, ADR 0016).
@@ -654,7 +686,9 @@ export class StudioPage extends BaseComponent {
     }
     this.canvas.issues = marks;
     this.canvas.selection = this.selection;
-    this.canvas.model = m;
+    const shown = this.preview && this.preview.base === m ? this.preview.draft : m;
+    this.canvas.preview = shown === m ? null : proposedChanges(m, shown);
+    this.canvas.model = shown;
     if (this.codeView) this.codeView.model = m;
     this.inspector.model = m;
     this.assistant.model = m;

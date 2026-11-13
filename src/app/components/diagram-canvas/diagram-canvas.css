@@ -215,6 +215,37 @@
 :host .empty-hint p {
   max-width: 340px;
 }
+:host .preview-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 0.85rem;
+  white-space: nowrap;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+:host .preview-banner[hidden] {
+  display: none;
+}
+/* A proposal (ADR 0016): what it adds or changes is outlined; the rest stays as it was. */
+:host .node.proposed .halo {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+}
+:host .edge.proposed .line {
+  stroke: var(--accent);
+}
+:host .previewing .node,
+:host .previewing .edge {
+  cursor: grab;
+}
 :host .zoom {
   position: absolute;
   right: 12px;

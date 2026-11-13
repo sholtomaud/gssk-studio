@@ -175,3 +175,9 @@
     border-top: 1px solid var(--border);
   }
 }
+/* Preview on: the card's draft is what the canvas shows. */
+:host .card button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}

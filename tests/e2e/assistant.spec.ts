@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './fixtures.ts';
+import { openExample } from './helpers.ts';
 
 const LOCAL = 'http://127.0.0.1:8080/v1/chat/completions';
 
@@ -105,8 +106,16 @@ test('the assistant builds through cards you apply, marks its numbers, and strik
   const card = page.locator('assistant-panel .card');
   await expect(card.locator('li')).toHaveCount(4);
   await expect(card).toContainText('Add storage “Water tank”');
-  // The model on the canvas is unchanged until the card is applied.
+  // The canvas previews the proposal, read-only; the model itself is unchanged until Apply.
+  await expect(page.locator('diagram-canvas .previewing')).toHaveCount(1);
+  await expect(page.locator('diagram-canvas [data-node].proposed')).toHaveCount(2);
+  await expect(card.getByRole('button', { name: 'Preview' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+  await card.getByRole('button', { name: 'Preview' }).click();
   await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(0);
+  await expect(page.locator('diagram-canvas .previewing')).toHaveCount(0);
   // 50 is the assistant's own input; 731 is in no tool result, so it is struck out.
   await expect(page.locator('assistant-panel s.unsupported')).toHaveText(['731']);
 
@@ -282,4 +291,129 @@ test('a streamed reply is drawn as Markdown, and the assistant makes the change 
   ]);
   await card.getByRole('button', { name: 'Apply' }).click();
   await expect(page.locator('[data-node="water_tank_loss"]')).toHaveCount(1);
+});
+
+/** Choose the local model on Settings, then open a copy of an example and its assistant. */
+async function openAssistantOn(page: Page, example: string): Promise<void> {
+  await page.goto('settings');
+  await page.locator('settings-page select[name="active"]').selectOption('local');
+  await openExample(page, example);
+  await page.getByRole('button', { name: /Assistant/ }).click();
+}
+
+async function ask(page: Page, text: string): Promise<void> {
+  await page.locator('assistant-panel textarea').fill(text);
+  await page.locator('assistant-panel textarea').press('Enter');
+  await page
+    .locator('consent-dialog dialog.consent')
+    .getByRole('button', { name: 'Send without asking until I reload' })
+    .click();
+}
+
+const symbol = (label: string) => ({
+  type: 'storage',
+  label,
+  x: null,
+  y: null,
+  value: null,
+  capacity: null,
+  carrier: null,
+  why: null,
+});
+
+test('the canvas shows the assistant’s edits as they happen, and Discard drops them all (ADR 0016)', async ({
+  page,
+}) => {
+  // The second reply waits until the test lets it go, so the turn is caught midway.
+  let release!: () => void;
+  const held = new Promise<void>((r) => (release = r));
+  const replies = [
+    calls(['add_symbol', symbol('Seed bank')]),
+    calls(['add_symbol', symbol('Soil')]),
+    words('Added a seed bank and soil.'),
+  ];
+  let n = 0;
+  await page.route(LOCAL, async (route) => {
+    if (n++ === 1) await held;
+    await route.fulfill({ json: replies.shift() ?? words('…') });
+  });
+  await openAssistantOn(page, 'grassland');
+  const before = await page.locator('diagram-canvas [data-node]').count();
+  await ask(page, 'Add a seed bank and soil');
+
+  // Mid-turn: the first edit is already on the canvas, picked out, before any card exists.
+  await expect(page.locator('[data-node="seed_bank"].proposed')).toBeVisible();
+  await expect(page.locator('diagram-canvas .preview-banner')).toContainText('proposal');
+  await expect(page.locator('assistant-panel .card')).toHaveCount(0);
+  release();
+
+  const card = page.locator('assistant-panel .card');
+  await expect(card.locator('li')).toHaveCount(2);
+  await expect(page.locator('diagram-canvas [data-node].proposed')).toHaveCount(2);
+  await card.getByRole('button', { name: 'Discard' }).click();
+  await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(before);
+  await expect(page.locator('diagram-canvas [data-node].proposed')).toHaveCount(0);
+});
+
+test('propose_energese: the app checks and runs the assistant’s script, and proposes what it builds (ADR 0016)', async ({
+  page,
+}) => {
+  const script = [
+    "import * as ener from 'energese';",
+    "const m = new ener.Model('Two tanks', { tEnd: 10 });",
+    "const a = new ener.Source(m, 'Tap', { value: 10 });",
+    "const b = new ener.Storage(m, 'Tank');",
+    'new ener.Flow(m, a, b, ener.linear(0.5));',
+    'export default m;',
+  ].join('\n');
+  await page.route(LOCAL, async (route) => {
+    const body = route.request().postDataJSON() as { messages: { role: string }[] };
+    const sent = body.messages.filter((x) => x.role === 'tool').length;
+    await route.fulfill({
+      json:
+        sent === 0
+          ? calls(['propose_energese', { source: script.replace('10 }', "'lots' }"), why: null }])
+          : sent === 1
+            ? calls(['propose_energese', { source: script, why: 'a small tap' }])
+            : words('Built two tanks from a script.'),
+    });
+  });
+  await openAssistantOn(page, 'grassland');
+  await ask(page, 'Rebuild it as two tanks, in code');
+  const card = page.locator('assistant-panel .card');
+  // The first script did not type-check: refused, so only the second is on the card.
+  await expect(card.locator('li')).toHaveText(
+    ['Build from an Energese script: 2 symbols, 1 flows'],
+    { timeout: 30_000 }
+  );
+  await card.getByRole('button', { name: 'Apply' }).click();
+  await expect(page.locator('studio-page .toolbar .name')).toHaveText('Two tanks');
+  await expect(page.locator('diagram-canvas [data-node]')).toHaveCount(2);
+  await expect(page.locator('[data-node="tap"] .assumed')).toHaveCount(1);
+});
+
+test('calibrate: the assistant fits rates to the observations with the app’s calibration (ADR 0016)', async ({
+  page,
+}) => {
+  await page.route(LOCAL, async (route) => {
+    const body = route.request().postDataJSON() as { messages: { role: string }[] };
+    const sent = body.messages.filter((x) => x.role === 'tool').length;
+    await route.fulfill({
+      json:
+        sent === 0
+          ? calls(['calibrate', { flows: ['runoff', 'release'], max_iterations: null }])
+          : words('Calibrated the runoff and release rates to the gauge.'),
+    });
+  });
+  await openAssistantOn(page, 'reservoir');
+  await ask(page, 'Fit the rates to the gauge readings');
+  const card = page.locator('assistant-panel .card');
+  await expect(card.locator('li')).toHaveText(
+    ['Calibrate runoff, release to Reservoir gauge (synthetic)'],
+    { timeout: 30_000 }
+  );
+  await card.getByRole('button', { name: 'Apply' }).click();
+  await expect(card).toContainText('Applied');
+  // Fitted to data, not guessed: no ≈ mark on the calibrated flows.
+  await expect(page.locator('[data-edge="runoff"] .assumed')).toHaveCount(0);
 });
