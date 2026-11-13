@@ -111,3 +111,39 @@ export function renameMarks(m: StudioModel, from: string, to: string): void {
     out[k.startsWith(prefix) ? `node:${to}:${k.slice(prefix.length)}` : k] = v;
   m._provenance = out;
 }
+
+/** Every input a mark can name, with its value: nodes' values, capacities and parameters, flows' parameters. */
+export function inputsOf(m: StudioModel): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  const params = (kind: 'node' | 'edge', id: string, p: object | undefined) => {
+    for (const [k, v] of Object.entries(p ?? {}))
+      if (typeof v === 'number') out.set(inputKey(kind, id, `params.${k}`), v);
+  };
+  for (const n of m.nodes) {
+    if (n.value !== undefined) out.set(inputKey('node', n.id, 'value'), n.value);
+    if (n.visual.capacity !== undefined)
+      out.set(inputKey('node', n.id, 'capacity'), n.visual.capacity);
+    params('node', n.id, n.params);
+  }
+  for (const e of m.edges) params('edge', e.id, e.params);
+  return out;
+}
+
+/**
+ * A model that replaces `prev` wholesale (a script's): the inputs it sets
+ * differently from `prev`, or that are new, and `prev`'s marks on the inputs
+ * it left as they were.
+ */
+export function compareInputs(
+  prev: StudioModel,
+  next: StudioModel
+): { changed: string[]; kept: Record<string, Provenance> } {
+  const before = inputsOf(prev);
+  const changed: string[] = [];
+  const kept: Record<string, Provenance> = {};
+  for (const [k, v] of inputsOf(next)) {
+    if (!before.has(k) || !same(before.get(k), v)) changed.push(k);
+    else if (prev._provenance?.[k]) kept[k] = { ...prev._provenance[k] };
+  }
+  return { changed, kept };
+}

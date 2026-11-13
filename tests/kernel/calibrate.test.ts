@@ -5,6 +5,8 @@ import { EXAMPLES } from '../../src/model/examples/index.ts';
 import { cloneModel, type StudioModel } from '../../src/model/types.ts';
 import type { GsskKernel } from '../../src/sim/gssk.ts';
 import { loadKernel } from './helpers.ts';
+import { callTool } from '../../src/assistant/tools.ts';
+import { marksFor } from '../../src/model/provenance.ts';
 
 let kernel: GsskKernel;
 beforeAll(async () => {
@@ -108,5 +110,33 @@ describe('sensitivity (FR-SEN-001)', () => {
     const e = elasticities(kernel, model, ['q']);
     expect(e.find((x) => x.edgeId === 'in')!.final).toBeCloseTo(1, 3);
     expect(e.find((x) => x.edgeId === 'out')!.final).toBeCloseTo(-1, 2);
+  });
+});
+
+describe('the assistant’s calibrate tool on the kernel (ADR 0016)', () => {
+  it('recovers the rates through the app’s calibration and marks them calibrated', async () => {
+    const { model, truth } = setup();
+    const ctx = {
+      draft: model,
+      steps: [] as string[],
+      author: { provider: 'local', model: 'test' },
+      calibrate: async (m: StudioModel, ids: string[], iterations: number) => {
+        const cal = new CalibrationSession(kernel, m, ids, iterations);
+        while (!cal.done) cal.advance(0);
+        return cal.result();
+      },
+    };
+    const r = await callTool(ctx, 'calibrate', {
+      flows: ['runoff', 'release'],
+      max_iterations: null,
+    });
+    expect(r.ok, JSON.stringify(r.result)).toBe(true);
+    expect((r.result as { stop: string }).stop).toBe('converged');
+    ['runoff', 'release'].forEach((id, i) => {
+      const k = ctx.draft.edges.find((e) => e.id === id)!.params.k;
+      expect(k / truth[i]!).toBeCloseTo(1, 3);
+      expect(marksFor(ctx.draft, 'edge', id)[0]?.mark.by).toBe('calibration');
+    });
+    expect(model.edges.find((e) => e.id === 'runoff')!.params.k).not.toBeCloseTo(truth[0]!, 6);
   });
 });
