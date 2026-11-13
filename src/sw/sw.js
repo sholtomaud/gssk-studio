@@ -39,8 +39,16 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || target.origin !== scope.origin) return;
 
   if (req.mode === 'navigate') {
-    // Every screen is the same shell; the client router picks the screen.
-    event.respondWith(fetch(req).catch(() => caches.match(SHELL, { cacheName: CACHE })));
+    // Every screen is the same shell; the client router picks the screen. Network first, so a
+    // deploy's new shell is seen at once. A static host has no file for a deep link (GitHub Pages
+    // answers /<repo>/model/<id> with 404.html and status 404), so a 404 gets the precached
+    // shell instead, as does a failed fetch (offline).
+    const shell = () => caches.match(SHELL, { cacheName: CACHE });
+    event.respondWith(
+      fetch(req)
+        .then((res) => (res.status === 404 ? shell().then((hit) => hit ?? res) : res))
+        .catch(shell)
+    );
     return;
   }
   if (target.href.startsWith(CODE)) {

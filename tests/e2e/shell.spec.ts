@@ -13,6 +13,20 @@ test('a deep link loads the app shell', async ({ page }) => {
   await expect(page.locator('.k-status')).toHaveText(/Verified/);
 });
 
+test('once the service worker is installed, a deep link is not a 404 (NFR-STO-005)', async ({
+  page,
+}) => {
+  await page.goto('./');
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+  // GitHub Pages answers this path with 404.html and status 404; the worker
+  // answers it with the precached shell instead, so no 404 reaches the console.
+  const res = await page.goto('kernel');
+  expect(res?.status()).toBe(200);
+  expect(res?.fromServiceWorker()).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Kernel', exact: true })).toBeVisible();
+});
+
 test('an unknown model says so and links back', async ({ page }) => {
   await page.goto('model/does-not-exist');
   await expect(page.getByRole('heading', { name: 'Model not found' })).toBeVisible();
