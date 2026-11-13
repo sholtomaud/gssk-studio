@@ -16,13 +16,18 @@ concurrency:
 env:
   NODE_VERSION: 22
 
+# Runners are pinned to Ubuntu 24.04 rather than ubuntu-latest, which moved to Ubuntu 26
+# from 19 October 2026: `playwright install --with-deps` installs system packages for the
+# OS, so the e2e job moves to a new Ubuntu with a Playwright that supports it, on purpose.
+# Actions are at majors that run on Node.js 24 (Node.js 20 runners are deprecated).
+
 jobs:
   build:
     name: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -37,17 +42,17 @@ jobs:
           BASE_PATH: /${{ github.event.repository.name }}/
       - name: Bundle size (NFR-PERF-001)
         run: npm run bundle-size
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
   test:
     name: test
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -59,10 +64,10 @@ jobs:
     name: e2e
     # Tests exactly the site `build` produced, served as GitHub Pages serves it.
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -70,7 +75,7 @@ jobs:
       # Google Chrome stable, not Playwright's pinned Chromium (playwright.config.ts).
       - run: npx playwright install --with-deps chrome
       - name: The site from the build job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: github-pages
           path: artifact
@@ -81,7 +86,7 @@ jobs:
           CI: 'true'
           E2E_SITE: site
           E2E_BASE: /${{ github.event.repository.name }}/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
@@ -96,7 +101,7 @@ jobs:
     # Settings → Pages → Source is "GitHub Actions" (SPEC §16).
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build, test, e2e]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write
@@ -117,4 +122,4 @@ jobs:
             exit 1
           fi
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
